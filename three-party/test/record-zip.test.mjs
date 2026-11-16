@@ -35,9 +35,14 @@ test('a store-method archive: unzip lists the entries in the order given, finds 
   assert.equal(tested.status, 0, tested.stdout);
   assert.match(tested.stdout, /No errors detected/);
   for (const { name, data } of ENTRIES) assert.ok(readEntry(file, name).equals(data), name);
-  // The date fields carry the UTC parts of the date given.
-  const listing = execFileSync(UNZIP, ['-l', file], { encoding: 'utf8' });
-  assert.equal(listing.split('\n').filter((line) => /11-15-2026 12:00/.test(line)).length, ENTRIES.length);
+  // The date fields carry the UTC parts of the date given, read in the
+  // form zipinfo prints with -T, yyyymmdd.hhmmss, which is the same in
+  // every UnZip 6.00 (the date column of unzip -l is not: Apple's prints
+  // 11-15-2026, Debian's 2026-11-15). The seconds are 40: the archive keeps
+  // them in steps of two. Each entry's line also names the store method.
+  const info = execFileSync(UNZIP, ['-Z', '-T', file], { encoding: 'utf8' });
+  const dated = info.split('\n').map((line) => / stor 20261115\.120040 (.+)$/.exec(line)?.[1]).filter(Boolean);
+  assert.deepEqual(dated, ENTRIES.map(({ name }) => name));
 });
 
 test('every entry is stored with no compression: method 0 and equal sizes in both headers, the CRC-32 of the data, no directory entry, no extra field, no comment', () => {
