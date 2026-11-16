@@ -2,25 +2,53 @@
 //
 //   1. looks for a private key in the run directory. A run directory holds
 //      public material and no private key, so finding one ends the check;
-//   2. shows that the sandbox profile denies the network. It starts a
-//      listener of its own on 127.0.0.1 and runs one probe program twice in
-//      the same run: outside the sandbox, where the probe must reach that
-//      listener, and under the profile, where the connect must fail with
-//      EPERM. Any other reading is not a pass;
-//   3. runs the verifier (src/verifier/aep-verify.mjs) under that profile,
-//      once for each record file: the files on disk under records/ and
-//      records/tampered/, and the files records/manifest.json names. Each
-//      run gets an empty environment, the file and the pin, and answers
-//      with one JSON line. The answers are written to offline-check.json.
+//   2. shows that a method denies the network to the programs it starts.
+//      It starts a listener of its own on 127.0.0.1 and runs one probe
+//      program twice in the same run: with no method, where the probe must
+//      reach that listener, and under the method, where the connect must
+//      fail with a reading the method gives (below) and the listener must
+//      accept nothing. The methods, for a user with no privileges:
+//
+//        macOS    sandbox-exec with PROFILE: the connect is refused, EPERM.
+//        Linux    a new user and network namespace made by unshare
+//                 (util-linux). Its loopback is down, so there is no route
+//                 to 127.0.0.1: ENETUNREACH. Where unshare cannot make one
+//                 (seccomp in a container, a restriction on user
+//                 namespaces), bwrap with / bound read-only, whose
+//                 namespace has its own loopback up with nothing listening
+//                 on it: ECONNREFUSED. A new network namespace accepts both
+//                 readings, as either says the host's loopback is out of
+//                 reach.
+//        Windows  none: Windows Firewall does not filter loopback traffic,
+//                 and an AppContainer launch is not reachable from Node.js
+//                 built-ins, so nothing that works without administrator
+//                 rights is used.
+//
+//      The tools are looked for at fixed paths, never through PATH. The
+//      first method whose control is decided ends the search, with one of
+//      three outcomes. Denied: the verifier runs under that method. Not
+//      measured (no method here, none could be applied, or the probe did not
+//      reach the listener with no method): the verifier still runs, with no
+//      method and an empty environment, and the result says the denial was
+//      not measured. Not denied (the probe reached the network under the
+//      method meant to deny it): that contradicts the method, and nothing
+//      is checked;
+//   3. runs the verifier (src/verifier/aep-verify.mjs), once for each record
+//      file: the files on disk under records/ and records/tampered/, and the
+//      files records/manifest.json names. Each run gets an empty environment,
+//      the file and the pin, and answers with one JSON line. The answers are
+//      written to offline-check.json.
 //
 // Exit codes: 0 every record under records/ passed steps 1 to 6, every
 // tampered copy was rejected, and the disk and the manifest name the same
-// files with the same hashes; 4 the verifier ran and the result is not that
-// (a record that did not pass, a tampered copy that was not rejected, a
-// file the verifier gave no answer on, or a difference between the disk
-// and the manifest); 1 an error (nothing written); 3 the network denial was
-// not shown (nothing checked, nothing written). offline-check.json is
-// written on 0 and on 4, which are both results, and on no other ending.
+// files with the same hashes, whether the network denial was shown or not
+// measured (the result says which); 4 the verifier ran and the result is
+// not that (a record that did not pass, a tampered copy that was not
+// rejected, a file the verifier gave no answer on, or a difference between
+// the disk and the manifest); 1 an error (nothing written); 3 the probe
+// reached the network under the method meant to deny it (nothing checked,
+// nothing written). offline-check.json is written on 0 and on 4, which are
+// both results, and on no other ending.
 //
 // The pin is the public key captured when the run started. It is read from
 // outside the run directory (pinFileOf in testkey.mjs, or the path the
@@ -40,14 +68,25 @@ import { pinFileOf, pinIsOutside } from './testkey.mjs';
 export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
 // The sandbox profile, given to the sandbox command as text.
 export const PROFILE = '(version 1) (allow default) (deny network*)';
-export const EXIT = Object.freeze({ ERROR: 1, NETWORK_NOT_MEASURED: 3, NOT_AS_EXPECTED: 4 });
+// Where the two Linux tools are looked for, in this order. The paths are
+// fixed: the check reads no environment variable, so no PATH.
+export const UNSHARE_PATHS = Object.freeze(['/usr/bin/unshare', '/bin/unshare']);
+export const BWRAP_PATHS = Object.freeze(['/usr/bin/bwrap', '/bin/bwrap']);
+export const EXIT = Object.freeze({ ERROR: 1, NETWORK_NOT_DENIED: 3, NOT_AS_EXPECTED: 4 });
 export const LINE = Object.freeze({
   KEY_ABSENT: 'private key: absent',
   KEY_PRESENT: 'private key: present',
   KEY_NOT_RULED_OUT: 'private key: not ruled out',
   NETWORK_DENIED: 'network denied: yes',
+  // Printed with the reason in parentheses.
   NETWORK_NOT_MEASURED: 'network denied: not measured',
+  // Printed with what the probe read in parentheses.
+  NETWORK_NOT_DENIED: 'network denied: no',
 });
+// The values of networkDenied in the result.
+const DENIAL_WORD = Object.freeze({ YES: 'yes', NOT_MEASURED: 'not measured' });
+const RAN_WITH_NO_METHOD = 'the network denial was not measured, so the verifier runs with no denial method and an empty environment, and the result says network denied: not measured';
+const CONTRADICTED = 'the probe reached the network under the method meant to deny it, so nothing was checked and nothing was written';
 // The verifier, as offline-check.json names it.
 export const VERIFIER = Object.freeze({
   entry: 'three-party/src/verifier/aep-verify.mjs',
@@ -71,6 +110,9 @@ const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const MAX_PIN_BYTES = 64 * 1024;
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+// A relative path as the record names give one: with forward slashes on
+// every platform.
+const portable = (relative) => relative.split(path.sep).join('/');
 // Printable ASCII, cut short: what a child wrote is shown, never run.
 const plain = (text) => String(text ?? '').replace(/[^\x20-\x7e]+/g, ' ').trim().slice(0, 160);
 
@@ -151,12 +193,12 @@ export function findPrivateKeys(dir) {
     try {
       listing = fs.readdirSync(current, { withFileTypes: true });
     } catch (error) {
-      unread.push({ file: path.relative(root, current) || '.', why: `cannot be listed (${error.code ?? 'error'})` });
+      unread.push({ file: portable(path.relative(root, current)) || '.', why: `cannot be listed (${error.code ?? 'error'})` });
       continue;
     }
     for (const entry of listing) {
       const abs = path.join(current, entry.name);
-      const file = path.relative(root, abs);
+      const file = portable(path.relative(root, abs));
       entries += 1;
       if (entries > MAX_ENTRIES) {
         unread.push({ file, why: `the directory has more than ${MAX_ENTRIES} entries` });
@@ -239,13 +281,60 @@ function readingOf(child, nonce) {
   return said === '' ? `exit ${child.status}` : `exit ${child.status} (${said})`;
 }
 
-// The network control. The result's denied is true when, in this one call
-// and against this call's own listener on 127.0.0.1, the probe read
-// CONNECTED outside the sandbox and EPERM under the profile, and the
-// listener accepted the outside connection and no other. sandboxArgv is
-// the sandbox command and any arguments that come before its own.
-export async function networkControl({ sandboxArgv = [SANDBOX_EXEC], profile = PROFILE, timeoutMs = 10000 } = {}) {
-  const result = { denied: false, listener: null, outside: null, inside: null, accepted: 0, why: null };
+// A method of denying the network: the command and the arguments that come
+// before the program it runs (argv), the readings of the probe under it that
+// show the denial (accepted), and its words: in the result (words), and in a
+// note, for the run under it (under) and the run with no method (outside).
+// Each maker takes the command as a list, so a test can put a program of its
+// own in that place.
+function methodOf(name, argv, { accepted, words, under = words, outside }) {
+  return Object.freeze({ name, argv: Object.freeze(argv), accepted, words, under, outside });
+}
+const NAMESPACE_READINGS = Object.freeze(['ENETUNREACH', 'ECONNREFUSED']);
+export function sandboxExecMethod(command = [SANDBOX_EXEC]) {
+  return methodOf('sandbox-exec', [...command, '-p', PROFILE], { accepted: Object.freeze(['EPERM']), words: `sandbox-exec profile ${PROFILE}`, under: 'the sandbox profile', outside: 'the sandbox' });
+}
+const UNSHARE_FLAGS = Object.freeze(['--user', '--map-root-user', '--net']);
+export function unshareMethod(command = [UNSHARE_PATHS[0]]) {
+  return methodOf('unshare', [...command, ...UNSHARE_FLAGS, '--'], { accepted: NAMESPACE_READINGS, words: `unshare ${UNSHARE_FLAGS.join(' ')}`, outside: 'the namespace' });
+}
+const BWRAP_FLAGS = Object.freeze(['--unshare-user', '--unshare-net', '--ro-bind', '/', '/', '--die-with-parent']);
+export function bwrapMethod(command = [BWRAP_PATHS[0]]) {
+  return methodOf('bwrap', [...command, ...BWRAP_FLAGS, '--'], { accepted: NAMESPACE_READINGS, words: `bwrap ${BWRAP_FLAGS.join(' ')}`, outside: 'the namespace' });
+}
+
+// The methods to try on a platform, in order. Where there is none, reason
+// says so in a few words, for the printed line, and why in a sentence, for a
+// note.
+export function methodsFor(platform, { exists = fs.existsSync } = {}) {
+  if (platform === 'darwin') return { methods: [sandboxExecMethod()], reason: null, why: null };
+  if (platform === 'linux') {
+    const unshare = UNSHARE_PATHS.find((file) => exists(file));
+    const bwrap = BWRAP_PATHS.find((file) => exists(file));
+    const methods = [...(unshare ? [unshareMethod([unshare])] : []), ...(bwrap ? [bwrapMethod([bwrap])] : [])];
+    if (methods.length > 0) return { methods, reason: null, why: null };
+    return { methods, reason: 'neither unshare nor bwrap is installed', why: `looked for unshare at ${UNSHARE_PATHS.join(' and ')}, and for bwrap at ${BWRAP_PATHS.join(' and ')}` };
+  }
+  if (platform === 'win32') {
+    return {
+      methods: [],
+      reason: 'no method that works without administrator rights is used on Windows',
+      why: 'Windows Firewall does not filter loopback traffic, and an AppContainer launch is not reachable from Node.js built-ins',
+    };
+  }
+  const name = plain(platform);
+  return { methods: [], reason: `no method is used on ${name}`, why: `a method is used on macOS (sandbox-exec) and on Linux (unshare, bwrap), and none on ${name}` };
+}
+
+// The network control of one method. Its state is denied when, in this one
+// call and against this call's own listener on 127.0.0.1, the probe read
+// CONNECTED with no method and a reading the method accepts under it, and
+// the listener accepted the connection made with no method and no other. It
+// is not-denied when under the method the probe read CONNECTED, or the
+// listener accepted one more connection: the method ran the probe and the
+// probe reached the network. Any other reading is not-measured.
+export async function networkControl({ method = sandboxExecMethod(), timeoutMs = 10000 } = {}) {
+  const result = { state: 'not-measured', method: method.name, listener: null, outside: null, inside: null, accepted: 0, why: null };
   const nonce = crypto.randomBytes(16).toString('hex');
   const sockets = new Set();
   const server = net.createServer((socket) => {
@@ -271,24 +360,61 @@ export async function networkControl({ sandboxArgv = [SANDBOX_EXEC], profile = P
 
     result.outside = readingOf(await runChild(probe[0], probe.slice(1), timeoutMs), nonce);
     if (result.outside !== 'CONNECTED' || result.accepted !== 1) {
-      result.why = `outside the sandbox the probe read "${result.outside}" and the listener accepted ${result.accepted} connection(s); it must read CONNECTED, and the listener must accept that one connection`;
+      result.why = `outside ${method.outside} the probe read "${result.outside}" and the listener accepted ${result.accepted} connection(s); it must read CONNECTED, and the listener must accept that one connection`;
       return result;
     }
 
-    const inside = await runChild(sandboxArgv[0], [...sandboxArgv.slice(1), '-p', profile, ...probe], timeoutMs);
-    // A connect that got through the sandbox is accepted by now.
+    const inside = await runChild(method.argv[0], [...method.argv.slice(1), ...probe], timeoutMs);
+    // A connect that got through the method is accepted by now.
     await new Promise((resolve) => setImmediate(resolve));
     result.inside = readingOf(inside, nonce);
-    if (result.inside !== 'EPERM' || result.accepted !== 1) {
-      result.why = `under the sandbox profile the probe read "${result.inside}" and the listener accepted ${result.accepted - 1} more connection(s); it must read EPERM, and the listener must accept nothing`;
+    const more = result.accepted - 1;
+    if (result.inside.startsWith('CONNECTED') || more > 0) {
+      result.state = 'not-denied';
+    } else if (method.accepted.includes(result.inside)) {
+      result.state = 'denied';
       return result;
     }
-    result.denied = true;
+    result.why = `under ${method.under} the probe read "${result.inside}" and the listener accepted ${more} more connection(s); it must read ${method.accepted.join(' or ')}, and the listener must accept nothing`;
     return result;
   } finally {
     for (const socket of sockets) socket.destroy();
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+// What the check finds about the network. The methods of the platform, or
+// the ones given, are tried in order, and the first control that is denied
+// or not-denied ends the search. The answer gives the state, the method the
+// verifier is run under (null when there is none), the line to print, the
+// notes, the network line of the result and its networkDenied (both null
+// when not denied, as nothing is written then), and the controls made.
+export async function networkDenial({ platform = process.platform, methods = null, timeoutMs = 10000 } = {}) {
+  const planned = methods === null ? methodsFor(platform) : { methods, reason: methods.length === 0 ? 'no method was given' : null, why: null };
+  const controls = [];
+  for (const method of planned.methods) {
+    const control = await networkControl({ method, timeoutMs });
+    controls.push(control);
+    if (control.state === 'denied') {
+      return { state: 'denied', method, line: LINE.NETWORK_DENIED, notes: [], network: `denied: ${method.words}; control: ${control.outside} outside, ${control.inside} inside`, networkDenied: DENIAL_WORD.YES, controls };
+    }
+    if (control.state === 'not-denied') {
+      const more = control.accepted - 1;
+      const read = `under ${method.name} the probe read ${control.inside}${more > 0 ? `, and the listener accepted ${more} more connection(s)` : ''}`;
+      return { state: 'not-denied', method, line: `${LINE.NETWORK_NOT_DENIED} (${read})`, notes: [control.why, CONTRADICTED], network: null, networkDenied: null, controls };
+    }
+  }
+  // Not measured. The reason: none to try, none that could be applied, or
+  // no control that reached its own listener with no method.
+  const applied = controls.filter((control) => control.inside !== null).map((control) => control.method);
+  const reason = planned.reason
+    ?? (applied.length > 0 ? `${applied.join(' and ')} could not be applied here`
+      : controls[0].listener === null ? 'the check\'s own listener did not start on 127.0.0.1'
+        : 'the probe did not reach the check\'s own listener with no method');
+  const words = new Map(planned.methods.map((method) => [method.name, method.words]));
+  const network = [`not measured: ${reason}`, ...controls.map((control) => `${words.get(control.method)}; control: ${control.outside ?? 'not run'} outside, ${control.inside ?? 'not run'} inside`)].join('; ');
+  const notes = [...(planned.why ? [planned.why] : []), ...controls.map((control) => control.why), RAN_WITH_NO_METHOD];
+  return { state: 'not-measured', method: null, line: `${LINE.NETWORK_NOT_MEASURED} (${reason})`, notes, network, networkDenied: DENIAL_WORD.NOT_MEASURED, controls };
 }
 
 // The pin file's facts, or null when there is no such file. A pin is one
@@ -389,9 +515,10 @@ function answerOf(child, file) {
 }
 
 // The one place the verifier is run from. It is handed the run directory,
-// the pin file, the sandbox command and the profile to run under, and it
-// runs the verifier once for each record file, under that profile, with an
-// empty environment and the time limit. The answer holds, for the records
+// the pin file, and the command of the method to run under with the
+// arguments before its program (prefix; empty when the denial was not
+// measured), and it runs the verifier once for each record file, under that
+// method, with an empty environment and the time limit. The answer holds, for the records
 // and for the tampered copies, one item per file ({ file, sha256, verdict,
 // firstFailingStep, notes }), and `findings`: each thing that makes the
 // result not as expected whatever the verdicts are (a file on disk that the
@@ -399,7 +526,7 @@ function answerOf(child, file) {
 // hash that differs from the manifest's, a name of the manifest that is not
 // a record file, a file the verifier gave no answer on). A finding is also
 // the leading note of its file.
-export async function callVerifier({ runDir, pinFile, sandboxArgv, profile, timeoutMs = 10000 }) {
+export async function callVerifier({ runDir, pinFile, prefix = [], timeoutMs = 10000 }) {
   const lists = recordFilesOf(runDir);
   const result = { records: [], tampered: [], findings: [] };
   const finding = (item, what) => {
@@ -409,7 +536,8 @@ export async function callVerifier({ runDir, pinFile, sandboxArgv, profile, time
   for (const kind of ['records', 'tampered']) {
     for (const { file, onDisk, inManifest, manifestSha256 } of lists[kind].files) {
       const target = path.join(runDir, file);
-      const child = await runChild(sandboxArgv[0], [...sandboxArgv.slice(1), '-p', profile, process.execPath, VERIFIER_FILE, target, '--pin', pinFile], timeoutMs);
+      const argv = [...prefix, process.execPath, VERIFIER_FILE, target, '--pin', pinFile];
+      const child = await runChild(argv[0], argv.slice(1), timeoutMs);
       const { answer, reading } = answerOf(child, target);
       const item = answer
         ? { file, sha256: answer.sha256, verdict: answer.verdict, firstFailingStep: answer.firstFailingStep, notes: [...answer.notes] }
@@ -432,11 +560,12 @@ export async function callVerifier({ runDir, pinFile, sandboxArgv, profile, time
 }
 
 // Runs the check. print gets each line of the result as it is known, and
-// note gets each line that explains an ending. The answer is
+// note gets each line that explains an ending or a finding. The methods are
+// those of platform, or the ones given. The answer is
 // { exitCode, lines, notes, result }; exitCode is 0 or one of EXIT, and
 // result is the object written to offline-check.json, or null when nothing
 // was written.
-export async function offlineCheck(runDir, { out = null, pinFile = null, print = () => {}, note = () => {}, sandboxArgv = [SANDBOX_EXEC], timeoutMs = 10000 } = {}) {
+export async function offlineCheck(runDir, { out = null, pinFile = null, print = () => {}, note = () => {}, platform = process.platform, methods = null, timeoutMs = 10000 } = {}) {
   const lines = [];
   const notes = [];
   const say = (line) => {
@@ -494,14 +623,10 @@ export async function offlineCheck(runDir, { out = null, pinFile = null, print =
   say(LINE.KEY_ABSENT);
 
   // 2. The network control.
-  const control = await networkControl({ sandboxArgv, timeoutMs });
-  if (!control.denied) {
-    say(LINE.NETWORK_NOT_MEASURED);
-    explain(control.why);
-    explain('the sandbox was not shown to deny the network, so nothing was checked and nothing was written');
-    return end(EXIT.NETWORK_NOT_MEASURED);
-  }
-  say(LINE.NETWORK_DENIED);
+  const denial = await networkDenial({ platform, methods, timeoutMs });
+  say(denial.line);
+  for (const line of denial.notes) explain(line);
+  if (denial.state === 'not-denied') return end(EXIT.NETWORK_NOT_DENIED);
 
   // 3. The verifier. Its file is hashed before it is run and again after,
   //    so the hash reported is of the bytes that ran.
@@ -525,7 +650,7 @@ export async function offlineCheck(runDir, { out = null, pinFile = null, print =
     explain('the verifier requires the key inside each record to equal the pin, and this run has none, so nothing was checked and nothing was written');
     return end(EXIT.ERROR);
   }
-  const answer = await callVerifier({ runDir: abs, pinFile: pinned.file, sandboxArgv, profile: PROFILE, timeoutMs });
+  const answer = await callVerifier({ runDir: abs, pinFile: pinned.file, prefix: denial.method?.argv ?? [], timeoutMs });
   if (verifierSha256() !== ranAs) {
     explain('the verifier file changed while the check ran, so nothing is reported and nothing was written');
     return end(EXIT.ERROR);
@@ -548,16 +673,18 @@ export async function offlineCheck(runDir, { out = null, pinFile = null, print =
 
   // The result file, in the order of its fields. `pin` is the path of the
   // pin the check read, from the directory that holds the run directory.
+  // networkDenied, added after summary, is yes or not measured.
   const result = {
     runId: path.basename(abs),
     at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
     verifier: { entry: VERIFIER.entry, sha256: ranAs, source: VERIFIER.source },
-    pin: path.relative(path.dirname(abs), pinned.file),
+    pin: portable(path.relative(path.dirname(abs), pinned.file)),
     pinSha256: pinned.sha256,
-    network: `denied: sandbox-exec profile ${PROFILE}; control: ${control.outside} outside, ${control.inside} inside`,
+    network: denial.network,
     records: answer.records,
     tampered: answer.tampered,
     summary,
+    networkDenied: denial.networkDenied,
   };
   const replaced = fs.existsSync(outFile);
   try {

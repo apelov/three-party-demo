@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { FICTIONAL_LINE } from '../../src/config.mjs';
 import { browserStartChecks, launchBrowser, NAME_ERROR, OUTSIDE_URL, RESOLVER_RULE } from './support/browser.mjs';
 import { example } from './support/engine-helpers.mjs';
-import { offlineCheckFromScreens, openScreens, runFromScreens, sandboxCommandMissing, startDemo } from './support/integration-helpers.mjs';
+import { offlineCheckFromScreens, openScreens, runFromScreens, startDemo } from './support/integration-helpers.mjs';
 import { assertCensus, census, COPY, docsFrom, rowsOf } from './support/view-helpers.mjs';
 
 let demo;
@@ -73,8 +73,15 @@ function assertWrittenResultShown(panel, answer) {
     COPY['offline.summaryPass'].replace('{pass}', answer.summary.pass),
     COPY['offline.summaryReject'].replace('{reject}', answer.summary.reject).replace('{expectedRejects}', answer.summary.expectedRejects),
   ];
-  for (const line of [COPY['offline.sub'], COPY['offline.networkValue'], COPY['offline.signerValue'], COPY['offline.tampered'], COPY['offline.expected'], COPY['limit.steps'], ...counts]) {
+  // The words for the network follow the result: a denial where the
+  // control showed one, not measured where it was not, and never both.
+  const denied = answer.networkDenied === 'yes';
+  const network = denied ? [COPY['offline.sub'], COPY['offline.networkValue']] : [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured'], answer.network];
+  for (const line of [...network, COPY['offline.signerValue'], COPY['offline.tampered'], COPY['offline.expected'], COPY['limit.steps'], ...counts]) {
     assert.ok(panel.text.includes(line), `the panel shows: ${line}`);
+  }
+  for (const line of denied ? [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured']] : [COPY['offline.sub'], COPY['offline.networkValue']]) {
+    assert.equal(panel.text.includes(line), false, `the panel does not show: ${line}`);
   }
 }
 
@@ -99,7 +106,7 @@ test('the served / carries the fictional line: once, in the footer, before a run
   assert.deepEqual(view.outside, []);
 });
 
-test('a clean run from the screens ends Paid with every row in the state of the contract example, and the offline check shows the result the check wrote: five records passed, the tampered copy rejected', { skip: sandboxCommandMissing() }, async () => {
+test('a clean run from the screens ends Paid with every row in the state of the contract example, and the offline check shows the result the check wrote: five records passed, the tampered copy rejected', async () => {
   const view = await open({ hash: '#inspect' });
   const { page } = view;
   const runId = await runFromScreens(view, 'clean');
@@ -123,7 +130,7 @@ test('a clean run from the screens ends Paid with every row in the state of the 
   assert.deepEqual(view.outside, []);
 });
 
-test('a poisoned run from the screens is Stopped by the intent rule at step 4 with the payment not reached, four records written, and the offline check shows four records passed and the tampered copy rejected', { skip: sandboxCommandMissing() }, async () => {
+test('a poisoned run from the screens is Stopped by the intent rule at step 4 with the payment not reached, four records written, and the offline check shows four records passed and the tampered copy rejected', async () => {
   const view = await open({ hash: '#inspect' });
   const { page } = view;
   const ex = example('state-poisoned-blocked.json');

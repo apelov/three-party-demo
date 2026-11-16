@@ -1,0 +1,2 @@
+offline.subNotMeasured = Each record is checked by the verifier. Network denial was not measured on this computer.
+offline.networkNotMeasured = Not measured on this computer

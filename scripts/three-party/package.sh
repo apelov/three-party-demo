@@ -1,7 +1,7 @@
 #!/bin/bash
 # Packages the three-party demo of one commit as files to carry to another
-# Mac: a tarball that runs with no network and no git, and a git bundle of
-# the branch for provenance. Nothing is pushed or copied anywhere else.
+# computer: a tarball that runs with no network and no git, and a git bundle
+# of the branch for provenance. Nothing is pushed or copied anywhere else.
 #
 #   scripts/three-party/package.sh --out <directory> [--commit <revision>]
 #
@@ -19,7 +19,7 @@
 #   three-party-demo-<sha7>.tar.gz.sha256
 #   three-party-demo-<sha7>.bundle          git bundle of the branch at that commit
 #   three-party-demo-<sha7>.bundle.sha256
-#   ONE-COMMAND.txt                         the one command to run on the other Mac
+#   ONE-COMMAND.txt                         the one command to run on the other computer
 #
 # The tarball leaves two things out of the export. three-party/stills/: those
 # pictures were taken from the contract's example files, not from a run. And
@@ -85,17 +85,18 @@ find "$TREE" -path "$TREE/node_modules" -prune -o -type f \( -name .gitignore -o
 
 # 4. The checks. Each count must be 0.
 count_of() { wc -l | tr -d ' '; }
-count_macho() { xargs -0 file | { grep -c 'Mach-O' || true; }; }
+# A native executable of macOS, Linux or Windows, as file names it.
+count_native() { xargs -0 file | { grep -c -E 'Mach-O|ELF|PE32' || true; }; }
 VERIFIER_PATHS="$(cd "$TREE" && { find three-party/verifier 2>/dev/null || true; } | count_of)"
-MACHO_OUTSIDE="$(cd "$TREE" && find . -path ./node_modules -prune -o -type f -print0 | count_macho)"
-MACHO_MODULES="$(cd "$TREE" && find ./node_modules -type f -print0 | count_macho)"
+NATIVE_OUTSIDE="$(cd "$TREE" && find . -path ./node_modules -prune -o -type f -print0 | count_native)"
+NATIVE_MODULES="$(cd "$TREE" && find ./node_modules -type f -print0 | count_native)"
 GIT_ENTRIES="$(cd "$TREE" && find . -name .git | count_of)"
 RUN_ENTRIES="$(cd "$TREE" && find three-party -maxdepth 1 \( -name runs -o -name 'runs.pins' \) | count_of)"
 KEY_FILES="$(cd "$TREE" && find . -type f \( -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name 'TEST-KEY.txt' \) | count_of)"
-say "checks: verifier paths $VERIFIER_PATHS, Mach-O files outside node_modules $MACHO_OUTSIDE, Mach-O files in node_modules $MACHO_MODULES, git entries $GIT_ENTRIES, run directories $RUN_ENTRIES, key files $KEY_FILES"
+say "checks: verifier paths $VERIFIER_PATHS, native executables outside node_modules $NATIVE_OUTSIDE, native executables in node_modules $NATIVE_MODULES, git entries $GIT_ENTRIES, run directories $RUN_ENTRIES, key files $KEY_FILES"
 [ "$VERIFIER_PATHS" = "0" ] || stop "the export holds three-party/verifier"
-[ "$MACHO_OUTSIDE" = "0" ] || stop "the export holds a native executable outside node_modules"
-[ "$MACHO_MODULES" = "0" ] || stop "an installed dependency holds a native executable"
+[ "$NATIVE_OUTSIDE" = "0" ] || stop "the export holds a native executable outside node_modules"
+[ "$NATIVE_MODULES" = "0" ] || stop "an installed dependency holds a native executable"
 [ "$GIT_ENTRIES" = "0" ] || stop "the export holds a git directory"
 [ "$RUN_ENTRIES" = "0" ] || stop "the export holds a runs directory"
 [ "$KEY_FILES" = "0" ] || stop "the export holds a key file"
@@ -123,7 +124,7 @@ git -C "$REPO" bundle verify --quiet "$OUT/$BASE.bundle" >/dev/null 2>&1 || stop
 
 # 8. The one command, and what it needs.
 printf 'tar -xzf ~/Downloads/%s.tar.gz -C ~ && cd ~/%s && npm run three-party\n' "$BASE" "$NAME" > "$OUT/ONE-COMMAND.txt"
-printf 'macOS, Node.js 22.12 or later, a browser; no login, no network.\n' >> "$OUT/ONE-COMMAND.txt"
+printf 'Needs Node.js 22.12 or later, a browser, and tar and a POSIX shell for the command above; no login, no network.\n' >> "$OUT/ONE-COMMAND.txt"
 
 say "built $BUILT with node $(node --version)"
 for f in "$BASE.tar.gz" "$BASE.bundle"; do

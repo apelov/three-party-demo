@@ -15,6 +15,7 @@ import { BUILD_FILE, demoBuild, demoBuildWords } from '../src/engine/build.mjs';
 import { LABELS } from '../src/engine/labels.mjs';
 import { offlineCheckOf, offlineCheckReturned, pinsDirOf } from '../src/engine/records.mjs';
 import { REPO_ROOT, START, removeDir, request, runStart, tempRunsDir } from './support/engine-helpers.mjs';
+import { denialHere } from './record-support.mjs';
 
 // Starts the command line and resolves once it has printed `lines` lines.
 // The answer carries those lines, what it wrote to standard error so far,
@@ -113,7 +114,7 @@ test('--serve starts the same listener with options: the screens at /, and the o
     const checked = await request({ port, method: 'POST', path: `/api/runs/${runId}/offline-check` });
     assert.equal(checked.status, 200);
     assert.deepEqual({ ...checked.json(), at: null }, { ...(await offlineCheckOf(path.join(dir, runId))), at: null });
-    assert.deepEqual(Object.keys(checked.json()), ['runId', 'at', 'verifier', 'pin', 'pinSha256', 'network', 'records', 'tampered', 'summary']);
+    assert.deepEqual(Object.keys(checked.json()), ['runId', 'at', 'verifier', 'pin', 'pinSha256', 'network', 'records', 'tampered', 'summary', 'networkDenied']);
     assert.deepEqual(checked.json().summary, { pass: 5, reject: 1, expectedRejects: 1 });
 
     end = await command.stop();
@@ -143,16 +144,20 @@ test('--text --offline-check prints, after each run, each line the offline check
     assert.equal(path.dirname(runDir), dir);
 
     // The check, asked again here, returns the same lines and the same exit
-    // status. Its one note is that it replaced the result the command wrote.
+    // status. Its notes are what it says about the network on this platform
+    // (none where a method shows the denial) and that it replaced the result
+    // the command wrote.
+    const here = await denialHere();
     const again = await offlineCheckReturned(runDir);
     const said = r.lines.slice(directory + 1);
     const lead = /^\[[0-9]{6}\] Offline check \| /;
     for (const line of said) assert.match(line, lead);
-    assert.deepEqual(said.map((l) => l.replace(lead, '')), [...again.lines, `exitCode: ${again.exitCode}`]);
+    assert.deepEqual(said.map((l) => l.replace(lead, '')), [...again.lines, ...here.notes, `exitCode: ${again.exitCode}`]);
+    assert.equal(again.lines[1], here.line);
     assert.equal(again.exitCode, 0);
     assert.equal(again.lines.at(-2), 'result: 5 passed steps 1 to 6, 1 rejected (1 expected)');
     assert.equal(again.lines.at(-1), 'written: offline-check.json');
-    assert.deepEqual(again.notes, [`${path.join(runDir, 'offline-check.json')} was there before this check, and this check's result replaced it`]);
+    assert.deepEqual(again.notes, [...here.notes, `${path.join(runDir, 'offline-check.json')} was there before this check, and this check's result replaced it`]);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(runDir, 'offline-check.json'), 'utf8')).summary, { pass: 5, reject: 1, expectedRejects: 1 });
   } finally {
     removeDir(dir);

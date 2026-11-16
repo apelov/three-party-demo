@@ -35,14 +35,22 @@ function blockLines(name) {
 // keys below, in the block's order.
 const LEFT_OUT = ['tryit.yours', 'tryit.agentReads', 'tryit.inMemory', 'tryit.badAccount'];
 
-test('copy.json holds the 105 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits: each key and value byte for byte, and nothing else', () => {
+// After it, the block for an offline check whose network denial was not
+// measured (a platform with no method, or one the system does not let
+// apply): two lines, the sentence under the heading and the value of the
+// network row.
+const NOT_MEASURED_BLOCK = 'copy-block-d.txt';
+
+test('copy.json holds the 105 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
+  const notMeasured = blockLines(NOT_MEASURED_BLOCK);
   assert.equal(deck.length, 105);
   assert.equal(added.length, 68 - LEFT_OUT.length);
-  const lines = [...deck, ...added];
-  const members = 105 + added.length;
-  assert.equal(members, 169);
+  assert.equal(notMeasured.length, 2);
+  const lines = [...deck, ...added, ...notMeasured];
+  const members = 105 + added.length + notMeasured.length;
+  assert.equal(members, 171);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);
