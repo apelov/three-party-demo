@@ -173,10 +173,11 @@ test('the footer: the mock bank line once, in the footer, on every state, beside
 test('no file of the view names a maker, a vendor, a role or the process behind it', () => {
   const names = new RegExp(j('Cla', 'ude|Anth', 'ropic|Op', 'us|Fa', 'ble|G', 'PT|Open', 'AI|CI', 'SO|C', 'CO|C', 'DO|C', 'PO|Chi', 'ef|rul', 'ing|ta', 'sk '));
   const files = fs.readdirSync(VIEW, { recursive: true }).map(String).filter((f) => fs.statSync(path.join(VIEW, f)).isFile()).sort();
-  // The font's licence text has one tracked copy, three-party/licenses/OFL.txt,
-  // which the stylesheet's header names; the view carries no second one.
-  assert.ok(!files.includes('fonts/OFL.txt') && files.includes('labels.json'));
-  assert.match(fs.readFileSync(path.join(VIEW, 'view.css'), 'utf8'), /three-party\/licenses\/OFL\.txt/);
+  // The page is set in faces the system has: the view bundles no font file
+  // and its stylesheet loads none.
+  assert.ok(files.includes('labels.json'));
+  assert.deepEqual(files.filter((f) => /\.(woff2?|ttf|otf)$|^fonts\//.test(f)), []);
+  assert.doesNotMatch(fs.readFileSync(path.join(VIEW, 'view.css'), 'utf8'), /@font-face/);
   const found = [];
   for (const f of files) {
     if (f.endsWith('.woff2')) continue;

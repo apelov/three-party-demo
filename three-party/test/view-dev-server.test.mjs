@@ -39,7 +39,7 @@ test('the view and its files are served, and nothing else of the directory is', 
     assert.deepEqual(page.body, fs.readFileSync(path.join(VIEW, 'index.html')));
     assert.match(page.headers['content-security-policy'], /default-src 'none'/, 'the page may load from this server alone');
     assert.match(page.headers['content-security-policy'], /script-src 'self'/);
-    for (const [file, type] of [['view.css', /^text\/css/], ['view.mjs', /^text\/javascript/], ['icons.mjs', /^text\/javascript/], ['copy.json', /^application\/json/], ['labels.json', /^application\/json/], ['fonts/inter-latin-wght.woff2', /^font\/woff2/]]) {
+    for (const [file, type] of [['view.css', /^text\/css/], ['view.mjs', /^text\/javascript/], ['icons.mjs', /^text\/javascript/], ['copy.json', /^application\/json/], ['labels.json', /^application\/json/]]) {
       const res = await request(server.port, 'GET', `/${file}`);
       assert.equal(res.status, 200, file);
       assert.match(res.type, type, file);

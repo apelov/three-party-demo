@@ -216,7 +216,7 @@ test('the served / is the screens, and neither the deck the page loads nor the s
   assert.equal(Object.hasOwn(poisoned.state, 'fictionalLine'), false);
 
   // The page's own files, each under its type, and the label map at both places the page reads it.
-  const types = { '/view.mjs': 'text/javascript; charset=utf-8', '/view.css': 'text/css; charset=utf-8', '/labels.json': 'application/json; charset=utf-8', '/fonts/inter-latin-wght.woff2': 'font/woff2' };
+  const types = { '/view.mjs': 'text/javascript; charset=utf-8', '/view.css': 'text/css; charset=utf-8', '/labels.json': 'application/json; charset=utf-8', '/copy.json': 'application/json; charset=utf-8' };
   for (const [target, type] of Object.entries(types)) {
     const file = await demo.get(target);
     assert.equal(file.status, 200, target);

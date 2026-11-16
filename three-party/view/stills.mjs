@@ -151,7 +151,7 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     return { page, settle, shot, close };
   }
 
-  // A click on an item of the menu chooses it and runs it.
+  // A click on an item of the menu chooses it; the R key runs it.
   const runScene = async (page, kind) => {
     await page.click(`.scene[data-kind="${kind}"]`);
     await page.keyboard.press('r');
@@ -162,6 +162,17 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     return rows.length > 0 && rows.every((row) => row.dataset.status !== 'pending' && row.dataset.status !== 'running');
   }, null, { timeout: WAIT_MS });
   const key = (page, name) => page.keyboard.press(name);
+  // The outcome's cue: the next act it offers, there once the run has
+  // finished (the audit waits for the last record).
+  const cueShown = (page) => page.waitForFunction(() => document.querySelector('#outcome-end #next-action') !== null, null, { timeout: WAIT_MS });
+  // The walkthrough in its order: a still of a later act is taken after the
+  // normal payment, so it shows what a viewer who took the acts in order
+  // sees there, the first act done and the cue the outcome gives next.
+  const paidFirst = async (page) => {
+    await runScene(page, 'clean');
+    await outcomeIs(page, 'paid');
+    await rowsSettled(page);
+  };
   const stoppedNumber = (page) => page.evaluate(() => {
     const row = document.querySelector('#rows .row[data-status="blocked"]');
     return row ? Number(row.dataset.index) + 1 : 0;
@@ -182,9 +193,11 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
   async function stoppedPair(width, scheme, { story = true, inspect = true, lens = null, withGrayscale = false } = {}) {
     const view = await open({ width, scheme, at: momentOf(poisoned, MOMENTS.stopped), hash: lens ? `#story-sequence-${lens}` : '' });
     try {
+      await paidFirst(view.page);
       await runScene(view.page, 'poisoned');
       await outcomeIs(view.page, 'blocked');
       await rowsSettled(view.page);
+      await cueShown(view.page);
       const number = await stoppedNumber(view.page);
       if (!number) throw new Error('the stopped run shows no stopped step');
       await key(view.page, String(number));
@@ -210,9 +223,11 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     if (dir) temp.push(dir);
     const view = await open({ width, scheme, at: momentOf(poisoned, MOMENTS.stopped), examples: dir ?? EXAMPLES });
     try {
+      await paidFirst(view.page);
       await runScene(view.page, 'poisoned');
       await outcomeIs(view.page, 'blocked');
       await rowsSettled(view.page);
+      await cueShown(view.page);
       const number = await stoppedNumber(view.page);
       if (!number) throw new Error('the stopped run shows no stopped step');
       await key(view.page, String(number));
@@ -248,6 +263,7 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
       await runScene(view.page, 'clean');
       await outcomeIs(view.page, 'paid');
       await rowsSettled(view.page);
+      await cueShown(view.page);
       await view.shot(name);
     } finally {
       await view.close();
@@ -260,6 +276,7 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     const view = await open({ width, scheme, at: new Date(Date.parse(finished.finishedAt) + MOMENTS.afterFinish * 1000).toISOString() });
     try {
       if (mode) await key(view.page, mode);
+      if (kind !== 'clean') await paidFirst(view.page);
       await runScene(view.page, kind);
       await outcomeIs(view.page, outcome);
       await rowsSettled(view.page);
@@ -275,6 +292,7 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
       }
       await answered;
       await view.page.waitForFunction(() => document.body.dataset.tab === 'records', null, { timeout: WAIT_MS });
+      await cueShown(view.page);
       await view.shot(name);
     } finally {
       await view.close();

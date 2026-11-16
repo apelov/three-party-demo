@@ -15,7 +15,7 @@
    along its arrow when a step starts (600 ms, once), the grant countdown
    (its width, one second per tick) and the bars of the trace. Nothing else
    moves; with reduced motion nothing moves at all.
-   The bundled Inter face (three-party/licenses/OFL.txt) is not used here. */
+   The view bundles no font file. */
 
 :root {
   color-scheme: light dark;

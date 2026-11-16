@@ -92,7 +92,10 @@ export async function record({ out, log = () => {} }) {
     await page.waitForFunction(() => document.body.dataset.run === 'blocked', null, { timeout: WAIT_MS });
     await page.waitForSelector('#pane-inspector .compare-call', { timeout: WAIT_MS });
     await page.waitForTimeout(HOLD_MS);
-    await page.waitForFunction(() => document.querySelector('#outcome-end #next-action') !== null, null, { timeout: WAIT_MS });
+    // The audit waits for the run to finish (its last record written): the
+    // menu's audit item says when it is available.
+    await page.waitForFunction(() => document.querySelector('#outcome-end #next-action') !== null
+      && document.querySelector('#scenes .scene[data-kind="offline-check"]')?.getAttribute('aria-disabled') === 'false', null, { timeout: WAIT_MS });
     await page.keyboard.press('o');
     await page.waitForFunction(() => document.body.dataset.tab === 'records' && document.querySelector('#records-tab [data-verdict-for] .verdict') !== null, null, { timeout: WAIT_MS });
     await page.waitForTimeout(HOLD_MS);
