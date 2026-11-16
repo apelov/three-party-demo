@@ -98,6 +98,5 @@ text.header1 = Three parts, one payment
 text.header2 = The supplier's bank is a mock bank on this computer, and the payments agent is scripted.
 text.header3 = Times in UTC. Paced for viewing: at least {paceSeconds} seconds per step.
 text.partCrossing = WIMSE · AI2II (stand-in)
-text.partRecord = AEP (stand-in)
 text.line = [{hhmmss}] {partLabel} | {title} | {status} | {detail}
 text.outcome = [{hhmmss}] Outcome | {outcome} | {outcomeText}

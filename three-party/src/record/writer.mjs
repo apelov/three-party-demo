@@ -32,7 +32,7 @@ import { storeZip } from './zip.mjs';
 
 export const FORMAT = 'docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6';
 export const PROFILE = 'opena2a-three-party-demo/1';
-export const WRITER = 'our writer, AEP format';
+export const WRITER = 'OpenA2A writer, AEP format';
 export const TIMESTAMP_ENTRY = 'stand-in: no timestamp authority';
 export const TIMESTAMP_STAND_IN = 'stand-in: no timestamp authority in this demo';
 export const CHANGED = 'one byte of response.txt';

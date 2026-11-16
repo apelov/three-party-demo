@@ -26,14 +26,13 @@ const TITLES = {
   pay: 'Pay the invoice under the grant',
   record: 'Write one signed Action Evidence Package per action',
 };
-// The part labels of contract revision 2, by the part id a step carries in
+// The part labels of contract revision 3, by the part id a step carries in
 // state.json, and the cell text mode prints for each: a stand-in part's label
 // is followed by the stand-in mark.
-const PART_LABELS = { ours: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II', record: 'AEP', bank: "Supplier's bank" };
-const PART_CELLS = { ours: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II (stand-in)', record: 'AEP (stand-in)', bank: "Supplier's bank" };
-const CROSSING_NOTE = 'Stand-in: our delegation-chain check runs here until the AI2II part is supplied.';
-const RECORD_NOTE = 'Our writer, in the AEP format. Stand-in label until the format is confirmed.';
-const TIMESTAMP_NOTE = 'Stand-in: no timestamp authority.';
+const PART_LABELS = { checkpoint: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II', record: 'AEP', bank: "Supplier's bank" };
+const PART_CELLS = { checkpoint: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II (stand-in)', record: 'AEP', bank: "Supplier's bank" };
+const CROSSING_NOTE = 'Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.';
+const TIMESTAMP_NOTE = 'Placeholder: no timestamp authority.';
 const STEP_IDS = ['credential', 'grant', 'crossing', 'intent', 'pay', 'record'];
 // The command line uses the record build's writer once that file is in the
 // tree. Until then the record step of a run it makes stays pending.
@@ -70,7 +69,7 @@ test('the label map carries the part labels, the step titles and the set lines b
   const record = stepOf(clean, 'record').detail;
   assert.deepEqual(LABELS.record, { signer: record.signer, credentialCitedBy: record.credentialCitedBy, timestampEntry: record.timestampEntry });
   assert.equal(LABELS.actionReasons.payAllowed, example('action-05-pay.action.json').reason);
-  assert.deepEqual({ ...LABEL_MAP.parties }, { agent: 'Payments agent', bank: "Supplier's bank", supplier: 'Supplier', domainA: "Payments agent's domain", domainB: "Supplier's bank's domain", rawIdentifiersNote: 'Fictional test identifiers.' });
+  assert.deepEqual({ ...LABEL_MAP.parties }, { agent: 'Payments agent', bank: "Supplier's bank", supplier: 'Supplier', domainA: "Payments agent's domain", domainB: "Supplier's bank's domain", rawIdentifiersNote: 'Test identifiers, used by nothing outside this demo.' });
   assert.equal(LABELS.text.standInPart, '{partLabel} (stand-in)');
   assert.deepEqual(LABELS.statusWords, { pending: 'Pending', running: 'Checking', passed: 'Passed', blocked: 'Stopped', 'not-reached': 'Not reached', written: 'Written' });
   assert.deepEqual(LABELS.outcome, {
@@ -125,7 +124,7 @@ test('a step line is [hhmmss] part label | title | state word | detail, for ever
   assert.equal(lines.intent, '[120041] OpenA2A · ATX · AAP | Apply the intent rule to each tool call | Passed | tool calls checked: 1; each equals the declared intent field for field');
   assert.equal(lines.pay, "[120041] Supplier's bank | Pay the invoice under the grant | Passed | POST /payments answered 201; payment DEMO-PAY-000031; 148.20 USD to DEMO-0000-2201; in the bank ledger");
   const record = stepOf(clean, 'record');
-  assert.equal(lines.record, `[120041] AEP (stand-in) | Write one signed Action Evidence Package per action | Written | 5 records; ${record.detail.format}; signer: test key generated for this run. ${RECORD_NOTE} ${TIMESTAMP_NOTE}`);
+  assert.equal(lines.record, `[120041] AEP | Write one signed Action Evidence Package per action | Written | 5 records; ${record.detail.format}; signer: test key generated for this run. ${TIMESTAMP_NOTE}`);
 
   const poisoned = example('state-poisoned-blocked.json');
   assert.equal(
@@ -137,11 +136,11 @@ test('a step line is [hhmmss] part label | title | state word | detail, for ever
   const running = example('state-clean-running.json');
   assert.equal(stepLine(stepOf(running, 'grant'), running, at), '[120041] OpenA2A · ATX · AAP | Issue a scoped AAP grant | Checking | in progress');
   assert.equal(stepLine(stepOf(running, 'pay'), running, at), "[120041] Supplier's bank | Pay the invoice under the grant | Pending | not started");
-  assert.equal(stepLine(stepOf(running, 'record'), running, at), '[120041] AEP (stand-in) | Write one signed Action Evidence Package per action | Pending | not started');
+  assert.equal(stepLine(stepOf(running, 'record'), running, at), '[120041] AEP | Write one signed Action Evidence Package per action | Pending | not started');
   // The record step of a run that ended with no record writer in the tree.
   assert.equal(
     stepLine(stepOf(running, 'record'), running, at, NO_RECORD_WRITER),
-    '[120041] AEP (stand-in) | Write one signed Action Evidence Package per action | Pending | no record written: the record writer (three-party/src/record/writer.mjs) is not in this build',
+    '[120041] AEP | Write one signed Action Evidence Package per action | Pending | no record written: the record writer (three-party/src/record/writer.mjs) is not in this build',
   );
   // Every line has the four separators and no line break.
   for (const state of [clean, poisoned, running]) {

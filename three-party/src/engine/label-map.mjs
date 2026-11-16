@@ -23,10 +23,8 @@ const BYTES = fs.readFileSync(LABEL_MAP_FILE);
 
 export const LABEL_MAP = deepFreeze(JSON.parse(BYTES.toString('utf8')));
 
-// The part ids of contract revision 1 stay as they are in state.json. The
-// map's checkpoint part is `ours` there; every other part goes by its name in
-// the map.
-const STATE_PART_IDS = Object.freeze({ checkpoint: 'ours' });
+// A part goes by its name in the map in state.json as well.
+const STATE_PART_IDS = Object.freeze({});
 
 // The part of the map whose steps list holds a step id: its name in the map,
 // its id in state.json and the part itself.

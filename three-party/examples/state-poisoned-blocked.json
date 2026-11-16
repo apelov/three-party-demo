@@ -10,7 +10,7 @@
     "supplier": "Supplier",
     "domainA": "Payments agent's domain",
     "domainB": "Supplier's bank's domain",
-    "rawIdentifiersNote": "Fictional test identifiers."
+    "rawIdentifiersNote": "Test identifiers, used by nothing outside this demo."
   },
   "invoice": {
     "invoiceId": "DEMO-INV-2202",
@@ -38,16 +38,16 @@
     "tokenType": "Bearer"
   },
   "steps": [
-    { "id": "credential", "part": "ours", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Verify the agent's ATX credential locally", "status": "passed", "startedAt": "2026-11-15T12:03:01Z", "endedAt": "2026-11-15T12:03:02Z",
+    { "id": "credential", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Verify the agent's ATX credential locally", "status": "passed", "startedAt": "2026-11-15T12:03:01Z", "endedAt": "2026-11-15T12:03:02Z",
       "detail": { "verifier": "@opena2a/atx-verify 0.3.0", "valid": true, "issuer": "did:web:issuer.example.test", "notBefore": "2026-10-01T00:00:00Z", "notAfter": "2027-10-01T00:00:00Z", "postQuantumSignature": "not verified in this demo" },
       "actionFile": "actions/01-credential.action.json", "recordFile": "records/01-credential.aep" },
-    { "id": "grant", "part": "ours", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Issue a scoped AAP grant", "status": "passed", "startedAt": "2026-11-15T12:03:10Z", "endedAt": "2026-11-15T12:03:12Z",
+    { "id": "grant", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Issue a scoped AAP grant", "status": "passed", "startedAt": "2026-11-15T12:03:10Z", "endedAt": "2026-11-15T12:03:12Z",
       "detail": { "expiresInSeconds": 60, "inScope": true, "scopeChecked": ["permissions", "creditorAccounts", "maximumIndividualAmount", "validToDateTime"] },
       "actionFile": "actions/02-grant.action.json", "recordFile": "records/02-grant.aep" },
-    { "id": "crossing", "part": "crossing", "partLabel": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "title": "Cross into the supplier's bank's trust domain", "status": "passed", "startedAt": "2026-11-15T12:03:20Z", "endedAt": "2026-11-15T12:03:21Z",
-      "detail": { "from": "payments.acme-demo.test", "to": "bank.example.test", "chainFile": "fixtures/delegation-chain/dc-compact-valid-two-hop.json", "hops": 2, "outcome": "valid", "stepsRun": "1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03 section 6", "standIn": "AI2II interop: stand-in; the real piece replaces the hop file, not code", "hopFile": "hops/03-crossing.hop.json" },
+    { "id": "crossing", "part": "crossing", "partLabel": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "title": "Cross into the supplier's bank's trust domain", "status": "passed", "startedAt": "2026-11-15T12:03:20Z", "endedAt": "2026-11-15T12:03:21Z",
+      "detail": { "from": "payments.acme-demo.test", "to": "bank.example.test", "chainFile": "fixtures/delegation-chain/dc-compact-valid-two-hop.json", "hops": 2, "outcome": "valid", "stepsRun": "1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03 section 6", "standIn": "Stand-in for the AI2II capture check, which runs here once its files are fetched", "hopFile": "hops/03-crossing.hop.json" },
       "actionFile": "actions/03-crossing.action.json", "recordFile": "records/03-crossing.aep" },
-    { "id": "intent", "part": "ours", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Apply the intent rule to each tool call", "status": "blocked", "startedAt": "2026-11-15T12:03:30Z", "endedAt": "2026-11-15T12:03:33Z",
+    { "id": "intent", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Apply the intent rule to each tool call", "status": "blocked", "startedAt": "2026-11-15T12:03:30Z", "endedAt": "2026-11-15T12:03:33Z",
       "detail": { "rule": "Every argument of a tool call must equal the same field of the declared intent. A call with no declared intent is blocked.",
         "declared": { "action": "pay", "invoiceId": "DEMO-INV-2202", "payeeAccount": "DEMO-0000-2202", "amount": "212.75", "currency": "USD" },
         "calls": [
@@ -57,7 +57,7 @@
         "result": "mismatch" },
       "actionFile": "actions/04-intent.action.json", "recordFile": "records/04-intent.aep" },
     { "id": "pay", "part": "bank", "partLabel": "Supplier's bank", "standIn": false, "standInNote": null, "title": "Pay the invoice under the grant", "status": "not-reached", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
-    { "id": "record", "part": "record", "partLabel": "AEP", "standIn": true, "standInNote": "Our writer, in the AEP format. Stand-in label until the format is confirmed.", "title": "Write one signed Action Evidence Package per action", "status": "written", "startedAt": "2026-11-15T12:03:40Z", "endedAt": "2026-11-15T12:03:42Z",
+    { "id": "record", "part": "record", "partLabel": "AEP", "standIn": false, "standInNote": null, "title": "Write one signed Action Evidence Package per action", "status": "written", "startedAt": "2026-11-15T12:03:40Z", "endedAt": "2026-11-15T12:03:42Z",
       "detail": { "written": 4, "format": "docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6", "signer": "test key generated for this run", "credentialCitedBy": "sha256 over the credential's exact bytes", "timestampEntry": "stand-in: no timestamp authority" },
       "actionFile": null, "recordFile": "records/manifest.json" }
   ],
