@@ -129,8 +129,7 @@ export function removeTempDirs() {
   for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 }
 
-// The response bodies of the two actions a test run holds. Every name,
-// account and amount is fictional.
+// The response bodies of the two actions a test run holds.
 export const BODIES = Object.freeze({
   intent: '{"result":"match","calls":1}\n',
   pay: '{"paymentId":"DEMO-PAY-0001","status":"accepted","amount":"148.20","currency":"USD","payeeAccount":"DEMO-0000-2201"}\n',

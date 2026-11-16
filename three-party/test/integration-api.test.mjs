@@ -269,7 +269,9 @@ test('no file under a run directory, and no pin, contains an access token value'
       looked += 1;
     }
   }
-  assert.ok(looked >= 40, `every file of the two runs and their pins was read (${looked})`);
+  // A crossing that ran the AI2II capture check writes no hop file.
+  const hopless = [clean, poisoned].filter((run) => run.state.steps.find((s) => s.id === 'crossing').detail.hopFile === null).length;
+  assert.ok(looked >= 40 - hopless, `every file of the two runs and their pins was read (${looked})`);
   // The grant of each run is in its state without the token.
   for (const run of [clean, poisoned]) {
     assert.equal(run.state.grant.tokenType, 'Bearer');

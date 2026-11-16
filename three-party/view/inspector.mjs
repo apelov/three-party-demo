@@ -6,7 +6,7 @@
 
 import { el, put, add, from, value, fieldName, at, timeEl, clear } from './dom.mjs';
 import { stateOf, chip, badge, copyButton, countdown, compare, headlineOf } from './parts.mjs';
-import { invoiceCard, cardInFlow, partOf } from './flow.mjs';
+import { invoiceCard, cardInFlow, partOf, shownPart } from './flow.mjs';
 import { fileUrl } from './api.mjs';
 import { iconEl } from './icons.mjs';
 import { OFFLINE_KIND } from './constants.mjs';
@@ -119,13 +119,16 @@ function heading(app, i, step) {
 // the badge, its note and its detail line; the part's legend where the lane
 // header has no room for it.
 function partBlock(app, i, step) {
-  const { col, part } = partOf(app, step.id);
+  const { col } = partOf(app, step.id);
+  // The part as this run used it: the variant a step names, else the part.
+  const { part, path } = shownPart(app, col);
   const standIn = Boolean(part?.standIn);
-  const note = standIn ? (app.w.label(`parts.${col}.standInNote`) ?? value(app.run, `steps[${i}].detail.standIn`)) : null;
+  const note = standIn ? (app.w.label(`${path}.standInNote`) ?? value(app.run, `steps[${i}].detail.standIn`)) : null;
   return el('div', { class: 'insp-part' },
     el('div', { class: 'insp-part-line' }, put('span', 'insp-part-label', value(app.run, `steps[${i}].partLabel`)), standIn ? badge(app) : null),
     part && app.tier !== 'wide' ? put('p', 'insp-note', app.w.label(`parts.${col}.text`)) : null,
     standIn ? put('p', 'insp-note', note, { 'data-note': 'stand-in' }) : null,
+    standIn ? put('p', 'insp-note', app.w.label(`${path}.fetchNote`), { 'data-note': 'fetch' }) : null,
     standIn ? put('p', 'insp-note', app.w.label(`parts.${col}.detail`)) : null);
 }
 
@@ -179,10 +182,42 @@ function grantPanel(app, i, step) {
   ];
 }
 
+// The crossing over the AI2II capture: one line per check (its answer, its
+// name and what it shows), the check's own summary and scope, then the
+// source, the files and the token by SHA-256. Every word is the run's.
+function capturePanel(app, i, step) {
+  const run = app.run;
+  const base = `steps[${i}].detail.capture`;
+  const c = step.detail.capture;
+  const states = app.labels.states ?? {};
+  const checks = Array.isArray(c.checks) ? c.checks : [];
+  const at = (path) => `${base}.${path}`;
+  return [
+    section(app, null,
+      put('p', 'insp-text', value(run, at('summary'))),
+      el('ul', { class: 'kv-list checks', data: { capture: 'checks' } }, checks.map((check, n) => {
+        const pass = check.answer === 'pass';
+        return el('li', { class: 'record-line', data: { captureCheck: String(n), answer: String(check.answer) } },
+          el('span', { class: 'verdict', data: { tone: pass ? 'ok' : 'stop' } }, iconEl(pass ? states.passed?.icon : states.blocked?.icon), put('span', null, value(run, at(`checks[${n}].answer`)))),
+          put('span', 'mono', value(run, at(`checks[${n}].name`))),
+          put('span', 'insp-note', value(run, at(`checks[${n}].claim`))),
+          check.reason ? put('span', 'insp-note', value(run, at(`checks[${n}].reason`))) : null);
+      })),
+      (Array.isArray(c.scope) ? c.scope : []).map((_, n) => put('p', 'insp-sub', value(run, at(`scope[${n}]`)), { 'data-note': 'scope' })),
+      table(
+        plain(run, at('source.repo'), from.run, 'mono'),
+        row(fieldName(run, at('source.commit')), token(app, run, at('source.commit'))),
+        (Array.isArray(c.files) ? c.files : []).map((_, n) => row(value(run, at(`files[${n}].name`)), token(app, run, at(`files[${n}].sha256`)))),
+        c.token ? row(fieldName(run, at('token.sha256')), token(app, run, at('token.sha256'))) : null)),
+    artifacts(stateExcerpt(app, i), actionArtifact(app, i)),
+  ];
+}
+
 function crossingPanel(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
+  if (d.capture?.used === true) return capturePanel(app, i, step);
   const hop = d.hopFile ? app.fileOf(d.hopFile) : null;
   const hopDoc = hop?.state === 'ready' && hop.file.kind === 'json' ? hop.file.value : null;
   const hopSource = (path, shape) => from.file(d.hopFile, path, shape);
@@ -195,7 +230,9 @@ function crossingPanel(app, i, step) {
         plain(run, `${base}.outcome`),
         plain(run, `${base}.stepsRun`),
         plain(run, `${base}.chainFile`, from.run, 'mono'),
-        hopDoc ? hashRow(app, hopDoc, 'chainSha256', hopSource) : null)),
+        hopDoc ? hashRow(app, hopDoc, 'chainSha256', hopSource) : null,
+        // An AI2II capture that was there and not used: why.
+        d.capture?.reason ? plain(run, `${base}.capture.reason`) : null)),
     artifacts(stateExcerpt(app, i), d.hopFile ? artifact(app, d.hopFile, value(run, `${base}.hopFile`)) : null, actionArtifact(app, i)),
   ];
 }
@@ -380,10 +417,13 @@ function stepPanel(app, i) {
 function partsKey(app) {
   const parts = app.labels.parts ?? {};
   const cols = (app.labels.columns ?? []).filter((id) => parts[id]);
-  return el('div', { class: 'insp-section', data: { key: 'parts' } }, cols.map((id) => el('div', { class: 'insp-part' },
-    el('div', { class: 'insp-part-line' }, put('span', 'insp-part-label', app.w.label(`parts.${id}.label`)), parts[id].standIn ? badge(app) : null),
-    put('p', 'insp-note', app.w.label(`parts.${id}.text`)),
-    parts[id].standIn ? put('p', 'insp-note', app.w.label(`parts.${id}.standInNote`)) : null)));
+  return el('div', { class: 'insp-section', data: { key: 'parts' } }, cols.map((id) => {
+    const { part, path } = shownPart(app, id);
+    return el('div', { class: 'insp-part' },
+      el('div', { class: 'insp-part-line' }, put('span', 'insp-part-label', app.w.label(`${path}.label`)), part.standIn ? badge(app) : null),
+      put('p', 'insp-note', app.w.label(`parts.${id}.text`)),
+      part.standIn ? put('p', 'insp-note', app.w.label(`${path}.standInNote`)) : null);
+  }));
 }
 
 function sceneIndexOf(app, kind) {
@@ -513,7 +553,8 @@ function itemOf(host, selection) {
   if (kind === 'records' || kind === 'tampered') return selection.kind === 'offline' ? nth(`.record[data-kind="${kind}"]`) : null;
   if (kind === 'check' && selection.kind === 'step') {
     const base = `run:steps[${selection.index}].detail`;
-    return host.querySelector(`[data-src="${base}.scopeChecked[${n}]"]`) ?? host.querySelector(`[data-src="${base}.verifier"]`);
+    return host.querySelector(`[data-src="${base}.scopeChecked[${n}]"]`) ?? host.querySelector(`[data-src="${base}.verifier"]`)
+      ?? host.querySelector(`[data-capture-check="${n}"]`);
   }
   return null;
 }

@@ -43,7 +43,8 @@ async function followRun(runId) {
 }
 
 before(async () => {
-  api = await startApi({ port: 0, runsDir, paceSeconds: PACE_SECONDS, runOptions: { recordWriter: null, witness } });
+  // The crossing of these runs is the delegation chain check: no AI2II capture.
+  api = await startApi({ port: 0, runsDir, paceSeconds: PACE_SECONDS, runOptions: { recordWriter: null, witness, ai2iiDir: path.join(runsDir, 'no-ai2ii-capture') } });
   port = api.port;
 });
 

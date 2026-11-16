@@ -8,6 +8,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadCapture } from '../src/engine/ai2ii-source.mjs';
 import { startApi } from '../src/engine/api.mjs';
 import { LABEL_MAP, labelMapWith, partFields, partOfStep, timestampNote } from '../src/engine/label-map.mjs';
 import { runToEnd } from '../src/engine/run.mjs';
@@ -79,8 +80,10 @@ let clean;
 let poisoned;
 
 test('a clean run and a poisoned run: every step of state.json carries the label, the stand-in flag and the note of its part, and the state carries the parties of the map', async () => {
-  clean = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir });
-  poisoned = await runToEnd({ kind: 'poisoned', paceSeconds: 0, runsDir });
+  // No AI2II capture: the crossing is the fallback, the delegation chain check.
+  const ai2iiDir = path.join(runsDir, 'no-ai2ii-capture');
+  clean = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, ai2iiDir });
+  poisoned = await runToEnd({ kind: 'poisoned', paceSeconds: 0, runsDir, ai2iiDir });
   assert.equal(clean.error, null);
   assert.equal(poisoned.error, null);
   const map = labelMap();
@@ -113,7 +116,8 @@ test('text mode: a stand-in part is marked after its label, the line of a stand-
       credential: 'OpenA2A · ATX · AAP', grant: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II (stand-in)',
       intent: 'OpenA2A · ATX · AAP', pay: "Supplier's bank", record: 'AEP (stand-in)',
     });
-    assert.ok(lineOf('crossing').endsWith(`chain of 2 hops: valid. ${map.parts.crossing.standInNote}`), lineOf('crossing'));
+    // The fallback crossing also says where the AI2II capture comes from and how it is fetched.
+    assert.ok(lineOf('crossing').endsWith(`chain of 2 hops: valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.fetchNote}`), lineOf('crossing'));
     assert.ok(lineOf('crossing').includes(`| ${map.parties.agent} to ${map.parties.bank}; `), 'the two sides by role');
     assert.ok(lineOf('record').endsWith(`signer: test key generated for this run. ${map.parts.record.standInNote} ${map.timestamp.standInNote}`), lineOf('record'));
     // A step of a part that is not a stand-in ends with no note.
@@ -134,7 +138,7 @@ test('text mode: a stand-in part is marked after its label, the line of a stand-
   }
   // A crossing its own check stopped says the note too.
   const refused = { ...crossing, status: 'blocked', detail: { ...crossing.detail, outcome: 'signature_invalid', refusal: 'crossing-chain-not-valid' } };
-  assert.ok(stepLine(refused, clean.state, at).endsWith(`chain of 2 hops: signature_invalid; crossing-chain-not-valid. ${map.parts.crossing.standInNote}`));
+  assert.ok(stepLine(refused, clean.state, at).endsWith(`chain of 2 hops: signature_invalid; crossing-chain-not-valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.fetchNote}`));
   // The note on the timestamp entry follows the entry.
   assert.equal(timestampNote('stand-in: no timestamp authority'), map.timestamp.standInNote);
   assert.equal(timestampNote('test timestamp authority made for this demo'), map.timestamp.testAuthorityNote);
@@ -158,7 +162,11 @@ test('node three-party/bin/start.mjs --text prints, for both runs, the lines of 
   assert.equal(r.code, 0);
   assert.equal(r.stderr, '');
   printed = r.lines;
-  const kept = fs.readFileSync(path.join(THREE_PARTY, 'test', 'fixtures', 'text-mode-both.txt'), 'utf8');
+  // The command line runs with the default AI2II folder: the kept transcript of
+  // the fallback when the capture is not fetched, of the capture check when it is.
+  const capture = loadCapture();
+  assert.notEqual(capture.why, 'mismatch', 'three-party/external/ai2ii holds files that differ from their pins: fetch them again or remove the folder');
+  const kept = fs.readFileSync(path.join(THREE_PARTY, 'test', 'fixtures', capture.use ? 'text-mode-both-ai2ii.txt' : 'text-mode-both.txt'), 'utf8');
   assert.ok(kept.endsWith('\n'));
   const keptLines = kept.slice(0, -1).split('\n');
   assert.equal(keptLines.length, 11 + 1 + 12, 'the clean run, an empty line, the poisoned run');

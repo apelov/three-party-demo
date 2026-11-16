@@ -23,11 +23,13 @@ import { loadTrust, refusingResolver } from '../../../src/bank/broker.mjs';
 import { parseCents } from '../../../src/bank/money.mjs';
 import { crossDomains, hopFileContent } from '../crossing/hop.mjs';
 import { applyIntentRule, declareIntent, intentAllows } from '../intent/rule.mjs';
+import { AI2II_SOURCE, DEFAULT_AI2II_DIR, loadCapture } from './ai2ii-source.mjs';
 import { TOOLS, planToolCalls } from './agent.mjs';
 import { AGENT_ROLE, PAYMENTS_PATH, PERMISSION, consentTerms, startBank } from './bank.mjs';
+import { checkCapture } from './capture.mjs';
 import { checkCredential, checkGrantExpiry, checkGrantScope } from './checks.mjs';
 import { grantIssuer } from './grant.mjs';
-import { LABEL_MAP } from './label-map.mjs';
+import { LABEL_MAP, partVariants, variantFields } from './label-map.mjs';
 import { LABELS, fill, stepLabel } from './labels.mjs';
 import { RUN_KINDS, actionPaths, createRunDir, sha256Hex, utcStamp, writeAction, writeJsonAtomic } from './store.mjs';
 import { NO_RECORD_WRITER, intentBlockedSummary } from './text.mjs';
@@ -125,7 +127,10 @@ export function intentReason(ruled) {
 // it in abandon when the record step was not reached; credentialFile
 // (the agent's credential, a path under repoRoot or an absolute one); witness
 // (an array a test passes to receive the access token values the bank
-// issues).
+// issues); ai2iiDir and ai2iiSource (the folder the AI2II capture is fetched
+// into, and its source with the pins of its three files: when the three are
+// there and pinned, the crossing step runs the AI2II capture check, and
+// otherwise the delegation chain check).
 export async function startRun({
   kind,
   paceSeconds = DEFAULT_PACE_SECONDS,
@@ -138,6 +143,8 @@ export async function startRun({
   recordWriterFile = RECORD_WRITER,
   credentialFile = AGENTS[AGENT_ROLE].credentialFile,
   witness = null,
+  ai2iiDir = DEFAULT_AI2II_DIR,
+  ai2iiSource = AI2II_SOURCE,
 } = {}) {
   if (!RUN_KINDS.includes(kind)) throw new Error(`a run is clean or poisoned, not ${JSON.stringify(kind)}`);
   if (!validPace(paceSeconds)) throw new Error(`the pace is a number of seconds from 0 to ${MAX_PACE_SECONDS}`);
@@ -149,6 +156,12 @@ export async function startRun({
   const declared = declareIntent(invoice);
   const credentialBytes = fs.readFileSync(path.resolve(repoRoot, credentialFile));
   const credentialSha256 = sha256Hex(credentialBytes);
+
+  // The variant of the crossing this run is set to show: the supplied one
+  // when the AI2II capture is there and pinned now. The crossing step looks
+  // again when it runs, and the variant it ran as is the one its step keeps.
+  const plannedVariant = loadCapture({ dir: ai2iiDir, source: ai2iiSource }).use ? 'supplied' : 'fallback';
+  const variantOf = (id) => (partVariants(id) ? plannedVariant : null);
 
   const { runId, runDir, startedAt } = await createRunDir({ runsDir, kind, clock });
   const state = {
@@ -168,14 +181,19 @@ export async function startRun({
       domain: LABELS.domains.agent,
     },
     grant: null,
+    // Each step carries the variant of its part (null for a part with one
+    // form) after the members of the contract, and the label fields of that
+    // variant.
     steps: LABELS.steps.map((s) => ({
       ...stepLabel(s.id),
+      ...(variantOf(s.id) ? variantFields(s.id, variantOf(s.id)) : {}),
       status: 'pending',
       startedAt: null,
       endedAt: null,
       detail: null,
       actionFile: null,
       recordFile: null,
+      variant: variantOf(s.id),
     })),
     outcome: null,
     blockedAt: null,
@@ -187,7 +205,7 @@ export async function startRun({
 
   const ctx = {
     kind, runId, runDir, repoRoot, clock, sleep, onEvent, recordWriter, recordWriterFile, witness, fixtures, invoice, declared,
-    credentialBytes, credentialSha256, state, publish,
+    credentialBytes, credentialSha256, state, publish, ai2iiDir, ai2iiSource,
     paceMs: paceSeconds * 1000,
     holdMs: Math.min(2000, (paceSeconds * 1000) / 4),
     bank: null, atx: null, consent: null, issuer: null, held: null, payCall: null, aborted: false,
@@ -271,6 +289,11 @@ async function execute(ctx) {
     });
     step.endedAt = stamp;
     step.detail = out.detail;
+    // A step of a part with variants keeps the one it ran as.
+    if (out.variant) {
+      step.variant = out.variant;
+      Object.assign(step, variantFields(id, out.variant));
+    }
     step.actionFile = actionFile;
     step.status = out.ok ? 'passed' : 'blocked';
     if (out.ok) {
@@ -294,6 +317,56 @@ async function execute(ctx) {
     publish();
     emit('step', step, clock());
     await dwell();
+  };
+
+  // The crossing's words for an AI2II capture it did not use.
+  const shownDir = (dir) => {
+    const relative = path.relative(ctx.repoRoot, dir);
+    return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : dir;
+  };
+  const captureNotUsed = (capture) => (capture.why === 'absent'
+    ? fill(LABELS.capture.notUsedAbsent, { names: capture.missing.join(', '), dir: shownDir(ctx.ai2iiDir) })
+    : fill(LABELS.capture.notUsedMismatch, {
+      files: capture.files.filter((f) => capture.differing.includes(f.name)).map((f) => fill(LABELS.capture.fileMismatch, f)).join('; '),
+    }));
+
+  // The crossing over the AI2II capture: the check's own result is the
+  // action's response, and the step's detail carries it beside the members
+  // the contract names for the crossing (no chain file and no hop file here).
+  const crossingWithCapture = (capture) => {
+    const result = checkCapture(capture.bytes, { source: ctx.ai2iiSource, files: capture.files });
+    const ok = result.outcome === 'verified';
+    const refusal = ok ? null : 'crossing-capture-not-verified';
+    const counts = { passed: result.passed, total: result.total };
+    return {
+      ok,
+      refusal,
+      runReason: ok ? null : fill(LABELS.reasons.crossing, { refusal }),
+      variant: 'supplied',
+      detail: {
+        from: LABELS.domains.agent,
+        to: LABELS.domains.bank,
+        chainFile: null,
+        hops: null,
+        outcome: result.outcome,
+        stepsRun: fill(LABELS.crossing.stepsRunCapture, { total: result.total, names: result.checks.map((c) => c.name).join(', ') }),
+        standIn: null,
+        hopFile: null,
+        capture: { used: true, ...result },
+      },
+      action: {
+        domainFrom: LABELS.domains.agent,
+        domainTo: LABELS.domains.bank,
+        declaredIntent: null,
+        toolCall: null,
+        decision: ok ? 'observed' : 'blocked',
+        reason: ok
+          ? fill(LABELS.actionReasons.crossingCaptureObserved, { ...counts, commit8: String(result.source.commit ?? '').slice(0, 8) })
+          : fill(LABELS.actionReasons.crossingCaptureBlocked, { ...counts, refusal }),
+        responseStatus: null,
+        responseBody: JSON.stringify(result),
+      },
+    };
   };
 
   const works = {
@@ -396,14 +469,22 @@ async function execute(ctx) {
     },
 
     crossing: async () => {
+      // The AI2II capture check when its three files are there and pinned;
+      // the delegation chain check otherwise, with the reason when files
+      // were there and did not match their pins.
+      const capture = loadCapture({ dir: ctx.ai2iiDir, source: ctx.ai2iiSource });
+      if (capture.use) return crossingWithCapture(capture);
       const crossing = crossDomains({ repoRoot: ctx.repoRoot });
       const { hop } = crossing;
+      const detail = { from: hop.from, to: hop.to, chainFile: hop.chainFile, hops: hop.hops, outcome: hop.outcome, stepsRun: hop.stepsRun, standIn: hop.standIn, hopFile: null };
+      if (capture.why === 'mismatch') detail.capture = { used: false, why: capture.why, reason: captureNotUsed(capture), files: capture.files };
       return {
         ok: crossing.ok,
         refusal: crossing.refusal,
         runReason: crossing.ok ? null : fill(LABELS.reasons.crossing, { refusal: crossing.refusal }),
         hop,
-        detail: { from: hop.from, to: hop.to, chainFile: hop.chainFile, hops: hop.hops, outcome: hop.outcome, stepsRun: hop.stepsRun, standIn: hop.standIn, hopFile: null },
+        variant: 'fallback',
+        detail,
         action: {
           domainFrom: hop.from,
           domainTo: hop.to,
