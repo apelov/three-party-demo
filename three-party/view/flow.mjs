@@ -15,7 +15,7 @@
 // transition the stylesheet defines for them.
 
 import { el, put, add, from, value, clear } from './dom.mjs';
-import { stateOf, chip, setChip, badge, countdown, headlineOf, columnsOf, partOf, shownPart, columnTitle, creditOf, lensOutcomeLine, baseId } from './parts.mjs';
+import { stateOf, chip, setChip, badge, countdown, headlineOf, columnsOf, partOf, shownPart, columnTitle, creditOf, lensOutcomeLine, lensStepLine, baseId } from './parts.mjs';
 import { iconEl } from './icons.mjs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -67,7 +67,9 @@ export function renderOrientation(app, host, press) {
       sceneButton(app, 'poisoned', 'btn-quiet', () => press('poisoned'))));
 }
 
-// ---- Invoice: one ruled line, and the hidden text of a poisoned invoice
+// ---- What you told the payments agent to pay, in one boxed sentence built
+// from the run's invoice, and for a poisoned invoice the line in it that
+// was written for the agent
 
 export function renderInvoice(app, host) {
   const run = app.run;
@@ -78,14 +80,15 @@ export function renderInvoice(app, host) {
   host.hidden = !run?.invoice;
   if (!run?.invoice) return;
   const inv = run.invoice;
-  const field = (labelKey, words, cls) => (words ? el('span', { class: 'invoice-field' }, put('span', 'invoice-key', app.w.word(labelKey)), put('span', `invoice-value${cls ? ` ${cls}` : ''}`, words)) : null);
   add(host,
-    el('div', { class: 'invoice-strip' },
-      put('span', 'invoice-heading', app.w.lineNodes('invoice.heading', { invoiceId: [inv.invoiceId, from.run('invoice.invoiceId')] }, ['invoiceId'])),
-      field('invoice.amount', app.w.line('invoice.amountValue', { amount: [inv.amount, from.run('invoice.amount')], currency: [inv.currency, from.run('invoice.currency')] }), 'num'),
-      field('invoice.payTo', app.w.lineNodes('invoice.payToValue', { account: [inv.payTo?.account, from.run('invoice.payTo.account')] }, ['account']))),
-    inv.hidden ? el('div', { class: 'hidden-line' },
-      put('span', 'hidden-label', app.w.word('hidden.label')),
+    put('p', 'task-told', app.w.lineNodes('task.told', {
+      invoiceId: [inv.invoiceId, from.run('invoice.invoiceId')],
+      amount: [inv.amount, from.run('invoice.amount')],
+      currency: [inv.currency, from.run('invoice.currency')],
+      account: [inv.payTo?.account, from.run('invoice.payTo.account')],
+    }, ['invoiceId', 'account'])),
+    inv.hidden ? el('p', { class: 'task-hidden' },
+      put('span', 'task-hidden-label', app.w.word('task.hidden')),
       put('mark', 'hidden-text', value(run, 'invoice.hidden.text'))) : null);
 }
 
@@ -282,6 +285,9 @@ function updateRow(app, row, i, step) {
   const title = row.querySelector('.row-title');
   if (title && title.textContent !== step.title) title.textContent = step.title;
 
+  // The lens's sentence for the step, on every row: what the reader chosen
+  // in View as should know about it, so a change of View as rewrites them all.
+  setLine(row, 'row-lens', lensStepLine(app, i));
   // The detail line: on the selected step alone.
   setLine(row, 'row-detail', selected && !veiled ? detailLine(app, i, step) : null);
 

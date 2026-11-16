@@ -5,7 +5,7 @@
 // signer it trusted. Before the audit the one action is to run it.
 
 import { el, put, add, from, value, clear } from './dom.mjs';
-import { copyButton } from './parts.mjs';
+import { copyButton, lensStepLine } from './parts.mjs';
 import { offlineOf } from './flow.mjs';
 import { manifestOf, auditVerdict, checksOf } from './inspector.mjs';
 import { fileUrl } from './api.mjs';
@@ -20,7 +20,7 @@ export function renderRecords(app, host, actions) {
   const run = app.run;
   const found = run ? manifestOf(app) : null;
   const offline = offlineOf(app);
-  const signature = [app.runId ?? 'none', app.runStamp, app.filesStamp, app.offlineStamp, app.mode, app.labelsStamp, actions.auditReady() ? 'ready' : 'no', JSON.stringify(app.selection)].join('|');
+  const signature = [app.runId ?? 'none', app.runStamp, app.filesStamp, app.offlineStamp, app.mode, app.lens, app.labelsStamp, actions.auditReady() ? 'ready' : 'no', JSON.stringify(app.selection)].join('|');
   if (host.dataset.signature === signature) return;
   host.dataset.signature = signature;
   const held = host.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
@@ -66,7 +66,10 @@ export function renderRecords(app, host, actions) {
             ? put('span', 'record-flag', app.w.word('offline.tampered'))
             : i >= 0 ? el('button', { class: 'ledger-step', type: 'button', data: { focusKey: `step:${item.file}` }, on: { click: () => actions.choose(selection) } },
               el('span', { class: 'num', src: from.run(`steps[${i}]`, 'ordinal'), text: String(i + 1) }),
-              put('span', 'ledger-step-title', value(run, `steps[${i}].title`))) : null),
+              put('span', 'ledger-step-title', value(run, `steps[${i}].title`))) : null,
+          // The lens's sentence for the step the record keeps, as on the
+          // sequence: it changes with View as.
+          !tampered && i >= 0 ? put('span', 'ledger-lens', lensStepLine(app, i)) : null),
         el('span', { class: 'ledger-cell', role: 'gridcell' },
           put('span', 'mono', value(manifest, `${kind}[${n}].sha256`, 'hex16', source), { title: String(item.sha256) }),
           copyButton(app, item.sha256, source(`${kind}[${n}].sha256`).replace(/^run:/, ''))),

@@ -1,6 +1,7 @@
 // Sizes and schemes: at 1280x800, 1440x900 and 1920x1080, in light and in
-// dark, nothing overflows sideways, the flow does not scroll, the type keeps
-// its floors and the three panes stay where they are.
+// dark, nothing overflows sideways, the page does not scroll, the step
+// selected stays in sight under the pinned lane heads, the type keeps its
+// floors and the three panes stay where they are.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -44,6 +45,13 @@ const measure = (page) => page.evaluate(() => {
     rows: rows.length,
     rowsInPane: rows.every(within),
     outcomeInPane: outcome.hidden || within(outcome),
+    scrolls: panel.scrollHeight > panel.clientHeight + 1,
+    // The lane heads pinned at the top of the sequence, the box of what you
+    // told the agent above the tabs, and the step selected whole between the
+    // lane heads and the bottom of the sequence.
+    lanesInSight: (() => { const head = document.getElementById('lanes-head'); if (!shown(head)) return true; const r = head.getBoundingClientRect(); const p = panel.getBoundingClientRect(); return r.top >= p.top - 0.5 && r.bottom <= p.bottom + 0.5; })(),
+    taskInSight: (() => { const told = document.getElementById('invoice'); if (told.hidden) return true; const r = told.getBoundingClientRect(); return r.top >= 0 && r.bottom <= document.getElementById('tabs').getBoundingClientRect().top + 0.5; })(),
+    selectedInSight: (() => { if (!selected) return true; const r = selected.getBoundingClientRect(); const head = document.getElementById('lanes-head').getBoundingClientRect(); const p = panel.getBoundingClientRect(); return r.top >= head.bottom - 0.5 && r.bottom <= p.bottom + 0.5; })(),
     floors: {
       titles: min([...document.querySelectorAll('#rows .row-title')]),
       words: min([...document.querySelectorAll('#rows .chip-word')]),
@@ -58,13 +66,21 @@ const measure = (page) => page.evaluate(() => {
   };
 });
 
+// Each row carries the sentence of the reader chosen in View as, and the box
+// of what you told the agent stands above the tabs (owner feedback,
+// 2026-11-16), so the sequence may scroll under its pinned lane heads. The
+// page and the middle pane never scroll, the lane heads and the box stay in
+// sight, and the step selected lies whole between the lane heads and the
+// bottom of the sequence.
 function assertFits(m, label) {
   assert.ok(m.docWidth[0] <= m.docWidth[1], `${label}: the document is as wide as the window (${m.docWidth})`);
   assert.ok(m.docHeight[0] <= m.docHeight[1], `${label}: the document is as high as the window (${m.docHeight})`);
-  assert.ok(m.panel[0] <= m.panel[1], `${label}: the sequence does not scroll (${m.panel})`);
   assert.ok(m.pane[0] <= m.pane[1], `${label}: the middle pane does not scroll (${m.pane})`);
   assert.ok(m.paneWidth[0] <= m.paneWidth[1], `${label}: nothing in the middle pane is wider than it (${m.paneWidth})`);
-  assert.equal(m.rowsInPane, true, `${label}: every row is inside the middle pane`);
+  if (!m.scrolls) assert.equal(m.rowsInPane, true, `${label}: every row is inside the middle pane`);
+  assert.equal(m.lanesInSight, true, `${label}: the lane heads are in sight`);
+  assert.equal(m.taskInSight, true, `${label}: the box of what you told the agent is in sight above the tabs`);
+  assert.equal(m.selectedInSight, true, `${label}: the step selected lies whole under the lane heads (${m.panel})`);
   assert.equal(m.outcomeInPane, true, `${label}: the outcome line is inside the middle pane`);
 }
 
@@ -92,7 +108,7 @@ for (const { width, height, modes } of SIZES) {
   for (const mode of modes) {
     for (const scheme of ['light', 'dark']) {
       const name = `${width}x${height} ${mode} ${scheme}`;
-      test(`${name}: start, a clean run finished and a poisoned run stopped fit without a scroll, hold the type floors and leave the panes in place`, async (t) => {
+      test(`${name}: start, a clean run finished and a poisoned run stopped fit with the step selected in sight, hold the type floors and leave the panes in place`, async (t) => {
         const view = await openView(browser, { width, height, scheme, hash: `#${mode}` });
         try {
           const start = await measure(view.page);
@@ -146,7 +162,7 @@ for (const { width, height, modes } of SIZES) {
   }
 }
 
-test('1440x900 Inspect with eight steps (grant-again after grant, pay-again after pay): the flow does not scroll and the floors hold', async (t) => {
+test('1440x900 Inspect with eight steps (grant-again after grant, pay-again after pay): the step selected stays in sight and the floors hold', async (t) => {
   const state = eightStepState();
   assert.deepEqual(state.steps.map((s) => s.id), ['credential', 'grant', 'grant-again', 'crossing', 'intent', 'pay', 'pay-again', 'record']);
   for (const scheme of ['light', 'dark']) {

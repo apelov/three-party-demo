@@ -157,8 +157,8 @@ test('the footer: the mock bank line once, in the footer, on every state, beside
     await runAndWait(view, 'poisoned', 'blocked');
     assert.equal(Object.hasOwn(POISONED, 'fictionalLine'), false);
     await check('poisoned, stopped, step selected', false);
-    const hidden = await page.evaluate(() => ({ label: document.querySelector('#invoice .hidden-label').textContent, text: document.querySelector('#invoice mark.hidden-text').textContent }));
-    assert.deepEqual(hidden, { label: COPY['hidden.label'], text: POISONED.invoice.hidden.text }, 'the sequence shows the hidden text, highlighted');
+    const hidden = await page.evaluate(() => ({ label: document.querySelector('#invoice .task-hidden-label').textContent, text: document.querySelector('#invoice mark.hidden-text').textContent }));
+    assert.deepEqual(hidden, { label: COPY['task.hidden'], text: POISONED.invoice.hidden.text }, 'the box of what you told the agent shows the hidden text, highlighted');
     await page.keyboard.press('0');
     await check('poisoned, run overview', true);
     await page.keyboard.press('i');

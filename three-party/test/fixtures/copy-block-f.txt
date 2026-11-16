@@ -1,0 +1,2 @@
+task.told = You told your payments agent to pay invoice {invoiceId}: {amount} {currency} to your supplier's account {account}.
+task.hidden = The invoice also carries a line you never see, written for your agent:

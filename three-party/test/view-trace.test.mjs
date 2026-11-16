@@ -73,8 +73,8 @@ test('the stopped run in Inspect: six step rows in order with their states; the 
     assert.equal(intent.expanded, 'true');
     assert.equal(intent.headline, COPY[LABELS.outcomeHeadlines['blocked:intent']]);
     assert.equal(intent.sentence, POISONED.reason);
-    assert.equal(intent.cells, 6, 'its five cells, and the cell under them that holds the headline and the sentence');
-    for (const row of [credential, grant, crossing, pay, record]) assert.equal(row.cells, 5, row.span);
+    assert.equal(intent.cells, 7, 'its five cells, the cell under them that holds the headline and the sentence, and the cell of the View as sentence');
+    for (const row of [credential, grant, crossing, pay, record]) assert.equal(row.cells, 6, `${row.span}: its five cells and the cell of the View as sentence`);
 
     // Inside the intent step: the declared intent, then each tool call.
     const calls = POISONED.steps[3].detail.calls;
@@ -207,7 +207,7 @@ test('a run in progress: the step being checked reads how long it has taken so f
 });
 
 for (const [width, height] of [[1440, 900], [1920, 1080]]) {
-  test(`${width}x${height} Story: the stopped step's rows alone are open, the six rows and the sentence lie inside the window and the grid does not scroll, on the stopped run and on the finished clean run; the type holds the Story sizes`, async () => {
+  test(`${width}x${height} Story: the stopped step's rows alone are open, the step followed and the sentence lie inside the window and the page does not scroll, on the stopped run and on the finished clean run; the type holds the Story sizes`, async () => {
     const view = await openView(browser, { width, height, hash: '#story-trace', server: { examples: examplesWith({ add: { 'manifest.json': poisonedManifest() } }) } });
     const { page } = view;
     try {
@@ -227,6 +227,8 @@ for (const [width, height] of [[1440, 900], [1920, 1080]]) {
           grid: [grid.scrollHeight, grid.clientHeight],
           doc: [document.documentElement.scrollWidth, innerWidth, document.documentElement.scrollHeight, innerHeight],
           rowsInView: level1.every(inView),
+          scrolls: body.scrollHeight > body.clientHeight + 1,
+          currentInView: current ? (() => { const r = current.getBoundingClientRect(); const b = body.getBoundingClientRect(); return r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5 && inView(current); })() : true,
           sentenceInView: sentence ? inView(sentence) : null,
           countInView: inView(document.getElementById('trace-count')),
           heights: level1.map((r) => r.getBoundingClientRect().height),
@@ -243,12 +245,15 @@ for (const [width, height] of [[1440, 900], [1920, 1080]]) {
           smallest: Math.min(...[...document.querySelectorAll('#trace *')].filter((n) => [...n.childNodes].some((c) => c.nodeType === 3 && c.nodeValue.trim())).map(px)),
         };
       });
+      // Each step row carries the sentence of the reader chosen in View as,
+      // and the box of what you told the agent stands above the tabs (owner
+      // feedback, 2026-11-16): the rows may scroll inside the grid, the page
+      // never does, and the step followed lies whole in the window.
       const fits = (m, what) => {
         assert.equal(m.size, 'story');
-        assert.ok(m.body[0] <= m.body[1], `${what}: the rows do not scroll (${m.body})`);
-        assert.ok(m.grid[0] <= m.grid[1], `${what}: the grid does not scroll (${m.grid})`);
         assert.ok(m.doc[0] <= m.doc[1] && m.doc[2] <= m.doc[3], `${what}: the page does not scroll (${m.doc})`);
-        assert.equal(m.rowsInView, true, `${what}: every step row is inside the window`);
+        if (!m.scrolls) assert.equal(m.rowsInView, true, `${what}: every step row is inside the window`);
+        assert.equal(m.currentInView, true, `${what}: the step followed lies whole inside the rows (${m.body})`);
         assert.equal(m.countInView, true, `${what}: the line that closes the grid is inside the window`);
         for (const h of m.heights) assert.ok(h >= 48, `${what}: a step row is at least 48 px high (${h})`);
         // One type scale: Story's value size for the names, its label size for

@@ -270,7 +270,7 @@
   "lens.platform.blockedIntent": "The run stopped at step {n}: the checkpoint blocked tool calls that did not match the declared intent.",
   "lens.standards.credential": "An ATX credential checked with atx-verify; every AEP record cites it by SHA-256 over its exact bytes.",
   "lens.standards.grant": "An AAP grant: scope, maximum individual amount, creditor accounts and validity are checked before it is issued.",
-  "lens.standards.crossing": "WIMSE: a delegation chain under draft-asor-wimse-agent-delegation-chain-03, or the AI2II capture when it is fetched.",
+  "lens.standards.crossing": "WIMSE: the AI2II capture, or a delegation chain under draft-asor-wimse-agent-delegation-chain-03 when the capture is missing.",
   "lens.standards.intent": "Declared intent against each tool call, compared field by field; the comparison is set out in the artifact.",
   "lens.standards.pay": "The bank's answer is kept in this step's AEP record; the response body is cited by SHA-256.",
   "lens.standards.record": "Action Evidence Packages in the AEP format: steps 1 to 6 are checked here, steps 7 to 10 are not run.",
@@ -280,5 +280,7 @@
   "insp.runId": "Run",
   "insp.started": "Started",
   "insp.finished": "Finished",
-  "insp.credentialSha": "Credential SHA-256"
+  "insp.credentialSha": "Credential SHA-256",
+  "task.told": "You told your payments agent to pay invoice {invoiceId}: {amount} {currency} to your supplier's account {account}.",
+  "task.hidden": "The invoice also carries a line you never see, written for your agent:"
 }

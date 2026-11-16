@@ -13,7 +13,7 @@
 // A field the run does not carry is left out.
 
 import { el, put, from, value, clear, camel, secondsBetween } from './dom.mjs';
-import { stateOf, chip, setChip, headlineOf } from './parts.mjs';
+import { stateOf, chip, setChip, headlineOf, lensStepLine } from './parts.mjs';
 import { iconEl } from './icons.mjs';
 import { STEP_ORDER, OFFLINE_KIND } from './constants.mjs';
 
@@ -311,6 +311,18 @@ function updateTop(app, node, top, at, of, lane, now) {
   } else {
     stop?.remove();
     delete node.dataset.outcome;
+  }
+
+  // The lens's sentence for the step, last in the row: what the reader chosen
+  // in View as should know about the step, so a change of View as rewrites it.
+  const words = top.index >= 0 && !top.preview ? lensStepLine(app, top.index) : null;
+  let lens = node.querySelector(':scope > .trace-lens');
+  if (!words) {
+    lens?.remove();
+  } else {
+    if (!lens) lens = el('span', { class: 'trace-lens', role: 'gridcell', 'aria-colspan': String(COLUMNS.length) });
+    if (lens !== node.lastElementChild) node.append(lens);
+    setText(lens, words);
   }
 }
 

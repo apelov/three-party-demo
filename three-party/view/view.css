@@ -235,17 +235,18 @@ mark { background: none; color: inherit; }
 
 /* ---- Left rail: the walkthrough, the run control and the stepper */
 
-.scenes { display: flex; flex-direction: column; border-top: 2px solid var(--rule-strong); }
+/* Each act is its own card, ruled all around and set apart from the next,
+   so the three read as three things; the chosen one is ruled heavier. */
+.scenes { display: flex; flex-direction: column; gap: 12px; }
 .scene {
   display: grid;
   grid-template-columns: var(--num) minmax(0, 1fr) auto;
   column-gap: 8px;
   align-items: start;
-  padding: 12px 0 12px 8px;
-  border-bottom: 1px solid var(--rule);
-  border-left: 3px solid transparent;
+  padding: 12px 12px 12px 8px;
+  border: 1px solid var(--ink);
 }
-.scene[aria-pressed="true"] { border-left-color: var(--ink); }
+.scene[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
 .scene-num { font-size: var(--t-label); line-height: var(--l-value); color: var(--muted); }
 .scene-words { display: flex; flex-direction: column; min-width: 0; }
 .scene-title { font-weight: 700; color: var(--ink-2); }
@@ -319,15 +320,16 @@ mark { background: none; color: inherit; }
 [data-col="record"] { --part: var(--p-record); }
 .lane-title, .orient-name .lane-title, .part-name { color: var(--part, var(--ink)); }
 
-/* ---- Invoice: one ruled line, and the hidden text highlighted */
+/* ---- What you told the agent, boxed above the tabs so it
+   stays in sight on every tab while the steps scroll, and the hidden text
+   of a poisoned invoice highlighted */
 
-.invoice { flex: none; display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+.invoice { flex: none; display: flex; flex-direction: column; gap: 10px; margin: 16px var(--gut) 12px; padding: 12px 16px; border: 2px solid var(--ink); background: var(--paper); }
 .invoice[hidden] { display: none; }
-.invoice-strip { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 24px; row-gap: 4px; font-size: var(--t-label); line-height: var(--l-label); }
-.invoice-heading { font-weight: 700; }
-.invoice-field { display: inline-flex; align-items: baseline; gap: 8px; }
-.invoice-key { font-size: var(--t-label); color: var(--muted); }
-.hidden-line { display: flex; align-items: baseline; gap: 12px; font-size: var(--t-label); line-height: var(--l-label); }
+.task-told { font-size: var(--t-head); line-height: var(--l-head); color: var(--ink); }
+.task-told .mono { font-weight: 700; }
+.task-hidden { font-size: var(--t-value); line-height: var(--l-value); }
+.task-hidden-label { margin-right: 6px; color: var(--ink-2); }
 .hidden-label { flex: none; font-style: italic; color: var(--muted); }
 .hidden-text { padding: 1px 4px; background: var(--highlight); color: var(--highlight-ink); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
@@ -342,6 +344,9 @@ mark { background: none; color: inherit; }
 }
 .lanes-head, .rows { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; }
 .lanes-head { grid-template-rows: auto auto; padding-bottom: 4px; border-bottom: 1px solid var(--rule); }
+/* The lane heads stay in sight while the steps scroll under them, and a
+   step brought into sight stops below them, not behind them. */
+.lanes-head { position: sticky; top: -12px; z-index: 3; padding-top: 8px; background: var(--page); }
 .lane { display: contents; }
 .lane-line { grid-row: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding-left: 8px; font-weight: 700; font-size: var(--t-label); line-height: var(--l-label); text-wrap: balance; }
 .lane-credit { grid-row: 2; display: flex; align-items: center; padding-left: 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); white-space: nowrap; }
@@ -355,7 +360,7 @@ mark { background: none; color: inherit; }
   display: grid;
   grid-template-columns: subgrid;
   grid-column: 1 / -1;
-  grid-template-rows: auto 28px auto;
+  grid-template-rows: auto 28px auto auto;
   padding: 6px 0;
   border-bottom: 1px solid var(--rule);
 }
@@ -400,7 +405,8 @@ mark { background: none; color: inherit; }
 .rec-mark[data-state="failed"] .mark-page { fill: currentColor; }
 .rec-mark .mark-sign { fill: none; stroke: var(--page); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-.row-detail { grid-row: 3; grid-column: 2 / -1; justify-self: start; margin-top: 4px; padding: 0 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); background: var(--page); }
+.row-lens { grid-row: 3; grid-column: 2 / -1; justify-self: start; padding: 0 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); background: var(--page); }
+.row-detail { grid-row: 4; grid-column: 2 / -1; justify-self: start; margin-top: 4px; padding: 0 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); background: var(--page); }
 .row[data-status="blocked"] .row-detail { color: var(--red); }
 
 /* ---- State: an icon and a word in its ink */
@@ -469,6 +475,7 @@ mark { background: none; color: inherit; }
 .ledger .record-file { white-space: nowrap; }
 .ledger-step-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ledger-step { max-width: 100%; }
+.ledger-lens { color: var(--muted); }
 .ledger-cell .record-file { font-size: 0.95em; }
 .ledger-step { display: inline-flex; gap: 8px; text-align: left; color: var(--ink-2); }
 .ledger-step:hover span:last-child { text-decoration: underline; text-underline-offset: 3px; }
@@ -611,6 +618,7 @@ body[data-size="story"] .trace-grid { --t-state: 184px; }
 .trace-row > .trace-state { grid-column: 4; grid-row: 2; display: flex; align-items: center; min-width: 0; }
 .trace-row > .trace-time { grid-column: 5; grid-row: 2; min-width: 0; }
 .trace-row > .trace-stop { grid-column: 1 / -1; grid-row: 3; display: block; padding: 0 0 2px 32px; }
+.trace-row > .trace-lens { grid-column: 1 / -1; grid-row: 4; display: block; padding: 0 0 2px 32px; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 
 .trace-toggle { flex: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; color: var(--ink-2); }
 .trace-toggle[hidden] { display: inline-flex; visibility: hidden; }
@@ -762,4 +770,17 @@ body[data-size="inspect"] .row[data-status="blocked"], .flow[data-many="yes"] .r
   .tab-panel { overflow: visible; }
   .pane-inspector { grid-column: 2; grid-row: 3; border-left: 0; border-top: 1px solid var(--rule); overflow: visible; }
   .footer { grid-row: 4; }
+}
+
+/* A short window (a 1280x720 window leaves a 577 px page) keeps the box of
+   what you told the agent in sight but smaller, and trims the tabs and the outcome, so the step
+   selected still fits whole between the lanes and the outcome. Last in the
+   file, so it wins over the rules it adjusts. */
+@media (max-height: 640px) {
+  .invoice { gap: 6px; margin: 8px var(--gut); padding: 8px 12px; }
+  .task-told { font-size: var(--t-value); line-height: 22px; }
+  .task-hidden { font-size: var(--t-label); line-height: var(--l-label); }
+  .lanes-head { padding-top: 2px; }
+  .tab { min-height: 36px; }
+  .outcome { padding: 6px 0; }
 }

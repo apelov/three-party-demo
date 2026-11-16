@@ -47,18 +47,25 @@ const NOT_MEASURED_BLOCK = 'copy-block-d.txt';
 // lenses.
 const SCREENS_BLOCK = 'copy-block-e.txt';
 
-test('copy.json holds the 100 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 116 of the block for the rebuilt screens: each key and value byte for byte, and nothing else', () => {
+// Last, the block for the task above the sequence: the sentence that says
+// what you told your AI assistant to pay, and the words before the line a
+// poisoned invoice hides for the assistant.
+const TASK_BLOCK = 'copy-block-f.txt';
+
+test('copy.json holds the 100 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 116 of the block for the rebuilt screens, then the two of the block for the task: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
   const notMeasured = blockLines(NOT_MEASURED_BLOCK);
   const screens = blockLines(SCREENS_BLOCK);
+  const task = blockLines(TASK_BLOCK);
   assert.equal(deck.length, 100);
   assert.equal(added.length, 68 - LEFT_OUT.length);
   assert.equal(notMeasured.length, 2);
   assert.equal(screens.length, 116);
-  const lines = [...deck, ...added, ...notMeasured, ...screens];
-  const members = 100 + added.length + notMeasured.length + screens.length;
-  assert.equal(members, 282);
+  assert.equal(task.length, 2);
+  const lines = [...deck, ...added, ...notMeasured, ...screens, ...task];
+  const members = 100 + added.length + notMeasured.length + screens.length + task.length;
+  assert.equal(members, 284);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);

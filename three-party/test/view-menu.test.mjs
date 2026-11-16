@@ -45,7 +45,7 @@ const banner = (page) => page.evaluate(() => {
   const pane = document.getElementById('pane-flow').getBoundingClientRect();
   const flow = document.getElementById('flow');
   const box = end.getBoundingClientRect();
-  return { hidden: end.hidden, text: end.hidden ? null : end.textContent, part: end.querySelector('[data-outcome-part]')?.dataset.outcomePart ?? null, inPane: end.hidden || (box.top >= pane.top && box.bottom <= pane.bottom + 0.5 && box.height > 0), flow: [flow.scrollHeight, flow.clientHeight], replay: end.dataset.outcome === 'replay' ? 'yes' : 'no', outcome: end.dataset.outcome ?? null };
+  return { hidden: end.hidden, text: end.hidden ? null : end.textContent, part: end.querySelector('[data-outcome-part]')?.dataset.outcomePart ?? null, inPane: end.hidden || (box.top >= pane.top && box.bottom <= pane.bottom + 0.5 && box.height > 0), flow: [flow.scrollHeight, flow.clientHeight], selectedInSight: (() => { const row = document.querySelector('#rows .row[aria-current="step"]'); if (!row) return true; const r = row.getBoundingClientRect(); const head = document.getElementById('lanes-head').getBoundingClientRect(); const p = document.getElementById('panel-sequence').getBoundingClientRect(); return r.top >= head.bottom - 0.5 && r.bottom <= p.bottom + 0.5; })(), replay: end.dataset.outcome === 'replay' ? 'yes' : 'no', outcome: end.dataset.outcome ?? null };
 });
 
 const inspector = (page) => page.evaluate(() => ({ panel: document.querySelector('#pane-inspector .insp').dataset.panel, number: document.querySelector('#inspector-heading .row-num')?.textContent.match(/\d+/)?.[0] ?? null }));
@@ -228,7 +228,7 @@ test('Replay walks a finished run step by step: the P key or a click stands it a
       await page.click('#step-forward');
       b = await banner(page);
       assert.equal(b.text, filled('menu.replaying', { runId: POISONED.runId, n }), `the banner stands at step ${n}`);
-      assert.ok(b.flow[0] <= b.flow[1] && b.inPane, `step ${n}: the flow does not scroll and the banner is inside the pane (${b.flow})`);
+      assert.ok(b.selectedInSight && b.inPane, `step ${n}: the step replayed lies whole under the lane heads and the banner is inside the pane (${b.flow})`);
       rows = await rowsOf(page);
       assert.deepEqual(rows.map((r) => r.word), [...recorded.slice(0, n), ...Array(6 - n).fill(PENDING)], `steps 1 to ${n} as they ended, the rows after them pending`);
       assert.equal(await selectedStep(page), n);
@@ -247,7 +247,7 @@ test('Replay walks a finished run step by step: the P key or a click stands it a
     await page.click('#step-forward');
     b = await banner(page);
     assert.equal(b.text, COPY['menu.replayDone']);
-    assert.ok(b.flow[0] <= b.flow[1] && b.inPane, `after the last step the flow does not scroll (${b.flow})`);
+    assert.ok(b.selectedInSight && b.inPane, `after the last step the step selected lies whole under the lane heads (${b.flow})`);
     assert.deepEqual((await rowsOf(page)).map((r) => r.word), recorded, 'the recorded states are back');
     assert.equal(await selectedStep(page), 6);
     assert.ok((await live(page)).endsWith(COPY['menu.replayDone']));
@@ -316,7 +316,7 @@ test('a replay on the trace: the rows after the step it stands at read pending w
 });
 
 for (const [width, height, mode] of [[1280, 800, 'inspect'], [1440, 900, 'inspect'], [1920, 1080, 'story']]) {
-  test(`${width}x${height} ${mode}: through a replay of the stopped run, and when it is over, the flow does not scroll and the replay's line stays inside the pane`, async () => {
+  test(`${width}x${height} ${mode}: through a replay of the stopped run, and when it is over, the step replayed stays in sight under the lane heads and the replay's line stays inside the pane`, async () => {
     const view = await openView(browser, { width, height, hash: `#${mode}` });
     const { page } = view;
     try {
@@ -327,7 +327,7 @@ for (const [width, height, mode] of [[1280, 800, 'inspect'], [1440, 900, 'inspec
         await view.settle(60);
         const b = await banner(page);
         assert.equal(b.hidden, false);
-        assert.ok(b.flow[0] <= b.flow[1], `step ${n}: the flow does not scroll (${b.flow})`);
+        assert.ok(b.selectedInSight, `step ${n}: the step replayed lies whole under the lane heads (${b.flow})`);
         assert.equal(b.inPane, true, `step ${n}: the line is inside the pane`);
         const doc = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth, document.documentElement.scrollHeight, innerHeight]);
         assert.ok(doc[0] <= doc[1] && doc[2] <= doc[3], `step ${n}: the page does not scroll (${doc})`);

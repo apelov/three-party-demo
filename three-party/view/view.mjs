@@ -61,6 +61,12 @@ const app = {
   scenes: [],
   sceneIndex: 0,
   done: new Set(),
+  // The last finished run of each act, by kind, and the audit of each run
+  // that was audited, by run id: a finished act chosen again in the menu
+  // shows its own run, and the audit shows the run it checked.
+  finished: new Map(),
+  audits: new Map(),
+  latest: null,
   run: null,
   runId: null,
   runText: '',
@@ -257,10 +263,16 @@ function revealSelected() {
     // A window too short for every step: the sequence scrolls inside its
     // tab, and the selected step is brought into sight once per selection.
     const panel = $('panel-sequence');
-    const key = `seq|${app.runId}|${JSON.stringify(app.selection)}`;
+    // Once per selection, and again when the steps above it change height.
+    const key = `seq|${app.runId}|${JSON.stringify(app.selection)}|${panel.scrollHeight}`;
     if (app.shown === key) return;
     app.shown = key;
-    if (panel.scrollHeight > panel.clientHeight + 1) $('rows').querySelector('[aria-current="step"]')?.scrollIntoView({ block: 'nearest' });
+    // The lane heads stay at the top while the steps scroll: a step brought
+    // into sight stops just below them, at their height as drawn now.
+    panel.style.scrollPaddingTop = `${$('lanes-head')?.offsetHeight ?? 0}px`;
+    // Whichever scrolls, the sequence or (with the inspector under the
+    // middle pane) the page: nearest moves nothing when the step is in sight.
+    $('rows').querySelector('[aria-current="step"]')?.scrollIntoView({ block: 'nearest' });
     return;
   }
   if (app.tab !== 'trace') {
@@ -268,7 +280,7 @@ function revealSelected() {
     return;
   }
   const body = $('trace').querySelector('.trace-body');
-  const key = `${app.runId}|${JSON.stringify(app.selection)}`;
+  const key = `${app.runId}|${JSON.stringify(app.selection)}|${body?.scrollHeight ?? 0}`;
   if (!body || app.shown === key) return;
   app.shown = key;
   if (body.scrollHeight > body.clientHeight) body.querySelector('[tabindex="0"]')?.scrollIntoView({ block: 'nearest' });
@@ -380,6 +392,7 @@ async function poll(id) {
     }
     if (res.finishedAt) {
       app.lastFinished = id;
+      if (res.outcome && res.kind) app.finished.set(res.kind, id);
       update();
       return;
     }
@@ -403,6 +416,7 @@ async function runKind(kind) {
   }
   stopPolling();
   app.runId = res.runId;
+  app.latest = res.runId;
   app.run = null;
   app.runText = '';
   app.runStamp += 1;
@@ -441,6 +455,9 @@ async function audit() {
   const result = await runOfflineCheck(id);
   if (app.runId !== id || !result) return;
   app.offline = { runId: id, result };
+  // Kept in the order audited, so the menu's audit shows the latest one.
+  app.audits.delete(id);
+  app.audits.set(id, result);
   app.offlineStamp += 1;
   app.done.add(OFFLINE_KIND);
   app.tab = 'records';
@@ -461,7 +478,7 @@ function startAgain() {
     run: null, runId: null, runText: '', runError: null, lastFinished: null,
     selection: { kind: 'overview' }, follow: true, replay: null, replayDone: false,
     traceOpen: new Map(), offline: null, openRecord: null, seen: new Map(), announcedOutcome: null,
-    sceneIndex: 0, done: new Set(), tab: 'sequence', view: 'flow',
+    sceneIndex: 0, done: new Set(), finished: new Map(), audits: new Map(), latest: null, tab: 'sequence', view: 'flow',
   });
   app.runStamp += 1;
   app.offlineStamp += 1;
@@ -809,7 +826,54 @@ function chooseScene(n) {
   if (n < 0 || n >= app.scenes.length) return;
   app.sceneIndex = n;
   app.runError = null;
+  // A finished act chosen again shows what it left: its own run, or for the
+  // audit the run it checked, on the Records tab. A run still going stays
+  // on screen, and an act not done yet changes only what the control runs.
+  const kind = app.scenes[n].kind;
+  const going = Boolean(app.runId && !app.run?.finishedAt);
+  if (!going && kind === OFFLINE_KIND) {
+    // The run last started, finished and not yet audited, is the one the
+    // audit will check: it stays. A run gone back to, or one already
+    // audited, gives way to the latest audit, shown again.
+    const unaudited = Boolean(app.runId === app.latest && app.run?.finishedAt && !app.audits.has(app.runId));
+    const last = [...app.audits.keys()].at(-1);
+    if (!unaudited && last) {
+      showRun(last, true);
+      return;
+    }
+  } else if (!going && app.finished.has(kind)) {
+    showRun(app.finished.get(kind), false);
+    return;
+  }
   update();
+}
+
+// A finished run shown again, as it ended, with its audit when it had one.
+async function showRun(id, onAudit) {
+  if (id !== app.runId) {
+    stopPolling();
+    Object.assign(app, {
+      runId: id, run: null, runText: '', runError: null,
+      selection: { kind: 'overview' }, follow: true, replay: null, replayDone: false,
+      traceOpen: new Map(), openRecord: null, seen: new Map(), announcedOutcome: null,
+    });
+    app.runStamp += 1;
+  }
+  const result = app.audits.get(id);
+  app.offline = result ? { runId: id, result } : null;
+  app.offlineStamp += 1;
+  if (onAudit && result) {
+    app.tab = 'records';
+    app.view = 'flow';
+    app.tabNamed = true;
+    app.selection = { kind: 'offline' };
+  } else if (app.tab === 'records' && !result) {
+    app.tab = 'sequence';
+    app.view = 'flow';
+  }
+  writeHash();
+  update();
+  if (!app.run) await poll(id);
 }
 
 function onRunControl() {
@@ -931,6 +995,25 @@ async function start() {
   // A window that changes size (a laptop mirrored to a projector) brings the
   // step selected back into sight once more, at the new size.
   window.addEventListener('resize', () => { app.shown = null; update(); });
+  // So does a sequence whose own room changes with the window unchanged:
+  // the box above the tabs grows for a poisoned invoice, and the outcome
+  // under them comes at the end of a run.
+  // Only the step is brought back: nothing is drawn again, so nothing that
+  // was still starts to move.
+  // The Trace tab likewise, where the outcome arriving at the end of a run
+  // takes room from the rows between two draws.
+  const room = new Map();
+  const watch = new ResizeObserver((entries) => {
+    let changed = false;
+    for (const entry of entries) {
+      const now = Math.round(entry.contentRect.height);
+      if (room.has(entry.target) && room.get(entry.target) !== now) changed = true;
+      room.set(entry.target, now);
+    }
+    if (changed) { app.shown = null; revealSelected(); }
+  });
+  watch.observe($('panel-sequence'));
+  watch.observe($('panel-trace'));
   window.addEventListener('hashchange', () => {
     const next = readHash();
     app.tab = next.tab;

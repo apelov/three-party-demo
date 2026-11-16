@@ -276,7 +276,7 @@ function crossingArtifact(app, i, step) {
       // An AI2II capture that was there and not used: why.
       d.capture?.reason ? plain(run, `${base}.capture.reason`) : null),
     shown.part?.standIn ? put('p', 'insp-note', app.w.label(`${shown.path}.standInNote`), { 'data-note': 'stand-in' }) : null,
-    shown.part?.standIn ? put('p', 'insp-note', app.w.label(`${shown.path}.fetchNote`), { 'data-note': 'fetch' }) : null,
+    shown.part?.standIn ? put('p', 'insp-note', app.w.label(`${shown.path}.missingNote`), { 'data-note': 'missing' }) : null,
     put('p', 'insp-note', detailOf(app, col), { 'data-note': 'detail' }),
     files(stateExcerpt(app, i), d.hopFile ? artifact(app, d.hopFile, value(run, `${base}.hopFile`)) : null, actionArtifact(app, i)),
   ];

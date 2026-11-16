@@ -47,6 +47,13 @@ function auditPage() {
       const s = getComputedStyle(up);
       if (/(hidden|auto|scroll|clip)/.test(`${s.overflowX} ${s.overflowY}`)) clips.push(up.getBoundingClientRect());
     }
+    // The lane heads are pinned at the top of the sequence on the page's own
+    // background: a row scrolled under them is covered by them, not lying on
+    // them, so what is drawn of a row starts below them.
+    if (el.closest('#rows')) {
+      const head = document.getElementById('lanes-head');
+      if (head && getComputedStyle(head).position === 'sticky') clips.push({ left: -Infinity, top: head.getBoundingClientRect().bottom, right: Infinity, bottom: Infinity });
+    }
     const shown = [...el.getClientRects()].map((r) => clips.reduce((acc, c) => (acc ? cut(acc, c) : null), { left: r.left, top: r.top, right: r.right, bottom: r.bottom }))
       .filter((r) => r && r.right - r.left >= 1 && r.bottom - r.top >= 1);
     if (!shown.length) continue;
