@@ -33,32 +33,41 @@ const outsideRaw = (page) => page.evaluate(() => {
 const hitsIn = (text) => NAMES.filter((name) => text.includes(name));
 
 const legend = (page) => page.evaluate(() => [...document.querySelectorAll('#pane-inspector [data-key="parts"] .insp-part')].map((part) => ({
-  label: part.querySelector('.insp-part-label')?.textContent ?? null,
+  col: part.dataset.col,
+  label: part.querySelector('.part-name')?.textContent ?? null,
   badge: part.querySelector('.badge')?.textContent ?? null,
   lines: [...part.querySelectorAll('.insp-note')].map((n) => n.textContent),
 })));
 
-test('the start screen: the legend names the parts by specification name and the bank by role, each stand-in with its mark and its note, and the lanes carry the same labels', async () => {
+const label = (name) => CONTRACT_LABELS.parts[name].label;
+
+test('the start screen: the orientation and the inspector name the parts by specification name and the bank and the agent by role, the stand-in with its mark and its note, and the lanes carry the same labels', async () => {
   const view = await openView(browser);
   try {
+    const orient = await view.page.evaluate(() => [...document.querySelectorAll('#orient .orient-part')].map((p) => ({ col: p.dataset.col, label: p.querySelector('.lane-title').textContent, badge: p.querySelector('.badge')?.textContent ?? null, credit: p.querySelector('.orient-credit').textContent })));
+    assert.deepEqual(orient.map((p) => [p.col, p.label]), [['checkpoint', label('checkpoint')], ['crossing', label('crossing')], ['record', label('record')]]);
+    assert.deepEqual(orient.map((p) => p.badge), [null, COPY['marker.standIn'], null], 'the stand-in carries its mark where its credit would be');
+    assert.deepEqual([orient[0].credit, orient[2].credit], [COPY['credit.checkpoint'], COPY['credit.record']]);
+
     const parts = await legend(view.page);
-    assert.deepEqual(parts.map((p) => p.label), ['OpenA2A · ATX · AAP', 'WIMSE · AI2II', "Supplier's bank", 'AEP']);
-    assert.deepEqual(parts.map((p) => p.badge), [null, COPY['marker.standIn'], null, COPY['marker.standIn']]);
-    assert.deepEqual(parts[1].lines, [LABELS.parts.crossing.text, 'Stand-in: our delegation-chain check runs here until the AI2II part is supplied.']);
-    assert.deepEqual(parts[3].lines, [LABELS.parts.record.text, 'Our writer, in the AEP format. Stand-in label until the format is confirmed.']);
-    assert.deepEqual(parts[0].lines, [LABELS.parts.checkpoint.text]);
-    assert.deepEqual(parts[2].lines, [], 'the bank has no line of its own');
-    // Each label, note and mark is the contract map's, by the source the element names.
+    assert.deepEqual(parts.map((p) => p.label), [label('checkpoint'), label('crossing'), label('bank'), label('record')]);
+    assert.deepEqual(parts.map((p) => p.badge), [null, COPY['marker.standIn'], null, null]);
+    assert.deepEqual(parts[0].lines, [COPY['credit.checkpoint']]);
+    assert.deepEqual(parts[1].lines, [CONTRACT_LABELS.parts.crossing.standInNote, LABELS.parts.crossing.detail], 'the stand-in: its note in full and the line on what it covers, and no credit');
+    assert.deepEqual(parts[2].lines, [COPY['credit.bank']]);
+    assert.deepEqual(parts[3].lines, [COPY['credit.record'], LABELS.parts.record.detail], 'the record part: who made the format, and what the verifier checks of it');
+    // Each label and note is the contract map's, by the source the element names.
     const sources = await view.page.evaluate(() => [...document.querySelectorAll('#pane-inspector [data-key="parts"] [data-src]')].map((n) => [n.dataset.src, n.textContent]));
     for (const [name, part] of Object.entries(CONTRACT_LABELS.parts)) {
       assert.ok(sources.some(([src, text]) => src === `labels:parts.${name}.label` && text === part.label), `${name}: the label`);
       if (part.standIn) assert.ok(sources.some(([src, text]) => src === `labels:parts.${name}.standInNote` && text === part.standInNote), `${name}: the note`);
     }
     const lanes = await view.page.evaluate(() => [...document.querySelectorAll('#lanes-head .lane')].map((lane) => lane.querySelector('.lane-title').textContent));
-    assert.deepEqual(lanes, ['Payments agent', 'OpenA2A · ATX · AAP', 'WIMSE · AI2II', "Supplier's bank", 'AEP']);
-    // The run control reads the button the map gives the chosen scene.
+    assert.deepEqual(lanes, [CONTRACT_LABELS.parties.agent, label('checkpoint'), label('crossing'), label('bank'), label('record')]);
+    // The run control reads the button the map gives the chosen item.
     assert.equal(await view.page.evaluate(() => document.getElementById('run-control').textContent), CONTRACT_LABELS.scenes.find((s) => s.kind === 'clean').button);
-    await view.page.click('.scene[data-kind="poisoned"]');
+    await view.page.focus('.scene[data-kind="clean"]');
+    await view.page.keyboard.press('ArrowDown');
     assert.equal(await view.page.evaluate(() => document.getElementById('run-control').textContent), CONTRACT_LABELS.scenes.find((s) => s.kind === 'poisoned').button);
     assert.deepEqual(hitsIn(await rendered(view.page)), []);
     assert.deepEqual(view.errors, []);
@@ -105,24 +114,26 @@ test('parties as roles: on the start, run and offline check screens of both runs
   }
 });
 
-test('the roles a run shows: the agent\'s lane and credential, the bank\'s lane, the invoice\'s sender, and the two domains of the crossing, each a string of the label map', async () => {
+test('the roles a run shows: the agent\'s and the bank\'s lanes, the invoice\'s sender, the two domains of the crossing and each step\'s part, each a string of the label map', async () => {
   for (const [kind, outcome, state] of RUNS) {
     const view = await openView(browser, { hash: '#inspect' });
     const { page } = view;
     try {
       await runAndWait(view, kind, outcome);
-      // The run overview: the invoice card names its sender by role, and the agent by role.
+      const lanes = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#lanes-head .lane')].map((l) => [l.dataset.col, l.querySelector('.lane-title').textContent])));
+      assert.equal(lanes.agent, CONTRACT_LABELS.parties.agent);
+      assert.equal(lanes.bank, label('bank'));
+      // The run overview: the invoice card names its sender by role.
       await page.keyboard.press('0');
       await view.settle();
       const overview = await page.evaluate(() => {
         const card = document.querySelector('#pane-inspector .invoice-card');
-        const fields = Object.fromEntries([...card.querySelectorAll('.invoice-field')].map((f) => [f.querySelector('dt').textContent, f.querySelector('dd').textContent]));
-        return { fields, sender: card.querySelector('.invoice-field dd [data-src]').dataset.src, agent: document.querySelector('#pane-inspector .insp-big').textContent };
+        const fields = Object.fromEntries([...card.querySelectorAll('.kv-row')].map((f) => [f.querySelector('dt').textContent, f.querySelector('dd').textContent]));
+        return { fields, sender: card.querySelector('.kv-row dd [data-src]').dataset.src };
       });
-      assert.equal(overview.fields[COPY['invoice.from']], 'Supplier');
+      assert.equal(overview.fields[COPY['invoice.from']], CONTRACT_LABELS.parties.supplier);
       assert.equal(overview.sender, 'labels:parties.supplier');
       assert.equal(overview.fields[COPY['invoice.payTo']], COPY['invoice.payToValue'].replace('{account}', state.invoice.payTo.account));
-      assert.equal(overview.agent, 'Payments agent');
       assert.equal(overview.fields[COPY['invoice.from']].includes(state.invoice.from), false);
 
       // The crossing: its row line and its inspector name the two domains by role.
@@ -130,27 +141,31 @@ test('the roles a run shows: the agent\'s lane and credential, the bank\'s lane,
       await view.settle();
       const crossing = await page.evaluate(() => ({
         line: document.querySelector('#rows .row[data-step="crossing"] .row-detail').textContent,
-        rows: Object.fromEntries([...document.querySelectorAll('#pane-inspector .insp-section:not([data-artifacts]) .kv-row')].map((r) => [r.querySelector('.kv-key').textContent, r.querySelector('.kv-value').textContent])),
+        rows: Object.fromEntries([...document.querySelectorAll('#pane-inspector [data-section="artifact"] .kv-row')].map((r) => [r.querySelector('.kv-key').textContent, r.querySelector('.kv-value').textContent])),
       }));
-      assert.equal(crossing.line, "From Payments agent's domain to Supplier's bank's domain: 2 hops, chain valid");
-      assert.equal(crossing.rows.from, "Payments agent's domain");
-      assert.equal(crossing.rows.to, "Supplier's bank's domain");
+      assert.equal(crossing.line, COPY['detail.crossing'].replace('{domainA}', CONTRACT_LABELS.parties.domainA).replace('{domainB}', CONTRACT_LABELS.parties.domainB).replace('{hops}', state.steps[2].detail.hops).replace('{outcome}', state.steps[2].detail.outcome));
+      assert.equal(crossing.rows.from, CONTRACT_LABELS.parties.domainA);
+      assert.equal(crossing.rows.to, CONTRACT_LABELS.parties.domainB);
 
-      // The credential step: the agent by role, and no issuer row in the summary.
+      // The credential step: no issuer row in its list; the issuer stands in
+      // the step as the run state holds it.
       await page.keyboard.press('1');
       await view.settle();
       const credential = await page.evaluate(() => ({
-        agent: document.querySelector('#pane-inspector .insp-big').textContent,
-        keys: [...document.querySelectorAll('#pane-inspector .insp-section:not([data-artifacts]) .kv-key')].map((k) => k.textContent),
+        keys: [...document.querySelectorAll('#pane-inspector [data-section="artifact"] .kv-key')].map((k) => k.textContent),
         excerpt: document.querySelector('#pane-inspector .artifact[data-file="state"] .artifact-body').textContent,
       }));
-      assert.equal(credential.agent, 'Payments agent');
-      assert.equal(credential.keys.includes('issuer'), false, 'the issuer is a test identifier: it is not a row of the summary');
+      assert.equal(credential.keys.includes('issuer'), false, 'the issuer is a test identifier: it is not a row of the list');
       assert.ok(credential.excerpt.includes(`"issuer": "${state.steps[0].detail.issuer}"`), 'and it is in the step as the run state holds it');
 
-      // The rows: each carries the part label the run gives it, which is the map's.
-      const labels = await page.evaluate(() => [...document.querySelectorAll('#rows .row')].map((row) => [row.dataset.step, row.querySelector('.track-label').textContent]));
-      assert.deepEqual(labels, [['credential', 'OpenA2A · ATX · AAP'], ['grant', 'OpenA2A · ATX · AAP'], ['crossing', 'WIMSE · AI2II'], ['intent', 'OpenA2A · ATX · AAP'], ['pay', "Supplier's bank"], ['record', 'AEP']]);
+      // Each step's part, by the label the run gives it, which is the map's.
+      const marks = [];
+      for (const n of ['1', '2', '3', '4', '5', '6']) {
+        await page.keyboard.press(n);
+        marks.push(await page.evaluate(() => document.querySelector('#pane-inspector .insp-head .part-name').textContent));
+      }
+      assert.deepEqual(marks, state.steps.map((s) => s.partLabel));
+      assert.deepEqual(marks, [label('checkpoint'), label('checkpoint'), label('crossing'), label('checkpoint'), label('bank'), label('record')]);
       assert.deepEqual(view.errors, []);
     } finally {
       await view.close();
@@ -184,7 +199,7 @@ test('the test identifiers show where the run is shown as written, under the map
       })));
       assert.deepEqual(seen.map((pane) => pane.file), expected[key], `key ${key}: the panes that show the run as written`);
       for (const pane of seen) {
-        assert.equal(pane.note, 'Fictional test identifiers.', `key ${key}, ${pane.file}`);
+        assert.equal(pane.note, CONTRACT_LABELS.parties.rawIdentifiersNote, `key ${key}, ${pane.file}`);
         assert.equal(pane.noteSrc, 'labels:parties.rawIdentifiersNote');
         assert.equal(pane.noteBeforeBody, true, 'the note stands over the bytes');
         if (hitsIn(pane.body).length) holding.push(`${key} ${pane.file}`);
@@ -196,13 +211,15 @@ test('the test identifiers show where the run is shown as written, under the map
     // and domain in the pay action.
     assert.deepEqual(holding, ['1 state', '3 state', '3 hops/03-crossing.hop.json', '5 actions/05-pay.action.json']);
 
-    // The record's metadata table, once a package is open.
+    // The record's metadata table, once the package of the payment is open
+    // in its step's record section.
+    await page.keyboard.press('5');
     await page.locator('.record[data-file="records/05-pay.aep"] .record-open').click();
     const table = await page.evaluate(() => {
       const block = document.querySelector('[data-entries-of="records/05-pay.aep"]');
       return { note: block.querySelector('.meta').textContent, text: block.querySelector('.kv').textContent };
     });
-    assert.equal(table.note, 'Fictional test identifiers.');
+    assert.equal(table.note, CONTRACT_LABELS.parties.rawIdentifiersNote);
     for (const value of [metadata.actor_did, metadata.domain_from, metadata.domain_to]) assert.ok(table.text.includes(value), value);
     assert.deepEqual(hitsIn(await outsideRaw(page)), [], 'and nowhere else on the screen');
     assert.deepEqual(view.errors, []);
@@ -211,23 +228,25 @@ test('the test identifiers show where the run is shown as written, under the map
   }
 });
 
-test('stand-ins said where they appear, on both runs: the crossing row and the record row each carry the mark and their part\'s note, and the timestamp line carries its note', async () => {
-  const crossingNote = 'Stand-in: our delegation-chain check runs here until the AI2II part is supplied.';
-  const recordNote = 'Our writer, in the AEP format. Stand-in label until the format is confirmed.';
-  const timestampNote = 'Stand-in: no timestamp authority.';
+test('stand-ins said where they appear, on both runs: the crossing carries the mark on its lane and in the inspector, with its note in the step\'s artifact; the record part is no stand-in, and its timestamp line and detail carry their notes', async () => {
+  const crossingNote = CONTRACT_LABELS.parts.crossing.standInNote;
+  const timestampNote = CONTRACT_LABELS.timestamp.standInNote;
   const selected = (page) => page.evaluate(() => {
-    const part = document.querySelector('#pane-inspector .insp-part');
-    const stamp = document.querySelector('#pane-inspector [data-note="timestamp"]');
+    const host = document.getElementById('pane-inspector');
     const shown = (node) => Boolean(node) && node.getBoundingClientRect().height > 0;
+    const stamp = host.querySelector('[data-note="timestamp"]');
     return {
       step: document.querySelector('#rows .row[aria-current="step"]')?.dataset.step ?? null,
-      label: part.querySelector('.insp-part-label').textContent,
-      badge: part.querySelector('.badge')?.textContent ?? null,
-      note: part.querySelector('[data-note="stand-in"]')?.textContent ?? null,
-      noteShown: shown(part.querySelector('[data-note="stand-in"]')),
-      stamp: stamp ? { note: stamp.textContent, badge: stamp.closest('.kv-row').querySelector('.badge')?.textContent ?? null, shown: shown(stamp) } : null,
+      label: host.querySelector('.insp-head .part-name').textContent,
+      badge: host.querySelector('.insp-head .badge')?.textContent ?? null,
+      note: host.querySelector('[data-note="stand-in"]')?.textContent ?? null,
+      noteShown: shown(host.querySelector('[data-note="stand-in"]')),
+      detail: host.querySelector('[data-section="artifact"] [data-note="detail"]')?.textContent ?? null,
+      stamp: stamp ? { note: stamp.textContent, shown: shown(stamp) } : null,
     };
   });
+  // In Story the artifact section opens when asked for.
+  const openArtifact = (page) => page.evaluate(() => { const s = document.querySelector('#pane-inspector [data-section="artifact"]'); if (s && !s.open) s.querySelector('summary').click(); });
   for (const [width, height] of [[1440, 900], [1280, 800]]) {
     for (const [kind, outcome] of RUNS) {
       const view = await openView(browser, { width, height });
@@ -235,26 +254,25 @@ test('stand-ins said where they appear, on both runs: the crossing row and the r
       try {
         await runAndWait(view, kind, outcome);
         const at = `${width} ${kind}`;
-        // The lanes: the mark on the two stand-in lanes at every size, and
-        // the note under it where the window has the height for it.
-        const lanes = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#lanes-head .lane')].map((lane) => [lane.dataset.col, { badge: lane.querySelector('.badge')?.textContent ?? null, note: lane.querySelector('.lane-note')?.textContent ?? null }])));
-        assert.deepEqual(Object.entries(lanes).filter(([, l]) => l.badge !== null).map(([col]) => col), ['crossing', 'record'], at);
+        const lanes = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#lanes-head .lane')].map((lane) => [lane.dataset.col, { badge: lane.querySelector('.badge')?.textContent ?? null, tip: lane.querySelector('.lane-credit').getAttribute('title') }])));
+        assert.deepEqual(Object.entries(lanes).filter(([, l]) => l.badge !== null).map(([col]) => col), ['crossing'], `${at}: the one stand-in lane`);
         assert.equal(lanes.crossing.badge, COPY['marker.standIn']);
-        if (width >= 1440) {
-          assert.equal(lanes.crossing.note, crossingNote, at);
-          assert.equal(lanes.record.note, recordNote, at);
-        }
+        assert.equal(lanes.crossing.tip, crossingNote, `${at}: its note as the mark's tooltip`);
         // The crossing row, chosen with a click.
         await page.click('#rows .row[data-step="crossing"]');
+        await openArtifact(page);
         const crossing = await selected(page);
-        assert.deepEqual({ step: crossing.step, label: crossing.label, badge: crossing.badge, note: crossing.note, noteShown: crossing.noteShown }, { step: 'crossing', label: 'WIMSE · AI2II', badge: COPY['marker.standIn'], note: crossingNote, noteShown: true }, at);
-        // The record row: its part's note, and the note on the timestamp line.
+        assert.deepEqual({ step: crossing.step, label: crossing.label, badge: crossing.badge, note: crossing.note, noteShown: crossing.noteShown, detail: crossing.detail }, { step: 'crossing', label: label('crossing'), badge: COPY['marker.standIn'], note: crossingNote, noteShown: true, detail: LABELS.parts.crossing.detail }, at);
+        // The record row: no mark; the note on the timestamp line, and the
+        // line on what the verifier checks of the format.
         await page.click('#rows .row[data-step="record"]');
+        await openArtifact(page);
         const record = await selected(page);
-        assert.deepEqual({ step: record.step, label: record.label, badge: record.badge, note: record.note, noteShown: record.noteShown }, { step: 'record', label: 'AEP', badge: COPY['marker.standIn'], note: recordNote, noteShown: true }, at);
-        assert.deepEqual(record.stamp, { note: timestampNote, badge: COPY['marker.standIn'], shown: true }, at);
+        assert.deepEqual({ step: record.step, label: record.label, badge: record.badge, note: record.note, detail: record.detail }, { step: 'record', label: label('record'), badge: null, note: null, detail: LABELS.parts.record.detail }, at);
+        assert.deepEqual(record.stamp, { note: timestampNote, shown: true }, at);
         // A step of a part that is not a stand-in carries no mark and no note.
         await page.click('#rows .row[data-step="grant"]');
+        await openArtifact(page);
         const grant = await selected(page);
         assert.deepEqual({ badge: grant.badge, note: grant.note, stamp: grant.stamp }, { badge: null, note: null, stamp: null }, at);
         assert.deepEqual(view.errors, []);
@@ -263,8 +281,4 @@ test('stand-ins said where they appear, on both runs: the crossing row and the r
       }
     }
   }
-  // The three notes are the map's own.
-  assert.equal(CONTRACT_LABELS.parts.crossing.standInNote, crossingNote);
-  assert.equal(CONTRACT_LABELS.parts.record.standInNote, recordNote);
-  assert.equal(CONTRACT_LABELS.timestamp.standInNote, timestampNote);
 });
