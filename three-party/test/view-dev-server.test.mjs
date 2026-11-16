@@ -5,6 +5,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { startDevServer, examplesWith, removeTempDirs, VIEW, EXAMPLES, CLEAN_DONE, CLEAN_RUNNING, POISONED } from './support/view-helpers.mjs';
@@ -189,6 +190,45 @@ test('a request that names another host is refused', async () => {
   }
 });
 
+// The sockets listening on a TCP port, as the operating system lists them
+// rather than as the server says: lsof on macOS, and /proc on Linux, where
+// lsof is not installed by default. Each one carries its local address and
+// port, whether it belongs to the process given, and the system's own line.
+function listenersOn(port, pid) {
+  if (process.platform === 'darwin') {
+    return execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' })
+      .trim().split('\n').slice(1)
+      .map((row) => {
+        const name = /(\S+) \(LISTEN\)$/.exec(row)?.[1] ?? '';
+        const colon = name.lastIndexOf(':');
+        return { address: name.slice(0, colon), port: Number(name.slice(colon + 1)), server: row.split(/\s+/)[1] === String(pid), row };
+      });
+  }
+  if (process.platform === 'linux') {
+    // A line of /proc/net/tcp gives the local address as one 32-bit word in
+    // the host's byte order, then the port in hex, the state (0A is LISTEN)
+    // and, in its tenth field, the socket's inode, which names the socket in
+    // /proc/<pid>/fd of the process that holds it.
+    const order = os.endianness() === 'LE' ? [6, 4, 2, 0] : [0, 2, 4, 6];
+    const held = new Set(fs.readdirSync(`/proc/${pid}/fd`).map((fd) => {
+      try { return fs.readlinkSync(`/proc/${pid}/fd/${fd}`); } catch { return ''; }
+    }));
+    const sockets = [];
+    for (const [file, v4] of [['/proc/net/tcp', true], ['/proc/net/tcp6', false]]) {
+      if (!fs.existsSync(file)) continue;
+      for (const row of fs.readFileSync(file, 'utf8').trim().split('\n').slice(1).map((line) => line.trim())) {
+        const fields = row.split(/\s+/);
+        const [hex, hexPort] = fields[1].split(':');
+        if (fields[3] !== '0A' || parseInt(hexPort, 16) !== port) continue;
+        const address = v4 ? order.map((i) => parseInt(hex.slice(i, i + 2), 16)).join('.') : `[${hex}]`;
+        sockets.push({ address, port, server: held.has(`socket:[${fields[9]}]`), row: `${file}: ${row}` });
+      }
+    }
+    return sockets;
+  }
+  assert.fail(`precondition: listing the sockets on a port is written for macOS (lsof) and Linux (/proc), not for ${process.platform}`);
+}
+
 test('from the command line it prints the ready line, listens on 127.0.0.1 and on no other address, and stops on SIGTERM', async () => {
   const child = spawn(process.execPath, [path.join(VIEW, 'dev-server.mjs')], { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
@@ -206,13 +246,12 @@ test('from the command line it prints the ready line, listens on 127.0.0.1 and o
     const port = Number(m[1]);
     assert.equal((await request(port, 'GET', '/api/health')).status, 200);
 
-    const listening = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).trim().split('\n').slice(1);
-    assert.ok(listening.length >= 1, 'lsof shows the listener');
-    for (const row of listening) {
-      assert.match(row, new RegExp(`\\s127\\.0\\.0\\.1:${port} \\(LISTEN\\)$`), row);
-      assert.doesNotMatch(row, /\*:/);
+    const listening = listenersOn(port, child.pid);
+    assert.ok(listening.length >= 1, 'the system lists the listener');
+    for (const socket of listening) {
+      assert.equal(`${socket.address}:${socket.port}`, `127.0.0.1:${port}`, socket.row);
+      assert.ok(socket.server, `the listener is the server: ${socket.row}`);
     }
-    assert.equal(listening.filter((row) => row.split(/\s+/)[1] === String(child.pid)).length, listening.length, 'the listener is the server');
   } finally {
     const gone = new Promise((resolve) => { child.on('exit', (code) => resolve(code)); });
     child.kill('SIGTERM');
