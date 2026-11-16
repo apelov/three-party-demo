@@ -12,25 +12,35 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 
-import { callVerifier, EXIT, findPrivateKeys, LINE, networkControl, offlineCheck, privateKeyKinds, PROFILE, RESULT_FILE, SANDBOX_EXEC as CHECK_SANDBOX_EXEC, VERDICT, VERIFIER } from '../src/record/check.mjs';
+import { BWRAP_PATHS, bwrapMethod, callVerifier, EXIT, findPrivateKeys, LINE, methodsFor, networkControl, networkDenial, offlineCheck, privateKeyKinds, PROFILE, RESULT_FILE, SANDBOX_EXEC as CHECK_SANDBOX_EXEC, sandboxExecMethod, UNSHARE_PATHS, unshareMethod, VERDICT, VERIFIER } from '../src/record/check.mjs';
 import { pinFileOf, PUBLIC_KEY_FILE } from '../src/record/testkey.mjs';
 import { MANIFEST_FILE, writeRun } from '../src/record/writer.mjs';
 import { storeZip } from '../src/record/zip.mjs';
-import { filesUnder, makeRun, NEEDS_SANDBOX, PAY_ACTION, readJson, removeTempDirs, runOfflineCheck, SANDBOX_EXEC, sha256, tempDir, THREE_PARTY } from './record-support.mjs';
+import { denialHere, filesUnder, HERE, INSIDE_OF, makeRun, NEEDS_DENIAL, NETWORK_OF, PAY_ACTION, readJson, removeTempDirs, runOfflineCheck, SANDBOX_EXEC, sha256, tempDir, THREE_PARTY } from './record-support.mjs';
 
 after(removeTempDirs);
 
 const LIMIT = { timeout: 120000 };
 const PROBE = path.join(THREE_PARTY, 'src', 'record', 'connect-probe.mjs');
 const VERIFIER_FILE = path.join(THREE_PARTY, 'src', 'verifier', 'aep-verify.mjs');
-const KEY_AND_NETWORK = ['private key: absent', 'network denied: yes'];
 const verifierLine = () => `verifier: aep-verify.mjs sha256 ${sha256(fs.readFileSync(VERIFIER_FILE))}`;
 const pinLine = (signerSha256) => `pin: sha256 ${signerSha256} (the public key captured when the run started, held outside the run directory)`;
 const NOT_RUN = 'steps 7 to 10 not run by this verifier';
 const STEP_3 = 'step 3: canonical.bin is neither response.txt, LF, JCS(metadata.json) nor response.txt alone';
-const NETWORK = 'denied: sandbox-exec profile (version 1) (allow default) (deny network*); control: CONNECTED outside, EPERM inside';
-const RESULT_KEYS = ['runId', 'at', 'verifier', 'pin', 'pinSha256', 'network', 'records', 'tampered', 'summary'];
+const RESULT_KEYS = ['runId', 'at', 'verifier', 'pin', 'pinSha256', 'network', 'records', 'tampered', 'summary', 'networkDenied'];
+// The closing note of a check whose network denial was not measured, and of
+// one whose method was contradicted by its probe.
+const RAN_WITH_NO_METHOD = 'the network denial was not measured, so the verifier runs with no denial method and an empty environment, and the result says network denied: not measured';
+const CONTRADICTED = 'the probe reached the network under the method meant to deny it, so nothing was checked and nothing was written';
+const WINDOWS_REASON = 'no method that works without administrator rights is used on Windows';
+const WINDOWS_WHY = 'Windows Firewall does not filter loopback traffic, and an AppContainer launch is not reachable from Node.js built-ins';
 const stateOf = (dir) => filesUnder(dir).map((file) => `${file} ${sha256(fs.readFileSync(path.join(dir, file)))}`);
+// What the check says about the network on this platform: the second line
+// of its output, and its notes as its program prints them on standard
+// error. Where a method applies, that is network denied: yes and no note.
+let here = null;
+const keyAndNetwork = () => ['private key: absent', here.line];
+const denialNotes = () => here.notes.map((line) => `offline-check: ${line}\n`).join('');
 const resultFile = (runDir) => path.join(runDir, 'offline-check.json');
 // A written run of a test's own, with its manifest.
 function writtenRun(options) {
@@ -42,22 +52,23 @@ function writtenRun(options) {
 // A written run for the tests that read one and change nothing in it.
 let run = null;
 let manifest = null;
-before(() => {
+before(async () => {
   run = makeRun();
   writeRun(run.runDir);
   manifest = readJson(path.join(run.runDir, MANIFEST_FILE));
+  here = await denialHere();
 });
 
-// A program a test puts in the place of the sandbox command. Each is a
+// A program a test puts in the place of a method's command. Each is a
 // Node.js script written to a temp directory when the test runs; it gets
-// the arguments the sandbox command would get: -p, the profile, then the
-// command to run.
+// the arguments the command would get, then the command to run: after -p
+// and the profile for sandbox-exec, after -- for unshare and bwrap.
 function standIn(name, lines, extra = []) {
   const file = path.join(tempDir(), `${name}.mjs`);
   fs.writeFileSync(file, `${lines.join('\n')}\n`);
   return [process.execPath, file, ...extra];
 }
-const AFTER_PROFILE = 'const command = process.argv.slice(process.argv.indexOf("-p") + 2);';
+const AFTER_PROFILE = 'const ends = process.argv.indexOf("--"); const command = ends >= 0 ? process.argv.slice(ends + 1) : process.argv.slice(process.argv.indexOf("-p") + 2);';
 const RUNS_IT_UNSANDBOXED = () => standIn('applies-no-profile', [
   'import { spawnSync } from "node:child_process";',
   AFTER_PROFILE,
@@ -66,6 +77,15 @@ const RUNS_IT_UNSANDBOXED = () => standIn('applies-no-profile', [
 ]);
 const ENDS_WITH_71 = () => standIn('ends-with-71', ['process.stderr.write("stand-in: cannot apply a profile\\n");', 'process.exit(71);']);
 const NEVER_ANSWERS = () => standIn('never-answers', ['setInterval(() => {}, 1000);']);
+// Answers for the probe with the reading given, as the probe writes one,
+// and runs any other command as it is.
+const READS = (reading) => standIn(`reads-${reading}`, [
+  'import { spawnSync } from "node:child_process";',
+  AFTER_PROFILE,
+  `if (command.some((word) => word.endsWith("connect-probe.mjs"))) { process.stdout.write(${JSON.stringify(`${reading}\n`)}); process.exit(1); }`,
+  'const ran = spawnSync(command[0], command.slice(1), { stdio: "inherit", env: {} });',
+  'process.exit(ran.status ?? 1);',
+]);
 
 // Runs a program without blocking this process, so a listener held here
 // can answer it.
@@ -81,7 +101,7 @@ function runProgram(command, args) {
   });
 }
 
-test('the offline check on a written run prints private key: absent, network denied: yes, the verifier and its hash, the pin, one line per record, the result and the file written, in that order; it exits 0 and writes offline-check.json in the shape of the contract', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
+test('the offline check on a written run prints private key: absent, what it found about the network, the verifier and its hash, the pin, one line per record, the result and the file written, in that order; it exits 0 and writes offline-check.json in the shape of the contract', { ...LIMIT }, () => {
   const own = writtenRun();
   const before = stateOf(path.dirname(own.runDir));
   const ran = runOfflineCheck([own.runDir]);
@@ -89,7 +109,7 @@ test('the offline check on a written run prints private key: absent, network den
   assert.equal(ran.signal, null);
   assert.equal(own.manifest.tampered.length, 1);
   assert.deepEqual(ran.lines, [
-    ...KEY_AND_NETWORK,
+    ...keyAndNetwork(),
     verifierLine(),
     pinLine(own.manifest.signerSha256),
     ...own.manifest.records.map((record) => `${record.file}: pass-1-6`),
@@ -97,7 +117,7 @@ test('the offline check on a written run prints private key: absent, network den
     `result: ${own.manifest.records.length} passed steps 1 to 6, 1 rejected (1 expected)`,
     'written: offline-check.json',
   ]);
-  assert.equal(ran.stderr, '');
+  assert.equal(ran.stderr, denialNotes());
 
   // The result file: the fields of the contract in their order, each
   // record with the verifier's answer on it, and the count of each verdict.
@@ -114,7 +134,11 @@ test('the offline check on a written run prints private key: absent, network den
   assert.equal(path.resolve(path.dirname(own.runDir), result.pin), pinFileOf(own.runDir));
   assert.equal(result.pinSha256, own.manifest.signerSha256);
   assert.equal(result.pinSha256, sha256(fs.readFileSync(pinFileOf(own.runDir))));
-  assert.equal(result.network, NETWORK);
+  // The network line and the added field: the method and both readings of
+  // the control where it showed the denial, and not measured where not.
+  assert.equal(result.network, here.network);
+  assert.equal(result.networkDenied, here.networkDenied);
+  if (HERE.method !== null) assert.deepEqual([result.network, result.networkDenied], [NETWORK_OF[HERE.method], 'yes']);
   assert.deepEqual(result.records, own.manifest.records.map((record) => ({ file: record.file, sha256: record.sha256, verdict: 'pass-1-6', firstFailingStep: null, notes: [NOT_RUN] })));
   assert.deepEqual(result.tampered, own.manifest.tampered.map((copy) => ({ file: copy.file, sha256: copy.sha256, verdict: 'reject', firstFailingStep: 3, notes: [STEP_3, NOT_RUN] })));
   assert.deepEqual(result.summary, { pass: own.manifest.records.length, reject: 1, expectedRejects: 1 });
@@ -126,29 +150,29 @@ test('the offline check on a written run prints private key: absent, network den
   assert.equal(after.length, before.length + 1);
 
   // The lines and the names the check keeps.
-  assert.deepEqual([LINE.KEY_ABSENT, LINE.NETWORK_DENIED], KEY_AND_NETWORK);
-  assert.deepEqual({ ...EXIT }, { ERROR: 1, NETWORK_NOT_MEASURED: 3, NOT_AS_EXPECTED: 4 });
+  assert.deepEqual([LINE.KEY_ABSENT, LINE.NETWORK_DENIED, LINE.NETWORK_NOT_MEASURED, LINE.NETWORK_NOT_DENIED], ['private key: absent', 'network denied: yes', 'network denied: not measured', 'network denied: no']);
+  assert.deepEqual({ ...EXIT }, { ERROR: 1, NETWORK_NOT_DENIED: 3, NOT_AS_EXPECTED: 4 });
   assert.deepEqual({ ...VERDICT }, { PASS: 'pass-1-6', REJECT: 'reject' });
   assert.equal(RESULT_FILE, 'offline-check.json');
   for (const gone of ['VERIFIER_NONE', 'RESULT_NONE']) assert.equal(Object.hasOwn(LINE, gone), false, gone);
   assert.equal(Object.hasOwn(EXIT, 'NO_VERIFIER'), false);
 });
 
-test('--out names where the result is written, and nothing is written in the run directory then; a result file that is there before the check is replaced, and a note says so', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
+test('--out names where the result is written, and nothing is written in the run directory then; a result file that is there before the check is replaced, and a note says so', { ...LIMIT }, () => {
   const own = writtenRun();
   const out = path.join(tempDir(), 'result.json');
   const ran = runOfflineCheck([own.runDir, '--out', out]);
   assert.equal(ran.status, 0, ran.stderr);
-  assert.deepEqual(ran.lines.slice(0, 2), KEY_AND_NETWORK);
+  assert.deepEqual(ran.lines.slice(0, 2), keyAndNetwork());
   assert.equal(ran.lines.at(-1), `written: ${out}`);
-  assert.equal(ran.stderr, '');
+  assert.equal(ran.stderr, denialNotes());
   assert.equal(fs.existsSync(resultFile(own.runDir)), false);
   assert.deepEqual(Object.keys(readJson(out)), RESULT_KEYS);
   assert.deepEqual(readJson(out).summary, { pass: own.manifest.records.length, reject: 1, expectedRejects: 1 });
 
   // A file from elsewhere in the place of the result.
   fs.writeFileSync(resultFile(own.runDir), '{"from":"somewhere else"}\n');
-  const replaced = `offline-check: ${resultFile(own.runDir)} was there before this check, and this check's result replaced it\n`;
+  const replaced = `${denialNotes()}offline-check: ${resultFile(own.runDir)} was there before this check, and this check's result replaced it\n`;
   const again = runOfflineCheck([own.runDir]);
   assert.equal(again.status, 0, again.stderr);
   assert.equal(again.lines.at(-1), 'written: offline-check.json');
@@ -160,7 +184,7 @@ test('--out names where the result is written, and nothing is written in the run
   assert.deepEqual({ status: third.status, stderr: third.stderr, lines: third.lines }, { status: 0, stderr: replaced, lines: again.lines });
 });
 
-test('a run whose tampered copy was replaced by a copy of the untampered record ends with exit 4, with offline-check.json written', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
+test('a run whose tampered copy was replaced by a copy of the untampered record ends with exit 4, with offline-check.json written', { ...LIMIT }, () => {
   const own = writtenRun();
   const copy = own.manifest.tampered[0];
   const original = own.manifest.records.find((record) => path.basename(record.file) === path.basename(copy.file));
@@ -170,7 +194,7 @@ test('a run whose tampered copy was replaced by a copy of the untampered record 
   const ran = runOfflineCheck([own.runDir]);
   assert.equal(ran.status, 4, ran.stderr);
   assert.deepEqual(ran.lines, [
-    ...KEY_AND_NETWORK,
+    ...keyAndNetwork(),
     verifierLine(),
     pinLine(own.manifest.signerSha256),
     ...own.manifest.records.map((record) => `${record.file}: pass-1-6`),
@@ -178,7 +202,7 @@ test('a run whose tampered copy was replaced by a copy of the untampered record 
     `result: ${own.manifest.records.length + 1} passed steps 1 to 6, 0 rejected (1 expected)`,
     'written: offline-check.json',
   ]);
-  assert.equal(ran.stderr, [
+  assert.equal(ran.stderr, denialNotes() + [
     `offline-check: ${copy.file}: a tampered copy that was not rejected`,
     `offline-check: ${copy.file}: its SHA-256 differs from the one records/manifest.json gives`,
     '',
@@ -189,14 +213,14 @@ test('a run whose tampered copy was replaced by a copy of the untampered record 
   assert.equal(EXIT.NOT_AS_EXPECTED, 4);
 });
 
-test('a difference between the disk and the manifest ends with exit 4 and names the file: a record the manifest omits, a record the manifest names that is not on disk, a name that is not a record file', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
+test('a difference between the disk and the manifest ends with exit 4 and names the file: a record the manifest omits, a record the manifest names that is not on disk, a name that is not a record file', { ...LIMIT }, () => {
   // The manifest omits a record that is on disk. The verifier is still run on it.
   const omitted = writtenRun();
   const dropped = omitted.manifest.records[0];
   fs.writeFileSync(omitted.manifestFile, `${JSON.stringify({ ...omitted.manifest, records: omitted.manifest.records.slice(1) }, null, 2)}\n`);
   const omittedRan = runOfflineCheck([omitted.runDir]);
   assert.equal(omittedRan.status, 4, omittedRan.stderr);
-  assert.equal(omittedRan.stderr, `offline-check: ${dropped.file}: on disk and not named in records/manifest.json\n`);
+  assert.equal(omittedRan.stderr, `${denialNotes()}offline-check: ${dropped.file}: on disk and not named in records/manifest.json\n`);
   assert.ok(omittedRan.lines.includes(`${dropped.file}: pass-1-6`));
   assert.equal(omittedRan.lines.at(-2), `result: ${omitted.manifest.records.length} passed steps 1 to 6, 1 rejected (1 expected)`);
   const firstResult = readJson(resultFile(omitted.runDir));
@@ -213,7 +237,7 @@ test('a difference between the disk and the manifest ends with exit 4 and names 
   assert.equal(second.status, 4, second.stderr);
   assert.ok(second.lines.includes(`${gone.file}: rejected at step 1`));
   assert.ok(second.lines.includes(`${goneCopy.file}: rejected at step 1`));
-  assert.equal(second.stderr, [
+  assert.equal(second.stderr, denialNotes() + [
     `offline-check: ${gone.file}: a record under records/ that did not pass steps 1 to 6`,
     `offline-check: ${gone.file}: named in records/manifest.json and not on disk`,
     `offline-check: ${goneCopy.file}: named in records/manifest.json and not on disk`,
@@ -243,7 +267,7 @@ test('a difference between the disk and the manifest ends with exit 4 and names 
   }
 });
 
-test('a record under records/ that the verifier rejects ends with exit 4, and a run with no pin, or with no record, ends with 1 and writes nothing', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
+test('a record under records/ that the verifier rejects ends with exit 4, and a run with no pin, or with no record, ends with 1 and writes nothing', { ...LIMIT }, () => {
   // A record replaced by the tampered copy of itself.
   const own = writtenRun();
   const copy = own.manifest.tampered[0];
@@ -253,7 +277,7 @@ test('a record under records/ that the verifier rejects ends with exit 4, and a 
   assert.equal(ran.status, 4, ran.stderr);
   assert.ok(ran.lines.includes(`${original.file}: rejected at step 3`));
   assert.equal(ran.lines.at(-2), `result: ${own.manifest.records.length - 1} passed steps 1 to 6, 2 rejected (1 expected)`);
-  assert.equal(ran.stderr, [
+  assert.equal(ran.stderr, denialNotes() + [
     `offline-check: ${original.file}: a record under records/ that did not pass steps 1 to 6`,
     `offline-check: ${original.file}: its SHA-256 differs from the one records/manifest.json gives`,
     '',
@@ -272,26 +296,21 @@ test('a record under records/ that the verifier rejects ends with exit 4, and a 
   fs.writeFileSync(empty.manifestFile, `${JSON.stringify({ ...empty.manifest, records: [], tampered: [] })}\n`);
   const none = runOfflineCheck([empty.runDir]);
   assert.equal(none.status, 1);
-  assert.deepEqual(none.lines, [...KEY_AND_NETWORK, verifierLine(), pinLine(empty.manifest.signerSha256)]);
+  assert.deepEqual(none.lines, [...keyAndNetwork(), verifierLine(), pinLine(empty.manifest.signerSha256)]);
   assert.match(none.stderr, /no record file under records\/ and none named in records\/manifest\.json, so nothing was checked and nothing was written\n$/);
   assert.equal(fs.existsSync(resultFile(empty.runDir)), false);
 });
 
-test('a verifier run that gives no answer is not read as a verdict of the verifier: the record is listed as rejected with no step, the note says what was read, and the check ends with 4', { ...NEEDS_SANDBOX, ...LIMIT }, async () => {
+test('a verifier run that gives no answer is not read as a verdict of the verifier: the record is listed as rejected with no step, the note says what was read, and the check ends with 4', { ...LIMIT }, async () => {
   const own = writtenRun({ actions: [PAY_ACTION] });
   const files = [...own.manifest.records, ...own.manifest.tampered].map((item) => item.file);
   assert.equal(files.length, 2);
-  // Stand-ins for the sandbox command that run the probe under the real
-  // sandbox, so the network control passes, and answer in the place of the
-  // verifier.
+  // Stand-ins for the sandbox command that answer for the probe with the
+  // reading of the profile, so the network control passes on any platform,
+  // and answer in the place of the verifier.
   const answering = (name, lines) => standIn(name, [
-    'import { spawnSync } from "node:child_process";',
-    'const profile = process.argv[process.argv.indexOf("-p") + 1];',
     AFTER_PROFILE,
-    'if (command.some((word) => word.endsWith("connect-probe.mjs"))) {',
-    `  const ran = spawnSync(${JSON.stringify(SANDBOX_EXEC)}, ["-p", profile, ...command], { stdio: "inherit", env: {} });`,
-    '  process.exit(ran.status ?? 1);',
-    '}',
+    'if (command.some((word) => word.endsWith("connect-probe.mjs"))) { process.stdout.write("EPERM\\n"); process.exit(1); }',
     ...lines,
   ]);
   const cases = [
@@ -304,26 +323,32 @@ test('a verifier run that gives no answer is not read as a verdict of the verifi
     [answering('exit-2', ['process.stderr.write("aep-verify: the pin cannot be read (ENOENT)\\n");', 'process.exit(2);']), 'exit 2 (aep-verify: the pin cannot be read (ENOENT))', {}],
     [answering('never-answers', ['setInterval(() => {}, 1000);']), 'no answer within the time limit', { timeoutMs: 1500 }],
   ];
-  for (const [sandboxArgv, reading, options] of cases) {
-    const answer = await offlineCheck(own.runDir, { sandboxArgv, ...options });
+  for (const [command, reading, options] of cases) {
+    const answer = await offlineCheck(own.runDir, { methods: [sandboxExecMethod(command)], ...options });
     assert.equal(answer.exitCode, 4, reading);
-    assert.deepEqual(answer.lines.slice(0, 2), KEY_AND_NETWORK, reading);
+    assert.deepEqual(answer.lines.slice(0, 2), ['private key: absent', 'network denied: yes'], reading);
     assert.deepEqual(answer.lines.slice(4), [...files.map((file) => `${file}: rejected (no answer of the verifier on it)`), 'result: 0 passed steps 1 to 6, 2 rejected (1 expected)', 'written: offline-check.json'], reading);
     const noAnswer = files.map((file) => ({ file, sha256: null, verdict: 'reject', firstFailingStep: null, notes: [`verifier did not answer: ${reading}`] }));
     assert.deepEqual([...answer.result.records, ...answer.result.tampered], noAnswer, reading);
     assert.deepEqual(answer.result, readJson(resultFile(own.runDir)), reading);
+    assert.equal(answer.result.networkDenied, 'yes', reading);
     for (const file of files) assert.ok(answer.notes.includes(`${file}: the verifier did not answer: ${reading}`), reading);
     assert.ok(answer.notes.includes(`${files[0]}: a record under records/ that did not pass steps 1 to 6`), reading);
   }
 });
 
-test('the network control, both ways, against a live listener on 127.0.0.1: the probe reads CONNECTED outside the sandbox and EPERM under the profile', { ...NEEDS_SANDBOX, ...LIMIT }, async () => {
+test('the network control, both ways, against a live listener on 127.0.0.1: the probe reads CONNECTED with no method, and under the method of this platform the reading of that method (EPERM under the sandbox profile, ENETUNREACH in the namespace of unshare, ECONNREFUSED in the namespace of bwrap)', { ...NEEDS_DENIAL, ...LIMIT }, async () => {
   assert.equal(PROFILE, '(version 1) (allow default) (deny network*)');
   assert.equal(CHECK_SANDBOX_EXEC, '/usr/bin/sandbox-exec');
   assert.equal(SANDBOX_EXEC, CHECK_SANDBOX_EXEC);
 
+  // The method the check takes here is the one found apart from it.
+  const method = methodsFor(process.platform).methods.find((item) => item.name === HERE.method);
+  assert.ok(method, `the check has the method ${HERE.method}`);
+  assert.deepEqual(method.argv, HERE.argv);
+
   // The control as the check runs it, against the check's own listener.
-  assert.deepEqual(await networkControl(), { denied: true, listener: '127.0.0.1', outside: 'CONNECTED', inside: 'EPERM', accepted: 1, why: null });
+  assert.deepEqual(await networkControl({ method }), { state: 'denied', method: HERE.method, listener: '127.0.0.1', outside: 'CONNECTED', inside: INSIDE_OF[HERE.method], accepted: 1, why: null });
 
   // The same two runs made here, against a listener this test holds, with
   // the probe's own words read as it wrote them.
@@ -341,12 +366,12 @@ test('the network control, both ways, against a live listener on 127.0.0.1: the 
     const probe = [process.execPath, PROBE, '127.0.0.1', String(port)];
     const outside = await runProgram(probe[0], probe.slice(1));
     assert.deepEqual(outside, { status: 0, stdout: `CONNECTED ${line}\n`, stderr: '' });
-    assert.equal(accepted, 1, 'the listener accepted the connection made outside the sandbox');
-    const inside = await runProgram(SANDBOX_EXEC, ['-p', PROFILE, ...probe]);
-    assert.deepEqual(inside, { status: 1, stdout: 'EPERM\n', stderr: '' });
+    assert.equal(accepted, 1, 'the listener accepted the connection made with no method');
+    const inside = await runProgram(HERE.argv[0], [...HERE.argv.slice(1), ...probe]);
+    assert.deepEqual(inside, { status: 1, stdout: `${INSIDE_OF[HERE.method]}\n`, stderr: '' });
     await new Promise((resolve) => { setTimeout(resolve, 50); });
-    assert.equal(accepted, 1, 'nothing reached the listener from under the profile');
-    // The listener is still live after the refused connect: the refusal was the sandbox's.
+    assert.equal(accepted, 1, 'nothing reached the listener from under the method');
+    // The listener is still there after the failed connect: the failure was the method's.
     assert.deepEqual(await runProgram(probe[0], probe.slice(1)), { status: 0, stdout: `CONNECTED ${line}\n`, stderr: '' });
     assert.equal(accepted, 2);
   } finally {
@@ -380,21 +405,43 @@ test('the probe connects to a loopback address and to nothing else, and says wha
   }
 });
 
-test('any other reading under the sandbox command is not a pass: a command that is absent, one that applies no profile, one that ends with 71, one that never answers, and a refused connect', { ...LIMIT }, async () => {
-  const absent = await networkControl({ sandboxArgv: [path.join(tempDir(), 'no-such-command')] });
-  assert.deepEqual({ denied: absent.denied, outside: absent.outside, inside: absent.inside, accepted: absent.accepted }, { denied: false, outside: 'CONNECTED', inside: 'not started (ENOENT)', accepted: 1 });
-  assert.match(absent.why, /under the sandbox profile the probe read "not started \(ENOENT\)" and the listener accepted 0 more connection\(s\); it must read EPERM/);
+test('the methods of each platform: sandbox-exec on macOS; on Linux unshare, then bwrap, each where it is installed, looked for at fixed paths and never through PATH; none on Windows or elsewhere, with the reason in words', () => {
+  const shape = (found) => found.methods.map((item) => ({ name: item.name, argv: item.argv, accepted: item.accepted, words: item.words }));
+  const SANDBOX = { name: 'sandbox-exec', argv: ['/usr/bin/sandbox-exec', '-p', '(version 1) (allow default) (deny network*)'], accepted: ['EPERM'], words: 'sandbox-exec profile (version 1) (allow default) (deny network*)' };
+  const UNSHARE = { name: 'unshare', argv: ['/usr/bin/unshare', '--user', '--map-root-user', '--net', '--'], accepted: ['ENETUNREACH', 'ECONNREFUSED'], words: 'unshare --user --map-root-user --net' };
+  const BWRAP = { name: 'bwrap', argv: ['/usr/bin/bwrap', '--unshare-user', '--unshare-net', '--ro-bind', '/', '/', '--die-with-parent', '--'], accepted: ['ENETUNREACH', 'ECONNREFUSED'], words: 'bwrap --unshare-user --unshare-net --ro-bind / / --die-with-parent' };
+  assert.deepEqual(shape(methodsFor('darwin')), [SANDBOX]);
+  assert.equal(methodsFor('darwin').reason, null);
+  assert.deepEqual([UNSHARE_PATHS, BWRAP_PATHS], [['/usr/bin/unshare', '/bin/unshare'], ['/usr/bin/bwrap', '/bin/bwrap']]);
+  const asked = [];
+  const both = methodsFor('linux', { exists: (file) => { asked.push(file); return file === '/usr/bin/unshare' || file === '/usr/bin/bwrap'; } });
+  assert.deepEqual(shape(both), [UNSHARE, BWRAP]);
+  assert.equal(both.reason, null);
+  assert.ok(asked.every((file) => path.isAbsolute(file)), 'each tool is looked for by its full path');
+  assert.deepEqual(shape(methodsFor('linux', { exists: (file) => file === '/bin/unshare' })), [{ ...UNSHARE, argv: ['/bin/unshare', ...UNSHARE.argv.slice(1)] }]);
+  assert.deepEqual(shape(methodsFor('linux', { exists: (file) => file === '/usr/bin/bwrap' })), [BWRAP]);
+  assert.deepEqual(methodsFor('linux', { exists: () => false }), { methods: [], reason: 'neither unshare nor bwrap is installed', why: 'looked for unshare at /usr/bin/unshare and /bin/unshare, and for bwrap at /usr/bin/bwrap and /bin/bwrap' });
+  assert.deepEqual(methodsFor('win32'), { methods: [], reason: WINDOWS_REASON, why: WINDOWS_WHY });
+  assert.deepEqual(methodsFor('freebsd'), { methods: [], reason: 'no method is used on freebsd', why: 'a method is used on macOS (sandbox-exec) and on Linux (unshare, bwrap), and none on freebsd' });
+});
 
-  // The probe runs with no sandbox and reaches the listener a second time.
-  const unsandboxed = await networkControl({ sandboxArgv: RUNS_IT_UNSANDBOXED() });
-  assert.deepEqual({ denied: unsandboxed.denied, outside: unsandboxed.outside, inside: unsandboxed.inside, accepted: unsandboxed.accepted }, { denied: false, outside: 'CONNECTED', inside: 'CONNECTED', accepted: 2 });
+test('the control has three outcomes: denied on a reading of the method with nothing more accepted; not denied when the probe reached the listener under the method; not measured on any other reading (a command that is absent, one that ends with 71, one that never answers, a refused connect under the sandbox profile)', { ...LIMIT }, async () => {
+  const pick = (control) => ({ state: control.state, method: control.method, outside: control.outside, inside: control.inside, accepted: control.accepted });
+  const absent = await networkControl({ method: sandboxExecMethod([path.join(tempDir(), 'no-such-command')]) });
+  assert.deepEqual(pick(absent), { state: 'not-measured', method: 'sandbox-exec', outside: 'CONNECTED', inside: 'not started (ENOENT)', accepted: 1 });
+  assert.equal(absent.why, 'under the sandbox profile the probe read "not started (ENOENT)" and the listener accepted 0 more connection(s); it must read EPERM, and the listener must accept nothing');
+
+  // The probe runs with no sandbox and reaches the listener a second time:
+  // the method was applied and the probe still reached the network.
+  const unsandboxed = await networkControl({ method: sandboxExecMethod(RUNS_IT_UNSANDBOXED()) });
+  assert.deepEqual(pick(unsandboxed), { state: 'not-denied', method: 'sandbox-exec', outside: 'CONNECTED', inside: 'CONNECTED', accepted: 2 });
   assert.match(unsandboxed.why, /read "CONNECTED" and the listener accepted 1 more connection\(s\)/);
 
-  const seventyOne = await networkControl({ sandboxArgv: ENDS_WITH_71() });
-  assert.deepEqual({ denied: seventyOne.denied, inside: seventyOne.inside, accepted: seventyOne.accepted }, { denied: false, inside: 'exit 71 (stand-in: cannot apply a profile)', accepted: 1 });
+  const seventyOne = await networkControl({ method: sandboxExecMethod(ENDS_WITH_71()) });
+  assert.deepEqual(pick(seventyOne), { state: 'not-measured', method: 'sandbox-exec', outside: 'CONNECTED', inside: 'exit 71 (stand-in: cannot apply a profile)', accepted: 1 });
 
-  const silent = await networkControl({ sandboxArgv: NEVER_ANSWERS(), timeoutMs: 2500 });
-  assert.deepEqual({ denied: silent.denied, inside: silent.inside, accepted: silent.accepted }, { denied: false, inside: 'no answer within the time limit', accepted: 1 });
+  const silent = await networkControl({ method: sandboxExecMethod(NEVER_ANSWERS()), timeoutMs: 2500 });
+  assert.deepEqual(pick(silent), { state: 'not-measured', method: 'sandbox-exec', outside: 'CONNECTED', inside: 'no answer within the time limit', accepted: 1 });
 
   // The probe is run against a port nothing listens on, so its connect is refused by the host, not by a sandbox.
   const closed = net.createServer();
@@ -407,36 +454,161 @@ test('any other reading under the sandbox command is not a pass: a command that 
     'const ran = spawnSync(command[0], [command[1], command[2], process.argv[2]], { stdio: "inherit", env: {} });',
     'process.exit(ran.status ?? 1);',
   ], [String(closedPort)]);
-  const refused = await networkControl({ sandboxArgv: elsewhere });
-  assert.deepEqual({ denied: refused.denied, inside: refused.inside, accepted: refused.accepted }, { denied: false, inside: 'ECONNREFUSED', accepted: 1 });
+  const refused = await networkControl({ method: sandboxExecMethod(elsewhere) });
+  assert.deepEqual(pick(refused), { state: 'not-measured', method: 'sandbox-exec', outside: 'CONNECTED', inside: 'ECONNREFUSED', accepted: 1 });
+
+  // The readings each method accepts. The sandbox profile refuses the
+  // connect with EPERM. A new network namespace has no route to the host's
+  // loopback: ENETUNREACH where its own loopback is down (unshare), and
+  // ECONNREFUSED where its own loopback is up with nothing listening (bwrap).
+  for (const [reading, state] of [['EPERM', 'denied'], ['ENETUNREACH', 'not-measured'], ['ECONNREFUSED', 'not-measured'], ['EACCES', 'not-measured']]) {
+    assert.equal((await networkControl({ method: sandboxExecMethod(READS(reading)) })).state, state, `sandbox-exec, ${reading}`);
+  }
+  for (const make of [unshareMethod, bwrapMethod]) {
+    for (const [reading, state] of [['ENETUNREACH', 'denied'], ['ECONNREFUSED', 'denied'], ['EPERM', 'not-measured'], ['EACCES', 'not-measured'], ['ETIMEDOUT', 'not-measured']]) {
+      const control = await networkControl({ method: make(READS(reading)) });
+      assert.deepEqual(pick(control), { state, method: make([]).name, outside: 'CONNECTED', inside: reading, accepted: 1 }, `${make([]).name}, ${reading}`);
+      if (state === 'not-measured') assert.match(control.why, new RegExp(`^under ${make([]).words.replace(/[/*()]/g, '\\$&')} the probe read "${reading}" and the listener accepted 0 more connection\\(s\\); it must read ENETUNREACH or ECONNREFUSED, and the listener must accept nothing$`));
+    }
+    const reached = await networkControl({ method: make(RUNS_IT_UNSANDBOXED()) });
+    assert.deepEqual(pick(reached), { state: 'not-denied', method: make([]).name, outside: 'CONNECTED', inside: 'CONNECTED', accepted: 2 });
+  }
 });
 
-test('when the network denial is not shown the check prints network denied: not measured, ends with 3 and writes no offline-check.json, and no verifier line follows', { ...LIMIT }, async () => {
-  const before = stateOf(path.dirname(run.runDir));
-  for (const sandboxArgv of [[path.join(tempDir(), 'no-such-command')], RUNS_IT_UNSANDBOXED(), ENDS_WITH_71()]) {
+test('the methods are tried in order, and the first that the control decides on ends the search: one that cannot be applied gives way to the next, one that is contradicted ends it there', { ...LIMIT }, async () => {
+  const pick = (denial) => ({ state: denial.state, method: denial.method?.name ?? null, line: denial.line, notes: denial.notes, network: denial.network, networkDenied: denial.networkDenied });
+  const seventyOne = 'exit 71 (stand-in: cannot apply a profile)';
+  const whyOf = (words) => `under ${words} the probe read "${seventyOne}" and the listener accepted 0 more connection(s); it must read ENETUNREACH or ECONNREFUSED, and the listener must accept nothing`;
+  const UNSHARE_WORDS = 'unshare --user --map-root-user --net';
+  const BWRAP_WORDS = 'bwrap --unshare-user --unshare-net --ro-bind / / --die-with-parent';
+
+  const second = await networkDenial({ methods: [unshareMethod(ENDS_WITH_71()), bwrapMethod(READS('ECONNREFUSED'))] });
+  assert.deepEqual(pick(second), { state: 'denied', method: 'bwrap', line: 'network denied: yes', notes: [], network: NETWORK_OF.bwrap, networkDenied: 'yes' });
+  assert.deepEqual(second.controls.map((control) => [control.method, control.state, control.inside]), [['unshare', 'not-measured', seventyOne], ['bwrap', 'denied', 'ECONNREFUSED']]);
+  // The method that showed the denial is the one the verifier is run under.
+  assert.equal(second.method.name, 'bwrap');
+
+  const neither = await networkDenial({ methods: [unshareMethod(ENDS_WITH_71()), bwrapMethod(ENDS_WITH_71())] });
+  assert.deepEqual(pick(neither), {
+    state: 'not-measured',
+    method: null,
+    line: 'network denied: not measured (unshare and bwrap could not be applied here)',
+    notes: [whyOf(UNSHARE_WORDS), whyOf(BWRAP_WORDS), RAN_WITH_NO_METHOD],
+    network: `not measured: unshare and bwrap could not be applied here; ${UNSHARE_WORDS}; control: CONNECTED outside, ${seventyOne} inside; ${BWRAP_WORDS}; control: CONNECTED outside, ${seventyOne} inside`,
+    networkDenied: 'not measured',
+  });
+
+  const contradicted = await networkDenial({ methods: [unshareMethod(RUNS_IT_UNSANDBOXED()), bwrapMethod(READS('ECONNREFUSED'))] });
+  assert.deepEqual(pick(contradicted), {
+    state: 'not-denied',
+    method: 'unshare',
+    line: 'network denied: no (under unshare the probe read CONNECTED, and the listener accepted 1 more connection(s))',
+    notes: [`under ${UNSHARE_WORDS} the probe read "CONNECTED" and the listener accepted 1 more connection(s); it must read ENETUNREACH or ECONNREFUSED, and the listener must accept nothing`, CONTRADICTED],
+    network: null,
+    networkDenied: null,
+  });
+  assert.equal(contradicted.controls.length, 1, 'bwrap is not tried after unshare was contradicted');
+
+  // None given, and none on Windows: the reason is the line's, and the notes say why.
+  assert.deepEqual(pick(await networkDenial({ methods: [] })), { state: 'not-measured', method: null, line: 'network denied: not measured (no method was given)', notes: [RAN_WITH_NO_METHOD], network: 'not measured: no method was given', networkDenied: 'not measured' });
+  assert.deepEqual(pick(await networkDenial({ platform: 'win32' })), { state: 'not-measured', method: null, line: `network denied: not measured (${WINDOWS_REASON})`, notes: [WINDOWS_WHY, RAN_WITH_NO_METHOD], network: `not measured: ${WINDOWS_REASON}`, networkDenied: 'not measured' });
+});
+
+test('where no method shows the denial, the check prints network denied: not measured with the reason, still runs the verifier with no method and an empty environment, writes the result with networkDenied not measured, and ends as the records do', { ...LIMIT }, async () => {
+  for (const [command, inside] of [[[path.join(tempDir(), 'no-such-command')], 'not started (ENOENT)'], [ENDS_WITH_71(), 'exit 71 (stand-in: cannot apply a profile)']]) {
+    const own = writtenRun();
     const printed = [];
     const explained = [];
-    const answer = await offlineCheck(run.runDir, { sandboxArgv, print: (line) => printed.push(line), note: (line) => explained.push(line) });
-    assert.equal(answer.exitCode, 3);
-    assert.deepEqual(answer.lines, ['private key: absent', 'network denied: not measured']);
+    const answer = await offlineCheck(own.runDir, { methods: [sandboxExecMethod(command)], print: (line) => printed.push(line), note: (line) => explained.push(line) });
+    assert.equal(answer.exitCode, 0, inside);
+    assert.deepEqual(answer.lines, [
+      'private key: absent',
+      'network denied: not measured (sandbox-exec could not be applied here)',
+      verifierLine(),
+      pinLine(own.manifest.signerSha256),
+      ...own.manifest.records.map((record) => `${record.file}: pass-1-6`),
+      `${own.manifest.tampered[0].file}: rejected at step 3`,
+      `result: ${own.manifest.records.length} passed steps 1 to 6, 1 rejected (1 expected)`,
+      'written: offline-check.json',
+    ], inside);
     assert.deepEqual(printed, answer.lines);
     assert.deepEqual(explained, answer.notes);
-    assert.equal(answer.notes.length, 2);
-    assert.match(answer.notes[0], /it must read EPERM/);
-    assert.equal(answer.notes[1], 'the sandbox was not shown to deny the network, so nothing was checked and nothing was written');
-    assert.equal(fs.existsSync(resultFile(run.runDir)), false);
+    assert.deepEqual(answer.notes, [`under the sandbox profile the probe read "${inside}" and the listener accepted 0 more connection(s); it must read EPERM, and the listener must accept nothing`, RAN_WITH_NO_METHOD]);
+    const result = readJson(resultFile(own.runDir));
+    assert.deepEqual(result, answer.result);
+    assert.deepEqual(Object.keys(result), RESULT_KEYS);
+    assert.equal(result.network, `not measured: sandbox-exec could not be applied here; sandbox-exec profile ${PROFILE}; control: CONNECTED outside, ${inside} inside`);
+    assert.equal(result.networkDenied, 'not measured');
+    assert.deepEqual(result.records, own.manifest.records.map((record) => ({ file: record.file, sha256: record.sha256, verdict: 'pass-1-6', firstFailingStep: null, notes: [NOT_RUN] })));
+    assert.deepEqual(result.summary, { pass: own.manifest.records.length, reject: 1, expectedRejects: 1 });
   }
-  assert.deepEqual(stateOf(path.dirname(run.runDir)), before);
   assert.equal(LINE.NETWORK_NOT_MEASURED, 'network denied: not measured');
 });
 
-test('run inside a process that is already sandboxed, the sandbox command itself ends with 71: the check prints network denied: not measured, exits 3 and writes no offline-check.json', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
-  const ran = runOfflineCheck([run.runDir], { wrap: [SANDBOX_EXEC, '-p', '(version 1) (allow default)'] });
-  assert.equal(ran.status, 3, ran.stderr);
-  assert.deepEqual(ran.lines, ['private key: absent', 'network denied: not measured']);
-  assert.match(ran.stderr, /^offline-check: under the sandbox profile the probe read "exit 71 \(sandbox-exec: sandbox_apply: Operation not permitted\)" and the listener accepted 0 more connection\(s\); it must read EPERM, and the listener must accept nothing\n/);
-  assert.match(ran.stderr, /offline-check: the sandbox was not shown to deny the network, so nothing was checked and nothing was written\n$/);
+test('on Windows no method is used: the check says so in words, runs the verifier with an empty environment and no method, writes the result with networkDenied not measured, and its exit status follows the records', { ...LIMIT }, async () => {
+  const own = writtenRun();
+  const answer = await offlineCheck(own.runDir, { platform: 'win32' });
+  assert.equal(answer.exitCode, 0);
+  assert.deepEqual(answer.lines, [
+    'private key: absent',
+    `network denied: not measured (${WINDOWS_REASON})`,
+    verifierLine(),
+    pinLine(own.manifest.signerSha256),
+    ...own.manifest.records.map((record) => `${record.file}: pass-1-6`),
+    `${own.manifest.tampered[0].file}: rejected at step 3`,
+    `result: ${own.manifest.records.length} passed steps 1 to 6, 1 rejected (1 expected)`,
+    'written: offline-check.json',
+  ]);
+  assert.deepEqual(answer.notes, [WINDOWS_WHY, RAN_WITH_NO_METHOD]);
+  assert.deepEqual(readJson(resultFile(own.runDir)), answer.result);
+  assert.deepEqual(Object.keys(answer.result), RESULT_KEYS);
+  assert.deepEqual([answer.result.network, answer.result.networkDenied], [`not measured: ${WINDOWS_REASON}`, 'not measured']);
+  assert.deepEqual(answer.result.tampered.map((item) => [item.verdict, item.firstFailingStep]), [['reject', 3]]);
+
+  // A tampered copy that is not rejected: the result is written, and the check ends with 4.
+  const copy = own.manifest.tampered[0];
+  const original = own.manifest.records.find((record) => path.basename(record.file) === path.basename(copy.file));
+  fs.copyFileSync(path.join(own.runDir, original.file), path.join(own.runDir, copy.file));
+  const again = await offlineCheck(own.runDir, { platform: 'win32' });
+  assert.equal(again.exitCode, 4);
+  assert.equal(again.result.networkDenied, 'not measured');
+  assert.ok(again.notes.includes(`${copy.file}: a tampered copy that was not rejected`));
+  assert.deepEqual(readJson(resultFile(own.runDir)).summary, { pass: own.manifest.records.length + 1, reject: 0, expectedRejects: 1 });
+});
+
+test('a method under which the probe still reaches the check\'s own listener is contradicted: the check prints network denied: no with what the probe read, ends with 3, runs no verifier and writes nothing', { ...LIMIT }, async () => {
+  const before = stateOf(path.dirname(run.runDir));
+  const printed = [];
+  const explained = [];
+  const answer = await offlineCheck(run.runDir, { methods: [sandboxExecMethod(RUNS_IT_UNSANDBOXED())], print: (line) => printed.push(line), note: (line) => explained.push(line) });
+  assert.equal(answer.exitCode, 3);
+  assert.equal(EXIT.NETWORK_NOT_DENIED, 3);
+  assert.deepEqual(answer.lines, ['private key: absent', 'network denied: no (under sandbox-exec the probe read CONNECTED, and the listener accepted 1 more connection(s))']);
+  assert.deepEqual(printed, answer.lines);
+  assert.deepEqual(explained, answer.notes);
+  assert.deepEqual(answer.notes, ['under the sandbox profile the probe read "CONNECTED" and the listener accepted 1 more connection(s); it must read EPERM, and the listener must accept nothing', CONTRADICTED]);
+  assert.equal(answer.result, null);
   assert.equal(fs.existsSync(resultFile(run.runDir)), false);
+  assert.deepEqual(stateOf(path.dirname(run.runDir)), before);
+  assert.equal(LINE.NETWORK_NOT_DENIED, 'network denied: no');
+});
+
+test('run inside a process that is already sandboxed, sandbox-exec cannot apply its profile and ends with 71: the check prints network denied: not measured, still runs the verifier, writes the result with networkDenied not measured, and exits 0', { skip: HERE.method === 'sandbox-exec' ? false : 'needs sandbox-exec that applies a profile here (macOS), to start the check inside a sandbox', ...LIMIT }, () => {
+  const own = writtenRun();
+  const ran = runOfflineCheck([own.runDir], { wrap: [SANDBOX_EXEC, '-p', '(version 1) (allow default)'] });
+  assert.equal(ran.status, 0, ran.stderr);
+  const seventyOne = 'exit 71 (sandbox-exec: sandbox_apply: Operation not permitted)';
+  assert.deepEqual(ran.lines.slice(0, 3), ['private key: absent', 'network denied: not measured (sandbox-exec could not be applied here)', verifierLine()]);
+  assert.equal(ran.lines.at(-1), 'written: offline-check.json');
+  assert.equal(ran.stderr, [
+    `offline-check: under the sandbox profile the probe read "${seventyOne}" and the listener accepted 0 more connection(s); it must read EPERM, and the listener must accept nothing`,
+    `offline-check: ${RAN_WITH_NO_METHOD}`,
+    '',
+  ].join('\n'));
+  const result = readJson(resultFile(own.runDir));
+  assert.equal(result.network, `not measured: sandbox-exec could not be applied here; sandbox-exec profile ${PROFILE}; control: CONNECTED outside, ${seventyOne} inside`);
+  assert.equal(result.networkDenied, 'not measured');
+  assert.deepEqual(result.summary, { pass: own.manifest.records.length, reject: 1, expectedRejects: 1 });
 });
 
 test('the sandbox command and the probe get an empty environment: no variable of this process reaches them', { ...LIMIT }, async () => {
@@ -450,7 +622,7 @@ test('the sandbox command and the probe get an empty environment: no variable of
     'process.exit(71);',
   ], [seen]);
   assert.ok(Object.keys(process.env).length > 0, 'this process has variables to hand on');
-  await networkControl({ sandboxArgv: reports });
+  await networkControl({ method: sandboxExecMethod(reports) });
   const names = readJson(seen);
   // macOS adds one variable of its own to a process it starts; nothing else is there.
   const allowed = new Set(['__CF_USER_TEXT_ENCODING']);
@@ -523,7 +695,7 @@ test('what the look cannot read is not read as absent: a symbolic link in the ru
   assert.equal(LINE.KEY_NOT_RULED_OUT, 'private key: not ruled out');
 });
 
-test('the pin is read from outside the run directory: the check prints its SHA-256, refuses a pin inside the run directory or one that is not a public key, and says so when there is none', { ...NEEDS_SANDBOX, ...LIMIT }, () => {
+test('the pin is read from outside the run directory: the check prints its SHA-256, refuses a pin inside the run directory or one that is not a public key, and says so when there is none', { ...LIMIT }, () => {
   const pinned = makeRun();
   writeRun(pinned.runDir);
   const pin = pinFileOf(pinned.runDir);
@@ -563,10 +735,10 @@ test('the pin is read from outside the run directory: the check prints its SHA-2
   fs.rmSync(pin);
   const none = runOfflineCheck([pinned.runDir]);
   assert.equal(none.status, 1, none.stderr);
-  assert.deepEqual(none.lines.slice(0, 3), [...KEY_AND_NETWORK, verifierLine()]);
+  assert.deepEqual(none.lines.slice(0, 3), [...keyAndNetwork(), verifierLine()]);
   assert.equal(none.lines[3], `pin: not found (looked outside the run directory, at ${pin})`);
   assert.equal(none.lines.length, 4);
-  assert.equal(none.stderr, 'offline-check: the verifier requires the key inside each record to equal the pin, and this run has none, so nothing was checked and nothing was written\n');
+  assert.equal(none.stderr, `${denialNotes()}offline-check: the verifier requires the key inside each record to equal the pin, and this run has none, so nothing was checked and nothing was written\n`);
 });
 
 test('a wrong argument, or a directory that is not a written run, ends with 1 and says why; none of these endings is 0', { ...LIMIT }, () => {
@@ -580,7 +752,8 @@ test('a wrong argument, or a directory that is not a written run, ends with 1 an
     assert.match(ran.stderr, /\nexit 0  every record passed steps 1 to 6, every tampered copy was rejected, and the\n/);
     assert.match(ran.stderr, /\nexit 4  the verifier ran and the result is not that; the result is written\n/);
     assert.match(ran.stderr, /\nexit 1  an error: /);
-    assert.match(ran.stderr, /\nexit 3  the network denial was not shown: nothing was checked, nothing was written\n$/);
+    assert.match(ran.stderr, /\nexit 3  the probe reached the network under the method meant to deny it: nothing\n        was checked, nothing was written\n$/);
+    assert.match(ran.stderr, /\n        disk and the manifest agree; the result is written, and says whether the\n        network denial was measured\n/);
     assert.doesNotMatch(ran.stderr, /exit 2/);
   };
   usage([]);
@@ -609,9 +782,9 @@ test('a wrong argument, or a directory that is not a written run, ends with 1 an
   assert.equal(statuses.length, 13);
 });
 
-test('the one place the verifier is run from runs it on each record file of a written run and writes nothing; the check starts every program through one spawn call and writes one file, the result', { ...NEEDS_SANDBOX, ...LIMIT }, async () => {
+test('the one place the verifier is run from runs it on each record file of a written run and writes nothing; the check starts every program through one spawn call and writes one file, the result', { ...LIMIT }, async () => {
   const before = stateOf(path.dirname(run.runDir));
-  const answer = await callVerifier({ runDir: run.runDir, pinFile: pinFileOf(run.runDir), sandboxArgv: [SANDBOX_EXEC], profile: PROFILE });
+  const answer = await callVerifier({ runDir: run.runDir, pinFile: pinFileOf(run.runDir), prefix: HERE.argv ?? [] });
   assert.deepEqual(Object.keys(answer), ['records', 'tampered', 'findings']);
   assert.deepEqual(answer.records, manifest.records.map((record) => ({ file: record.file, sha256: record.sha256, verdict: 'pass-1-6', firstFailingStep: null, notes: [NOT_RUN] })));
   assert.deepEqual(answer.tampered, manifest.tampered.map((copy) => ({ file: copy.file, sha256: copy.sha256, verdict: 'reject', firstFailingStep: 3, notes: [STEP_3, NOT_RUN] })));
@@ -624,7 +797,7 @@ test('the one place the verifier is run from runs it on each record file of a wr
   assert.equal(check.split('callVerifier(').length - 1, 2);
   assert.match(check, /\nexport async function callVerifier\(/);
   assert.match(check, /= await callVerifier\(/);
-  // The check starts three kinds of program: the probe, the sandbox command with the probe, and the sandbox command with the verifier. All go through one spawn call.
+  // The check starts three kinds of program: the probe, a method's command with the probe, and the verifier under the method or with none. All go through one spawn call.
   assert.equal(check.split('spawn(').length - 1, 1);
   // The check writes one file, the result, and its command line writes none.
   assert.equal(check.split('writeFileSync(').length - 1, 1);

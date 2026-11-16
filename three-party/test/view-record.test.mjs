@@ -264,6 +264,44 @@ test('a later revision that adds checks to a record row of the offline check: ea
   }
 });
 
+test('the network row follows the result: denied in the deck\'s words where the result says yes, or where a result written before networkDenied was added says denied; not measured, with the result\'s network line, where it says not measured or says neither, and then never the words of a denial', async () => {
+  const notMeasured = 'not measured: no method that works without administrator rights is used on Windows';
+  const cases = [
+    ['networkDenied yes', { ...structuredClone(OFFLINE), networkDenied: 'yes' }, true],
+    ['networkDenied not measured', { ...structuredClone(OFFLINE), network: notMeasured, networkDenied: 'not measured' }, false],
+    ['no networkDenied and a network line that does not say denied', { ...structuredClone(OFFLINE), network: notMeasured }, false],
+  ];
+  for (const [name, result, denied] of cases) {
+    const view = await openView(browser, { hash: '#inspect', clockAt: new Date(Date.parse(CLEAN_DONE.finishedAt) + 5000).toISOString(), server: { examples: examplesWith({ add: { 'offline-check.json': result } }) } });
+    const { page } = view;
+    try {
+      await runAndWait(view, 'clean', 'paid');
+      await page.keyboard.press('o');
+      await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
+      await view.settle();
+      const panel = await page.evaluate(() => {
+        const host = document.getElementById('pane-inspector');
+        const row = [...host.querySelectorAll('.kv-row')][1];
+        return { sub: host.querySelector('.insp-head .insp-sub').textContent, network: [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()], text: host.textContent };
+      });
+      if (denied) {
+        assert.equal(panel.sub, COPY['offline.sub'], name);
+        assert.deepEqual(panel.network, [COPY['offline.network'], COPY['offline.networkValue']], name);
+        for (const key of ['offline.subNotMeasured', 'offline.networkNotMeasured']) assert.equal(panel.text.includes(COPY[key]), false, `${name}: ${key}`);
+      } else {
+        assert.equal(panel.sub, COPY['offline.subNotMeasured'], name);
+        assert.deepEqual(panel.network, [COPY['offline.network'], `${COPY['offline.networkNotMeasured']} ${notMeasured}`], name);
+        for (const key of ['offline.sub', 'offline.networkValue']) assert.equal(panel.text.includes(COPY[key]), false, `${name}: ${key}`);
+      }
+      assertCensus(await census(page), docsFrom(view.served, CLEAN_DONE.runId));
+      assert.deepEqual(view.errors, [], name);
+    } finally {
+      await view.close();
+    }
+  }
+  assert.deepEqual([COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured']], ['Each record is checked by the verifier. Network denial was not measured on this computer.', 'Not measured on this computer']);
+});
+
 test('the copy control: beside every hash and id, named for its value; a press puts the full value on the clipboard and the control reads Copied for two seconds', async () => {
   const view = await openView(browser, { permissions: ['clipboard-read', 'clipboard-write'] });
   const { page } = view;

@@ -1,4 +1,4 @@
-// The package for another Mac, made by scripts/three-party/package.sh from
+// The package for another computer, made by scripts/three-party/package.sh from
 // a clean export of the commit this tree is at. The script is run for real
 // here, into a directory of the test's own: it exports the commit, installs
 // the dependencies the demo runs on from the lockfile (from the npm cache
@@ -53,7 +53,7 @@ test('the package script writes the tarball, the bundle, their hashes and the on
     assert.equal(fs.readFileSync(path.join(out, `${name}.sha256`), 'utf8'), `${sha256(path.join(out, name))}  ${name}\n`, `${name}.sha256 is the hash of ${name}, in the form shasum -c reads`);
   }
   assert.match(made.stdout, new RegExp(`^commit ${sha}$`, 'm'));
-  assert.match(made.stdout, /^checks: verifier paths 0, Mach-O files outside node_modules 0, Mach-O files in node_modules 0, git entries 0, run directories 0, key files 0$/m);
+  assert.match(made.stdout, /^checks: verifier paths 0, native executables outside node_modules 0, native executables in node_modules 0, git entries 0, run directories 0, key files 0$/m);
 });
 
 test('the tarball lists no .git, runs, .pem or TEST-KEY.txt entry, no verifier and no native executable, under one top-level directory', { skip: cannotPackage() }, () => {
@@ -64,7 +64,7 @@ test('the tarball lists no .git, runs, .pem or TEST-KEY.txt entry, no verifier a
   assert.deepEqual(entries.filter((e) => /(^|\/)(\.git|runs|runs\.pins|keys)(\/|$)|\.(pem|key|p12|pfx)$|(^|\/)TEST-KEY\.txt$/.test(e)), []);
   assert.deepEqual(entries.filter((e) => e.includes('three-party/verifier')), []);
   assert.deepEqual(entries.filter((e) => !e.startsWith('three-party-demo/')), [], 'every entry is under three-party-demo/');
-  assert.deepEqual(entries.filter((e) => /(^|\/)\._/.test(e)), [], 'no metadata file of the packaging Mac');
+  assert.deepEqual(entries.filter((e) => /(^|\/)\._/.test(e)), [], 'no metadata file that the tar of macOS writes');
   assert.deepEqual(entries.filter((e) => e.startsWith('three-party-demo/three-party/stills/')), [], 'the pictures of the example files are left out');
 
   // What the demo runs on is there: its command line, the screens, the engine, the record writer, the dependencies.
@@ -87,7 +87,7 @@ test('the tarball names its build and its one script; the one command is the two
 
   assert.equal(fs.readFileSync(path.join(out, 'ONE-COMMAND.txt'), 'utf8'), [
     `tar -xzf ~/Downloads/${base}.tar.gz -C ~ && cd ~/three-party-demo && npm run three-party`,
-    'macOS, Node.js 22.12 or later, a browser; no login, no network.',
+    'Needs Node.js 22.12 or later, a browser, and tar and a POSIX shell for the command above; no login, no network.',
     '',
   ].join('\n'));
 });

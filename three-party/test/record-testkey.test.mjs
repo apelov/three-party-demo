@@ -15,7 +15,7 @@ import util from 'node:util';
 import {
   deletionLine, generateTestKey, isTestKey, liveTestKey, PIN_DIRECTORY, pinFileOf, pinIsOutside, PUBLIC_KEY_FILE, TEST_KEY_LINE, TEST_KEY_NOTE_FILE,
 } from '../src/record/testkey.mjs';
-import { filesUnder, makeRun, NEEDS_SANDBOX, parsesAsPrivateKey, privateKeyFilesUnder, removeTempDirs, SANDBOX_EXEC, sha256, tempDir, THREE_PARTY } from './record-support.mjs';
+import { filesUnder, makeRun, NEEDS_WRITE_SANDBOX, parsesAsPrivateKey, privateKeyFilesUnder, removeTempDirs, sha256, tempDir, THREE_PARTY, writeSandbox } from './record-support.mjs';
 
 after(removeTempDirs);
 
@@ -275,14 +275,16 @@ test('the private key reaches no file: a whole run written in a process with a t
   assert.deepEqual(privateKeyFilesUnder(THREE_PARTY), []);
 });
 
-test('a whole run is written by a process the sandbox lets write under the run\'s own temp directory and nowhere else, so nothing of the key is written to any other place', NEEDS_SANDBOX, () => {
+test('a whole run is written by a process the sandbox lets write under the run\'s own temp directory and nowhere else, so nothing of the key is written to any other place', NEEDS_WRITE_SANDBOX, () => {
   const moduleUrl = JSON.stringify(pathToFileURL(path.join(THREE_PARTY, 'src', 'record', 'writer.mjs')).href);
   const script = `import { writeRun } from ${moduleUrl}; const out = writeRun(process.argv[1]); process.stdout.write(String(out.records.length));`;
   const run = makeRun();
-  // The sandbox names paths with symbolic links resolved.
+  // The sandbox names paths with symbolic links resolved: sandbox-exec with
+  // a file-write profile on macOS, bwrap with the root read-only and this
+  // one directory writable on Linux.
   const root = fs.realpathSync(path.dirname(run.runDir));
-  const profile = `(version 1) (allow default) (deny file-write*) (allow file-write* (subpath ${JSON.stringify(root)}))`;
-  const write = (runDir) => spawnSync(SANDBOX_EXEC, ['-p', profile, process.execPath, '--input-type=module', '-e', script, runDir], { env: {}, encoding: 'utf8', timeout: 60000 });
+  const sandbox = writeSandbox(root);
+  const write = (runDir) => spawnSync(sandbox.argv[0], [...sandbox.argv.slice(1), process.execPath, '--input-type=module', '-e', script, runDir], { env: {}, encoding: 'utf8', timeout: 60000 });
 
   const ran = write(path.join(root, run.runId));
   assert.equal(ran.status, 0, ran.stderr);
@@ -303,7 +305,7 @@ test('a whole run is written by a process the sandbox lets write under the run\'
   const other = makeRun();
   const refused = write(fs.realpathSync(other.runDir));
   assert.equal(refused.status, 1);
-  assert.match(refused.stderr, /EPERM/);
+  assert.match(refused.stderr, new RegExp(`Error: ${sandbox.refusal}: [a-z ]+, mkdir '[^']+/\\.pins'`));
   assert.deepEqual(filesUnder(path.dirname(other.runDir)).filter((file) => !file.includes('/actions/')), []);
 });
 

@@ -6,6 +6,7 @@
 // while the test runs; none is stored here, and no key text is printed (key
 // bytes are compared with boolean assertions, so a failure prints no value).
 
+import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -13,21 +14,106 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { networkDenial } from '../src/record/check.mjs';
+
 export const THREE_PARTY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const OFFLINE_CHECK = path.join(THREE_PARTY, 'bin', 'offline-check.mjs');
 export const UNZIP = '/usr/bin/unzip';
 export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
 
-// The network control needs a sandbox command that can apply a profile. It
-// cannot where there is none, and it cannot inside a process that is
-// already sandboxed; there the tests that need it are skipped and say so.
-function sandboxState() {
-  if (process.platform !== 'darwin' || !fs.existsSync(SANDBOX_EXEC)) return `needs ${SANDBOX_EXEC} (macOS)`;
-  const tried = spawnSync(SANDBOX_EXEC, ['-p', '(version 1) (allow default)', '/usr/bin/true'], { env: {} });
-  return tried.status === 0 ? null : `${SANDBOX_EXEC} cannot apply a profile here (exit ${tried.status}); a process that is already sandboxed cannot`;
+// The method of denying the network that applies on the platform the tests
+// run on, found apart from the check, the way a person would check it by
+// hand: each command is run once on a Node.js program that does nothing,
+// and the first that runs it is the method. macOS: sandbox-exec, which
+// cannot apply a profile inside a process that is already sandboxed. Linux:
+// unshare, then bwrap; each needs the kernel and the container to allow a
+// user namespace to a user without privileges (Docker's default seccomp
+// profile does not). Windows and any other platform: none. The tests that
+// need a method are skipped where none applies, and say why.
+const LINUX_METHODS = Object.freeze([
+  ['unshare', ['/usr/bin/unshare', '/bin/unshare'], ['--user', '--map-root-user', '--net', '--']],
+  ['bwrap', ['/usr/bin/bwrap', '/bin/bwrap'], ['--unshare-user', '--unshare-net', '--ro-bind', '/', '/', '--die-with-parent', '--']],
+]);
+const runsNode = (argv) => spawnSync(argv[0], [...argv.slice(1), process.execPath, '-e', ''], { env: {}, timeout: 30000 }).status === 0;
+function methodHere() {
+  if (process.platform === 'darwin') {
+    if (!fs.existsSync(SANDBOX_EXEC)) return { method: null, argv: null, skip: `needs ${SANDBOX_EXEC} (macOS), and it is not there` };
+    const argv = [SANDBOX_EXEC, '-p', '(version 1) (allow default) (deny network*)'];
+    return runsNode(argv) ? { method: 'sandbox-exec', argv, skip: null } : { method: null, argv: null, skip: `${SANDBOX_EXEC} cannot apply a profile here; a process that is already sandboxed cannot` };
+  }
+  if (process.platform === 'linux') {
+    const found = [];
+    for (const [method, places, flags] of LINUX_METHODS) {
+      const at = places.find((place) => fs.existsSync(place));
+      if (!at) continue;
+      found.push(method);
+      if (runsNode([at, ...flags])) return { method, argv: [at, ...flags], skip: null };
+    }
+    return {
+      method: null,
+      argv: null,
+      skip: found.length === 0
+        ? 'needs unshare or bwrap to deny the network (Linux), and neither is installed'
+        : `needs ${found.join(' or ')} to create a network namespace, and this system does not let ${found.length > 1 ? 'either' : 'it'} (for example Docker's default seccomp profile, or a restriction on user namespaces)`,
+    };
+  }
+  return { method: null, argv: null, skip: `needs a method of denying the network, and none is used on ${process.platform}` };
 }
-const SANDBOX_STATE = sandboxState();
-export const NEEDS_SANDBOX = SANDBOX_STATE === null ? {} : { skip: SANDBOX_STATE };
+export const HERE = Object.freeze(methodHere());
+export const NEEDS_DENIAL = HERE.method === null ? { skip: HERE.skip } : {};
+
+// The reading of the probe under each method, measured: the sandbox
+// refuses the connect; the new namespace of unshare has its loopback down,
+// so there is no route to 127.0.0.1; the one of bwrap has its own loopback
+// up with nothing listening on it. And the result's network line each
+// method gives when the control shows the denial.
+export const INSIDE_OF = Object.freeze({ 'sandbox-exec': 'EPERM', unshare: 'ENETUNREACH', bwrap: 'ECONNREFUSED' });
+export const NETWORK_OF = Object.freeze({
+  'sandbox-exec': 'denied: sandbox-exec profile (version 1) (allow default) (deny network*); control: CONNECTED outside, EPERM inside',
+  unshare: 'denied: unshare --user --map-root-user --net; control: CONNECTED outside, ENETUNREACH inside',
+  bwrap: 'denied: bwrap --unshare-user --unshare-net --ro-bind / / --die-with-parent; control: CONNECTED outside, ECONNREFUSED inside',
+});
+
+// What the check itself decides about the network here, asked once: the
+// line it prints, the notes it adds, and the two fields of its result. It
+// must agree with HERE: the denial of the method found above where there is
+// one, and not measured where there is none.
+let decided = null;
+export function denialHere() {
+  decided ??= networkDenial().then((denial) => {
+    if (HERE.method === null) {
+      assert.equal(denial.state, 'not-measured', `no method applies here (${HERE.skip}), so the check measures no denial`);
+      assert.equal(denial.networkDenied, 'not measured');
+      assert.match(denial.line, /^network denied: not measured \(.+\)$/);
+      assert.match(denial.network, /^not measured: /);
+      assert.ok(denial.notes.length >= 2, 'the notes say why, and that the verifier runs with no method');
+    } else {
+      assert.deepEqual({ state: denial.state, method: denial.method?.name, line: denial.line, notes: denial.notes, network: denial.network, networkDenied: denial.networkDenied },
+        { state: 'denied', method: HERE.method, line: 'network denied: yes', notes: [], network: NETWORK_OF[HERE.method], networkDenied: 'yes' });
+    }
+    return denial;
+  });
+  return decided;
+}
+
+// A sandbox that lets a process write under one directory and nowhere else:
+// sandbox-exec with a file-write profile on macOS, and bwrap with the root
+// bound read-only and that one directory bound writable on Linux. The
+// answer is the command to put before the program and the code the
+// writer's earliest write, a recursive mkdirSync of the pins directory,
+// fails with: EPERM under the profile; ENOENT under bwrap, where mkdir
+// fails with EROFS and Node.js then reports the stat of the directory it
+// could not make. It is null where neither applies here.
+export function writeSandbox(root) {
+  if (HERE.method === 'sandbox-exec') {
+    return { argv: [SANDBOX_EXEC, '-p', `(version 1) (allow default) (deny file-write*) (allow file-write* (subpath ${JSON.stringify(root)}))`], refusal: 'EPERM' };
+  }
+  if (process.platform !== 'linux') return null;
+  const at = LINUX_METHODS[1][1].find((place) => fs.existsSync(place));
+  const argv = at ? [at, '--unshare-user', '--ro-bind', '/', '/', '--bind', root, root, '--die-with-parent', '--'] : null;
+  return argv && runsNode(argv) ? { argv, refusal: 'ENOENT' } : null;
+}
+export const NEEDS_WRITE_SANDBOX = writeSandbox(os.tmpdir()) ? {} : { skip: 'needs a sandbox that limits where a process writes: sandbox-exec that applies here (macOS), or bwrap that can create a user namespace here (Linux)' };
 
 export const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 export const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));

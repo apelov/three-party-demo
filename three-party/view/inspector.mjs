@@ -433,6 +433,13 @@ function offlinePanel(app) {
   // The two sentences that speak of the verifier stand when the answer
   // names one. A check that ran no verifier shows what it returned instead.
   const named = Boolean(result.verifier);
+  // The network was shown denied when networkDenied says so, or, in a result
+  // written before that field was added, when its network line says so: such
+  // a result was written only then. Anything else is shown as not measured,
+  // with the network line of the result, and never in the words of a denial.
+  const hasField = typeof result.networkDenied === 'string';
+  const denied = hasField ? result.networkDenied === 'yes' : String(result.network ?? '').startsWith('denied: ');
+  const whyNot = source(hasField ? 'networkDenied' : 'network');
   const rows = (kind) => (Array.isArray(result[kind]) ? result[kind] : []).map((rec, n) => el('div', { class: 'record', data: { file: String(rec.file), kind } },
     el('div', { class: 'record-line' },
       put('span', 'mono', value(result, `${kind}[${n}].file`, undefined, source)),
@@ -441,13 +448,14 @@ function offlinePanel(app) {
   return el('div', { class: 'insp', data: { panel: 'offline' } },
     el('div', { class: 'insp-head', data: { tone: 'neutral' } },
       el('h2', { class: 'insp-title', id: 'inspector-heading' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : null)),
-      named ? put('p', 'insp-sub', app.w.word('offline.sub')) : null),
+      named ? put('p', 'insp-sub', denied ? app.w.word('offline.sub') : app.w.chosen('offline.subNotMeasured', whyNot)) : null),
     returnedState(result, source),
     section(app, null, table(
       sha ? row(app.w.word('offline.verifier'),
         put('span', null, app.w.lineNodes('offline.verifierValue', { sha16: [String(sha).slice(0, 16), source('verifier.sha256', 'hex16')] }, ['sha16']), { title: String(sha) }),
         copyButton(app, sha, source('verifier.sha256').replace(/^run:/, ''))) : null,
-      result.network ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkValue', source('network')))) : null,
+      result.network && denied ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkValue', source('network')))) : null,
+      result.network && !denied ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkNotMeasured', whyNot)), put('span', 'mono', value(result, 'network', undefined, source))) : null,
       result.pin ? row(app.w.word('offline.signer'), put('span', null, app.w.chosen('offline.signerValue', source('pin'))), put('span', 'mono', value(result, 'pin', undefined, source))) : null)),
     el('div', { class: 'records' }, rows('records'), rows('tampered')),
     result.summary ? section(app, null,

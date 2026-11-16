@@ -5,20 +5,10 @@
 // screens with a record of what the API answered it.
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { startApi } from '../../src/engine/api.mjs';
 import { offlineCheckOf } from '../../src/engine/records.mjs';
 import { VIEW_DIR } from '../../src/engine/screens.mjs';
 import { removeDir, request, tempRunsDir } from './engine-helpers.mjs';
-
-export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
-
-// The offline check shows its network denial with the system's sandbox
-// command. Where there is none, the check cannot reach its verifier step,
-// and a test of that step says so and is skipped.
-export function sandboxCommandMissing() {
-  return process.platform === 'darwin' && fs.existsSync(SANDBOX_EXEC) ? false : `this test needs ${SANDBOX_EXEC} (macOS)`;
-}
 
 // The demo's listener on a free port of 127.0.0.1, with a runs directory of
 // its own and no pacing. `witness` receives the access token values the bank

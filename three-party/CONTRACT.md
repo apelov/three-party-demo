@@ -156,10 +156,41 @@ Offline check output (`offline-check.json`): `runId`, `at` (RFC 3339 UTC), `veri
 `entry` `three-party/src/verifier/aep-verify.mjs`, `sha256` the hex of that file's bytes as run, `source`
 `written for this demo from the format text, steps 1 to 6`), `pin` (the path of the pin file the check read,
 from the directory that holds the run directory, for example `.pins/<runId>.pub.pem`), `pinSha256` (hex of
-the pin file's bytes), `network`
-(`denied: sandbox-exec profile (version 1) (allow default) (deny network*); control: CONNECTED outside, EPERM inside`),
-`records` (array of `{file, sha256, verdict, firstFailingStep, notes}` with verdict `pass-1-6` or `reject`),
-`tampered` (same shape), `summary` (`{pass, reject, expectedRejects}`).
+the pin file's bytes), `network` (the method and both readings of the network control, below), `records`
+(array of `{file, sha256, verdict, firstFailingStep, notes}` with verdict `pass-1-6` or `reject`), `tampered`
+(same shape), `summary` (`{pass, reject, expectedRejects}`), `networkDenied` (`yes` or `not measured`; added
+after `summary`).
+
+The network control. The check starts a listener of its own on 127.0.0.1 and runs one probe twice: with no
+method, where it must reach that listener (`CONNECTED`), and under the method of the platform, where the connect
+must fail with a reading that method gives and the listener must accept nothing. The tools are looked for at
+fixed paths (`/usr/bin`, then `/bin`), never through `PATH`, and the methods work for a user with no privileges:
+
+| platform | method | reading under it | `network` when the control shows the denial |
+|---|---|---|---|
+| macOS | `sandbox-exec` with the profile `(version 1) (allow default) (deny network*)` | `EPERM` | `denied: sandbox-exec profile (version 1) (allow default) (deny network*); control: CONNECTED outside, EPERM inside` |
+| Linux | `unshare --user --map-root-user --net` (util-linux): a new user and network namespace whose loopback is down | `ENETUNREACH` | `denied: unshare --user --map-root-user --net; control: CONNECTED outside, ENETUNREACH inside` |
+| Linux, where unshare cannot make the namespace | `bwrap --unshare-user --unshare-net --ro-bind / / --die-with-parent`: a new namespace whose own loopback is up, with nothing listening | `ECONNREFUSED` | `denied: bwrap --unshare-user --unshare-net --ro-bind / / --die-with-parent; control: CONNECTED outside, ECONNREFUSED inside` |
+| Windows | none: Windows Firewall does not filter loopback traffic, and an AppContainer launch is not reachable from Node.js built-ins | | |
+
+The sandbox accepts `EPERM` alone. A new network namespace accepts `ENETUNREACH` and `ECONNREFUSED`, as each says
+the host's loopback is out of reach; any other reading is not a denial. The first method whose control is decided
+ends the search, with one of three outcomes:
+
+- Denied: `networkDenied` is `yes`, and the verifier runs under that method.
+- Not measured (no method on the platform, no method that could be applied here, for example under Docker's
+  default seccomp profile or a restriction on user namespaces, or a probe that did not reach the listener with no
+  method): the verifier still runs, with an empty environment and no method. `network` is `not measured:` and the
+  reason, then, for each method tried, `; <method>; control: <reading> outside, <reading> inside`, and
+  `networkDenied` is `not measured`.
+- Not denied (under the method the probe still reached the listener): that contradicts the method, the verifier
+  does not run, and nothing is written.
+
+The exit status: `0` every record passed steps 1 to 6, every tampered copy was rejected, and the disk and the
+manifest agree, whether the denial was shown or not measured (the result says which); `4` the verifier ran and the
+result is not that; `1` an error; `3` not denied. The result is written on `0` and `4` alone. A result written
+before `networkDenied` was added has no such member; it was written only when the control showed the denial, and
+its `network` begins with `denied:`, as the example file's does.
 
 Revision 2 adds checks after the verifier's steps 1 to 6, per record: `credentialCited` (metadata
 `credential_sha256` equals SHA-256 of the run's credential file), `grantCited` (`grant_sha256` equals SHA-256
@@ -233,7 +264,11 @@ What revision 2 changes in revision 1, section by section. Nothing of revision 1
   `detail.grantFile` on `grant` and `grant-again`.
 - Section 5. Added the grant claims file; added the record metadata members `grant_id`, `grant_sha256`,
   `grant_scope` and `grant_expires_at`, and the second value of `timestamp_entry`; added the offline check's
-  `credentialCited`, `grantCited` and `timestampChecked`, and `checks` on each record row.
+  `credentialCited`, `grantCited` and `timestampChecked`, and `checks` on each record row. Added the network
+  control's methods for Linux, the values of `network` they give and the one of a check whose denial was not
+  measured, and `networkDenied` after `summary`. A check whose denial is not measured now runs the verifier and
+  writes its result, so its exit status follows the records; exit status `3` now means a method the probe got
+  through, where it meant a denial that was not shown.
 - Section 6. The three state examples carry revision 2; the seven files of revision 1 are kept under
   `examples/v1/`.
 - Section 7. Added `GET /api/labels` and `GET /api/runs/<runId>/received`. The members a listener with the

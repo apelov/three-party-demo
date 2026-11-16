@@ -14,17 +14,25 @@ const USAGE = `usage: node three-party/bin/offline-check.mjs <runDir> [--out <fi
   --pin <file>   the public key captured when the run started (default: beside the
                  run directory, in .pins/<runId>.pub.pem); never a file inside <runDir>
 
-The check looks for a private key in the run directory, shows that the sandbox
-profile denies the network, and runs the verifier under that profile on each
-record file: the files under records/ and records/tampered/, and the files
-records/manifest.json names.
+The check looks for a private key in the run directory, then shows that a
+method denies the network: a probe started with no method reaches the check's
+own listener on 127.0.0.1, and started under the method it does not. The
+method is sandbox-exec on macOS, and on Linux a new network namespace made by
+unshare, or by bwrap where unshare cannot make one. The verifier then runs
+under that method on each record file: the files under records/ and
+records/tampered/, and the files records/manifest.json names. Where no method
+shows the denial (Windows has none that works without administrator rights),
+the check prints network denied: not measured, still runs the verifier with an
+empty environment and no method, and the result says so.
 
 exit 0  every record passed steps 1 to 6, every tampered copy was rejected, and the
-        disk and the manifest agree; the result is written
+        disk and the manifest agree; the result is written, and says whether the
+        network denial was measured
 exit 4  the verifier ran and the result is not that; the result is written
 exit 1  an error: a wrong argument, a directory that is not a run, a private key in
         the run directory, no pin; nothing is written
-exit 3  the network denial was not shown: nothing was checked, nothing was written
+exit 3  the probe reached the network under the method meant to deny it: nothing
+        was checked, nothing was written
 `;
 
 function readArguments(argv) {
