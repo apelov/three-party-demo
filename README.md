@@ -102,7 +102,9 @@ every record.
 ## Run it
 
 Requirements: git, Node.js 22.12.0 or later and a browser, on macOS, Linux or
-Windows. CHECKED_LINE
+Windows. Checked on macOS 26.4 (Apple silicon) with Node.js 22.20.0 and
+24.21.0, and on Debian 12 in Docker with Node.js 22.12.0 and 22.23.5; not yet
+run on Windows.
 
 ```sh
 git clone https://github.com/opena2a-org/three-party-demo
@@ -166,7 +168,7 @@ The poisoned invoice, stopped by the intent rule before the payment:
 
 The offline check of a run's records:
 
-![The offline check: the verifier, the network state and the trusted signer, and each record shown passing steps 1 to 6 of the format.](three-party/stills/s6-offline-inspect-light-1440.png)
+![The offline check of the poisoned run's records: the verifier, the network state and the trusted signer; four records pass steps 1 to 6 of the format and the tampered copy is rejected at step 3.](three-party/stills/s6-offline-inspect-light-1440.png)
 
 ## What is in the repository
 
