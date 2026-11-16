@@ -123,15 +123,16 @@ label map whose `steps` list holds the step id, and on the crossing step from it
   why}], passed, total, outcome, summary, scope}`. The seven checks are `capture`, `witSignature`,
   `contentDigest`, `httpSignature`, `signatureCreated`, `response` and `journal`. No token value, signature value
   or Txn-Token value is written; the token's claims and SHA-256 are.
-- `intent`: `rule` (`Every argument of a tool call must equal the same field of the declared intent. A call
-  with no declared intent is blocked.`), `declared` (object), `calls` (array of `{tool, args, declaredFor,
-  match, fieldsDiffering}`), `result` (`match` | `mismatch` | `undeclared-call`).
+- `intent`:
+  `rule` (`Every argument of a tool call must equal the same field of the declared intent. A call with no declared intent is blocked.`),
+  `declared` (object), `calls` (array of `{tool, args, declaredFor, match, fieldsDiffering}`), `result`
+  (`match` | `mismatch` | `undeclared-call`).
 - `pay`: `endpoint`, `httpStatus`, `paymentId` (or null), `amount`, `currency`, `payeeAccount`,
   `recordedByBank` (bool).
-- `record`: `written` (count), `format` (`docs/aep-format.md in eatf-verifier, text SHA-256
-  cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6`), `signer` (`test key
-  generated for this run`), `credentialCitedBy` (`sha256 over the credential's exact bytes`), `timestampEntry`
-  (`stand-in: no timestamp authority`).
+- `record`: `written` (count),
+  `format` (`docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6`),
+  `signer` (`test key generated for this run`), `credentialCitedBy` (`sha256 over the credential's exact bytes`),
+  `timestampEntry` (`stand-in: no timestamp authority`).
 
 ## 5. The files of a run
 
