@@ -38,10 +38,11 @@ export function runVerifier(args, { wrap = [] } = {}) {
   return { status: ran.status, signal: ran.signal, stdout, stderr: ran.stderr ?? '', answer };
 }
 
-// An RSA 2048 key made for the test that asks for it, its public key in
-// SPKI PEM, and that PEM in a file to give as the pin.
-export function makeSigner() {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+// An RSA key made for the test that asks for it (2048 bits unless it asks
+// for another size), its public key in SPKI PEM, and that PEM in a file to
+// give as the pin.
+export function makeSigner(modulusLength = 2048) {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength });
   const publicPem = Buffer.from(publicKey.export({ type: 'spki', format: 'pem' }), 'utf8');
   const pinFile = path.join(tempDir(), 'pin.txt');
   fs.writeFileSync(pinFile, publicPem);

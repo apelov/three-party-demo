@@ -121,7 +121,7 @@ holds the step id. The `part` ids of revision 1 stay as they are; the pay steps 
 - `crossing`: `from`, `to`, `chainFile` (`fixtures/delegation-chain/dc-compact-valid-two-hop.json`), `hops` (2), `outcome` (the chain check's outcome name), `stepsRun` (`1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03 section 6`), `standIn` (`AI2II interop: stand-in; the real piece replaces the hop file, not code`), `hopFile`.
 - `intent`: `rule` (`Every argument of a tool call must equal the same field of the declared intent. A call with no declared intent is blocked.`), `declared` (object), `calls` (array of `{tool, args, declaredFor, match, fieldsDiffering}`), `result` (`match` | `mismatch` | `undeclared-call`).
 - `pay` and `pay-again`: `endpoint`, `httpStatus`, `paymentId` (or null), `amount`, `currency`, `payeeAccount`, `recordedByBank` (bool).
-- `record`: `written` (count), `format` (`docs/aep-format.md in eatf-verifier, text SHA-256 63039093c8bd562ae065af10f131f3393e0c521b19a643456229ade04dcbb7c7, steps 1 to 6`), `signer` (`test key generated for this run`), `credentialCitedBy` (`sha256 over the credential's exact bytes`), `timestampEntry` (`stand-in: no timestamp authority`).
+- `record`: `written` (count), `format` (`docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6`), `signer` (`test key generated for this run`), `credentialCitedBy` (`sha256 over the credential's exact bytes`), `timestampEntry` (`stand-in: no timestamp authority`).
 
 ## 5. The files of a run
 

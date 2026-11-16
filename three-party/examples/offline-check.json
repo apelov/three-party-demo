@@ -3,7 +3,7 @@
   "at": "2026-11-15T13:54:10Z",
   "verifier": {
     "entry": "three-party/src/verifier/aep-verify.mjs",
-    "sha256": "a1c794b82323bc908059786f9913b4072aa56150fc2ad4d999db3b8e0642af6c",
+    "sha256": "ed2232e6cd03e1f74eb73f132c3989cb7c8ffb729f5f6e54126c0f4db7462ca5",
     "source": "written for this demo from the format text, steps 1 to 6"
   },
   "pin": "../runs.pins/clean-20261115T135409Z.pub.pem",
