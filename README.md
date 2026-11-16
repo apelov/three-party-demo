@@ -12,6 +12,19 @@ payment before it is sent, and the record of that step says why.
 
 ![The poisoned invoice run: the request crosses the credential check, the grant and the crossing, the intent rule stops the changed payment before the bank is called, and the audit then checks every record offline.](docs/poisoned-invoice.gif)
 
+Run it with git and Node.js 22.12.0 or later, then open http://127.0.0.1:7390/
+in a browser:
+
+```sh
+git clone https://github.com/opena2a-org/three-party-demo && cd three-party-demo
+npm ci
+node scripts/three-party/fetch-ai2ii.mjs   # optional: AI2II's capture for the crossing
+npm run three-party
+```
+
+[Run it](#run-it) explains each step, the terminal mode and each operating
+system.
+
 ## How this came together
 
 Built at the IETF 127 Hackathon, San Francisco, 14 to 15 November 2026, by
