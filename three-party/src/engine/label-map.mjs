@@ -43,6 +43,27 @@ export function partFields(stepId) {
   return { part: id, partLabel: part.label, standIn: part.standIn, standInNote: part.standInNote };
 }
 
+// The variants of the part that holds a step, by id (the crossing has a
+// supplied one and a fallback), or null for a part with one form.
+export function partVariants(stepId) {
+  return partOfStep(stepId).part.variants ?? null;
+}
+
+// What a step of state.json carries from the variant of its part that runs.
+export function variantFields(stepId, variant) {
+  const v = partVariants(stepId)?.[variant];
+  if (!v) throw new Error(`the part of the step ${stepId} has no variant ${variant}`);
+  return { partLabel: v.label, standIn: v.standIn, standInNote: v.standInNote };
+}
+
+// The note a variant carries beside its stand-in note (the fallback of the
+// crossing names where the AI2II capture comes from and how it is fetched),
+// or null.
+export function variantNote(stepId, variant) {
+  if (!variant) return null;
+  return partVariants(stepId)?.[variant]?.fetchNote ?? null;
+}
+
 // The note of the map for a record's timestamp entry: the stand-in note
 // while the entry says stand-in, the note on the test authority otherwise.
 export function timestampNote(entry) {

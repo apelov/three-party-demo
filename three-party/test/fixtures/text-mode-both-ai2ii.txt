@@ -1,0 +1,26 @@
+Three parts, one payment
+Every customer, account, payee and payment in this demo is fictional.
+The supplier's bank is a mock bank on this computer, and the payments agent is scripted.
+Times in UTC. Paced for viewing: at least 8 seconds per step.
+[151729] OpenA2A · ATX · AAP | Verify the agent's ATX credential locally | Passed | valid; signed by the test issuer; not after 2099-12-31T23:59:59Z; file sha256 8e66c6db3c16...
+[151739] OpenA2A · ATX · AAP | Issue a scoped AAP grant | Passed | Bearer grant for payment:billpay, expires in 60 seconds; the declared payment is in scope (permissions, creditorAccounts, maximumIndividualAmount, validToDateTime)
+[151749] WIMSE · AI2II | Cross into the supplier's bank's trust domain | Passed | Payments agent to Supplier's bank; AI2II capture of a separate exchange, commit 32f584a2: 7 of 7 checks passed
+[151759] OpenA2A · ATX · AAP | Apply the intent rule to each tool call | Passed | tool calls checked: 1; each equals the declared intent field for field
+[151809] Supplier's bank | Pay the invoice under the grant | Passed | POST /v1/payments answered 200; payment led_e867568eead00267; 148.20 USD to DEMO-0000-2201; in the bank ledger
+[151819] AEP (stand-in) | Write one signed Action Evidence Package per action | Written | 5 records; docs/aep-format.md in eatf-verifier, text SHA-256 63039093c8bd562ae065af10f131f3393e0c521b19a643456229ade04dcbb7c7, steps 1 to 6; signer: test key generated for this run. Our writer, in the AEP format. Stand-in label until the format is confirmed. Stand-in: no timestamp authority.
+[151827] Outcome | Paid | Every tool call passed the intent rule, and the supplier's bank accepted payment led_e867568eead00267.
+Run directory: three-party/runs/clean-20261115T151719Z
+
+Three parts, one payment
+Every customer, account, payee and payment in this demo is fictional.
+The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.
+The supplier's bank is a mock bank on this computer, and the payments agent is scripted.
+Times in UTC. Paced for viewing: at least 8 seconds per step.
+[151837] OpenA2A · ATX · AAP | Verify the agent's ATX credential locally | Passed | valid; signed by the test issuer; not after 2099-12-31T23:59:59Z; file sha256 8e66c6db3c16...
+[151847] OpenA2A · ATX · AAP | Issue a scoped AAP grant | Passed | Bearer grant for payment:billpay, expires in 60 seconds; the declared payment is in scope (permissions, creditorAccounts, maximumIndividualAmount, validToDateTime)
+[151857] WIMSE · AI2II | Cross into the supplier's bank's trust domain | Passed | Payments agent to Supplier's bank; AI2II capture of a separate exchange, commit 32f584a2: 7 of 7 checks passed
+[151907] OpenA2A · ATX · AAP | Apply the intent rule to each tool call | Stopped | secrets.read has no declared intent (the broker's resolver also refused the name bank-api-key); bank.payments.create differs in payeeAccount (declared DEMO-0000-2202, called with DEMO-0000-9931)
+[151915] Supplier's bank | Pay the invoice under the grant | Not reached | no payment was sent: the run stopped at an earlier step
+[151925] AEP (stand-in) | Write one signed Action Evidence Package per action | Written | 4 records; docs/aep-format.md in eatf-verifier, text SHA-256 63039093c8bd562ae065af10f131f3393e0c521b19a643456229ade04dcbb7c7, steps 1 to 6; signer: test key generated for this run. Our writer, in the AEP format. Stand-in label until the format is confirmed. Stand-in: no timestamp authority.
+[151933] Outcome | Stopped by the intent rule | The credential and the grant were valid, but the agent asked for a secret and changed the payee, which its declared intent does not allow.
+Run directory: three-party/runs/poisoned-20261115T151827Z

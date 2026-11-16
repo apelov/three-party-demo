@@ -37,6 +37,17 @@ export function partOf(app, stepId) {
   return { col, index: cols.indexOf(col), part: parts[col] ?? null };
 }
 
+// A part as the run shown uses it: the variant of the label map that a step
+// of the run names (the crossing's supplied capture check or its fallback),
+// with the path of its strings in the map; the part itself when the run
+// names none, and before a run.
+export function shownPart(app, col) {
+  const part = app.labels.parts?.[col] ?? null;
+  const step = (app.run?.steps ?? []).find((s) => s.variant && app.labels.stepColumns?.[s.id] === col);
+  const variant = step && part?.variants && Object.hasOwn(part.variants, step.variant) ? step.variant : null;
+  return variant ? { part: part.variants[variant], path: `parts.${col}.variants.${variant}` } : { part, path: `parts.${col}` };
+}
+
 // ---- Invoice
 
 export function hiddenBox(app) {
@@ -100,12 +111,17 @@ export function renderInvoice(app, host) {
 
 export function renderLanes(app, host) {
   clear(host);
-  const { cols, parts, origin } = columnsOf(app);
+  const { cols, origin } = columnsOf(app);
+  // Each lane as the run uses its part: a crossing that ran the supplied
+  // capture check carries no stand-in mark and no note.
+  const parts = Object.fromEntries(cols.map((id) => [id, shownPart(app, id).part]).filter(([, part]) => part));
+  const pathOf = (id) => shownPart(app, id).path;
   // A run of more than six steps needs the height the notes would take.
   const showNote = (app.tier === 'wide' || app.tier === 'standard') && !app.many;
   const showLegend = app.tier === 'wide';
   // A lane that shows a title and nothing under it.
-  const alone = (id) => Boolean(parts[id]) && !parts[id].standIn && !(showLegend && parts[id].text);
+  const legend = (id) => app.labels.parts?.[id]?.text;
+  const alone = (id) => Boolean(parts[id]) && !parts[id].standIn && !(showLegend && legend(id));
   // In the standard tier the window has no room for a stand-in's note inside
   // its own lane. The note runs on under the lane to its right where that
   // lane shows a title alone (measureLanes sets how far), and the stand-in's
@@ -113,14 +129,14 @@ export function renderLanes(app, host) {
   const runsOn = cols.map((id, i) => app.tier === 'standard' && showNote && Boolean(parts[id]?.standIn) && i + 1 < cols.length && alone(cols[i + 1]));
   const weights = cols.map((id, i) => {
     const part = parts[id];
-    return 1.3 + (part?.text ? 0.4 : 0) + (part?.standIn && !runsOn[i] ? NOTE_ROOM : 0);
+    return 1.3 + (legend(id) ? 0.4 : 0) + (part?.standIn && !runsOn[i] ? NOTE_ROOM : 0);
   });
   // Where the panes stand at their measured widths, the party every line
   // starts from keeps its name on one line while the lane beside it shows a
   // title and nothing under it: the room comes from that lane, so the lanes
   // after the two keep their share of the width.
   const beside = parts[cols[origin + 1]];
-  const oneLine = app.full && Boolean(beside) && !beside.standIn && !(showLegend && beside.text);
+  const oneLine = app.full && Boolean(beside) && !beside.standIn && !(showLegend && legend(cols[origin + 1]));
   if (oneLine) {
     weights[origin] += LANE_ROOM;
     weights[origin + 1] -= LANE_ROOM;
@@ -131,7 +147,7 @@ export function renderLanes(app, host) {
   host.style.setProperty('--lanes-tight', weights.map((wt) => `minmax(0, ${wt}fr)`).join(' '));
   for (const [i, id] of cols.entries()) {
     const part = parts[id];
-    const title = part ? app.w.label(`parts.${id}.label`) : app.w.label(`parties.${id}`);
+    const title = part ? app.w.label(`${pathOf(id)}.label`) : app.w.label(`parties.${id}`);
     // The titles that are to stay on one line where the panes stand at
     // their measured widths: the lane beside the party's, and the stand-ins.
     const wish = app.full && (i === origin + 1 || Boolean(part?.standIn)) ? 'one-line' : 'any';
@@ -139,7 +155,7 @@ export function renderLanes(app, host) {
       put('span', 'lane-title', title),
       part?.standIn ? [' ', badge(app)] : null,
       showLegend && part ? put('span', 'lane-legend', app.w.label(`parts.${id}.text`)) : null,
-      showNote && part?.standIn ? put('span', 'lane-note', app.w.label(`parts.${id}.standInNote`)) : null));
+      showNote && part?.standIn ? put('span', 'lane-note', app.w.label(`${pathOf(id)}.standInNote`)) : null));
   }
 }
 
@@ -227,6 +243,8 @@ function detailLine(app, i, step) {
     });
   }
   if (id === 'crossing') {
+    // The supplied capture check says its own summary line.
+    if (d.capture?.used === true) return value(run, `${base}.capture.summary`);
     return app.w.line('detail.crossing', {
       domainA: [app.labels.parties?.domainA, from.labels('parties.domainA')],
       domainB: [app.labels.parties?.domainB, from.labels('parties.domainB')],

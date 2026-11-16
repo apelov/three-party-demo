@@ -23,7 +23,9 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 
 // The staged label map, and the seven example files of contract revision 1,
 // by the SHA-256 of each file as it stands here.
-const STAGED_LABEL_MAP = '7b90202bf7cf003ddd8993a0fb69ab9ccf0788207ced814567edf917b4650b33';
+// The staged map with the two variants of the crossing added (the AI2II capture
+// check, and the fallback to the delegation chain check with its fetch note).
+const STAGED_LABEL_MAP = 'cc47650c0b00aea8d0042e066bb683c902a4a8c83044692b9f3df83be1631de0';
 const V1_EXAMPLES = {
   'action-05-pay.action.json': '7a459b88cdb0c730ed551a66d8f127e9a864fe8acc77d7c73c4363b6d55bb6c8',
   'hop-03-crossing.hop.json': 'a80fe78d64cd107f11b2dc27b48d9a85a4d624e13e34bd5984c6c905cc44bc33',
@@ -91,7 +93,7 @@ test('three-party/labels.json is the staged label map byte for byte, and the exa
 test('the label source is one: outside labels.json, CONTRACT.md, examples/ and test/, no file under three-party/ holds a part or party string of the map', () => {
   const map = labelMap();
   const strings = partAndPartyStrings(map);
-  assert.equal(strings.length, 13, 'four part labels, two stand-in notes, five party strings beside the bank\'s label, two timestamp notes');
+  assert.equal(strings.length, 14, 'four part labels, two stand-in notes, the fallback crossing\'s fetch note, five party strings beside the bank\'s label, two timestamp notes');
   for (const label of ['OpenA2A · ATX · AAP', 'WIMSE · AI2II', 'AEP', "Supplier's bank", 'Payments agent', 'Supplier', "Payments agent's domain", "Supplier's bank's domain", 'Fictional test identifiers.']) {
     assert.ok(strings.includes(label), label);
   }

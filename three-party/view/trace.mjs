@@ -70,6 +70,10 @@ export function rowsOfRun(run, { manifest = null, offline = null } = {}) {
     const id = baseId(step.id);
     if (id === 'credential' && detail.verifier) inside('check', 0, detail.verifier, UNSET, null);
     if (id === 'grant' && Array.isArray(detail.scopeChecked)) detail.scopeChecked.forEach((name, n) => inside('check', n, name, UNSET, null));
+    // The AI2II capture check: one row per check, with its answer.
+    if (id === 'crossing' && detail.capture?.used === true && Array.isArray(detail.capture.checks)) {
+      detail.capture.checks.forEach((check, n) => inside('check', n, check.name, check.answer === 'pass' ? OK : ERROR, check));
+    }
     if (id === 'intent' && Array.isArray(detail.calls)) {
       if (detail.declared && typeof detail.declared === 'object') inside('declared', 0, null, UNSET, detail.declared);
       detail.calls.forEach((call, n) => inside('call', n, call.tool, call.match === true ? OK : ERROR, call));
@@ -330,7 +334,12 @@ function buildKid(app, kid, at, of) {
   let lane = null;
   let decided = false;
 
-  if (kind === 'check') {
+  if (kind === 'check' && baseId(run.steps[i].id) === 'crossing') {
+    const path = `${base}.capture.checks[${n}]`;
+    const pass = span.attributes?.answer === 'pass';
+    name = app.w.lineNodes('trace.check', { name: [span.name, from.run(`${path}.name`)] }, ['name']);
+    state = verdictEl(app, pass ? 'ok' : 'stop', pass ? states.passed?.icon : states.blocked?.icon, value(run, `${path}.answer`));
+  } else if (kind === 'check') {
     const path = baseId(run.steps[i].id) === 'credential' ? `${base}.verifier` : `${base}.scopeChecked[${n}]`;
     name = app.w.lineNodes('trace.check', { name: [span.name, from.run(path)] }, ['name']);
   } else if (kind === 'declared') {

@@ -222,7 +222,9 @@ function checkRunLines(lines, { kind, paceSeconds, runsDir, cwd = REPO_ROOT }) {
     assert.ok(m, line);
     const step = state.steps[i];
     assert.equal(m[2], partCell(step));
-    assert.equal(m[2], PART_CELLS[step.part]);
+    // A crossing that ran the supplied AI2II capture check is no stand-in (the
+    // command line uses the default AI2II folder, fetched or not).
+    assert.equal(m[2], step.variant === 'supplied' ? PART_LABELS[step.part] : PART_CELLS[step.part]);
     assert.equal(step.partLabel, PART_LABELS[step.part]);
     assert.equal(m[3], step.title);
     assert.equal(m[3], TITLES[STEP_IDS[i]]);

@@ -2,7 +2,11 @@
   "revision": "three-party contract revision 2",
   "parts": {
     "checkpoint": { "label": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "steps": ["credential", "grant", "intent", "grant-again"] },
-    "crossing": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "steps": ["crossing", "received"] },
+    "crossing": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "steps": ["crossing", "received"],
+      "variants": {
+        "supplied": { "label": "WIMSE · AI2II", "standIn": false, "standInNote": null },
+        "fallback": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "fetchNote": "The AI2II capture check runs here in its place once node scripts/three-party/fetch-ai2ii.mjs has fetched the capture published at https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE." }
+      } },
     "record": { "label": "AEP", "standIn": true, "standInNote": "Our writer, in the AEP format. Stand-in label until the format is confirmed.", "steps": ["record"] },
     "bank": { "label": "Supplier's bank", "standIn": false, "standInNote": null, "steps": ["pay", "pay-again"] }
   },

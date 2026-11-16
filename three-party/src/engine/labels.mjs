@@ -86,6 +86,45 @@ export const LABELS = Object.freeze({
   crossing: Object.freeze({
     standIn: 'AI2II interop: stand-in; the real piece replaces the hop file, not code',
     stepsRun: '{steps} of {draft} section 6',
+    // The crossing when the AI2II capture is on this computer and pinned.
+    stepsRunCapture: '{total} checks of the AI2II capture check: {names}',
+  }),
+
+  // The AI2II capture check (capture.mjs): what each check shows when it
+  // passes, why a check did not run, the one-line summary, and the scope of
+  // what the capture can show for this run.
+  capture: Object.freeze({
+    name: 'AI2II capture check',
+    claims: Object.freeze({
+      capture: 'The capture is a classic libpcap file of one TCP connection, and each direction reassembles by sequence number, with no gap, into one HTTP/1.1 request and its response.',
+      witSignature: 'The Workload-Identity-Token is an ES256 JWS of type wit+jwt, and its signature verifies under the key its kid names in the jwks.json key set of its iss host.',
+      contentDigest: 'The Content-Digest header is the SHA-256 of the request body.',
+      httpSignature: "The RFC 9421 signature verifies under the key in the token's cnf.jwk, over every component that Signature-Input lists and over its parameters.",
+      signatureCreated: "The signature's created time lies within the token's iat to exp.",
+      response: "The response is 200 with status paid; its txn, invoice, amount and payer are the request's Txn-Token, invoice and amount and the token's sub, and it carries a receipt and a settled_at time.",
+      journal: "The decision journal holds one line, whose txn, invoice, amount, settled_at and receipt are the response's and whose peer_id is the token's sub.",
+    }),
+    notRun: Object.freeze({
+      capture: 'not run: the capture could not be read',
+      token: 'not run: the token could not be read',
+      signatureInput: 'not run: Signature-Input could not be read',
+      response: 'not run: the response body could not be read',
+    }),
+    summary: 'AI2II capture of a separate exchange, commit {commit8}: {passed} of {total} checks passed',
+    summaryFailed: 'AI2II capture of a separate exchange, commit {commit8}: {passed} of {total} checks passed; not passed: {failed}',
+    scope: Object.freeze({
+      published: 'A capture published by AI2II in {repo} at commit {commit8}, of a separate {kind} ({from} to {to}, invoice {invoice}, {amount} {currency}), not a crossing minted for this payment.',
+      publishedBare: 'A capture published by AI2II in {repo} at commit {commit8}, of a separate exchange, not a crossing minted for this payment.',
+      loopback: 'loopback exchange',
+      exchange: 'exchange',
+      keys: 'The keys are trusted because jwks.json is pinned by its SHA-256.',
+      times: "The token's times are checked against the capture's own times, not today's clock.",
+      txnToken: 'The Txn-Token header is carried, not checked.',
+    }),
+    // Why the crossing fell back to the delegation chain check.
+    notUsedAbsent: 'AI2II capture not used: {names} not in {dir}',
+    notUsedMismatch: 'AI2II capture not used: {files}',
+    fileMismatch: '{name} does not match its pin (size {size}, sha256 {sha256}; pinned size {pinnedSize}, sha256 {pinnedSha256})',
   }),
 
   credential: Object.freeze({
@@ -108,6 +147,8 @@ export const LABELS = Object.freeze({
     grantBlocked: 'no grant was issued ({refusal})',
     crossingObserved: 'the delegation chain check returned {outcome} for the chain of {hops} hops; the check holds no request, so it reports no action as permitted; stand-in for the AI2II interop piece',
     crossingBlocked: 'the delegation chain check returned {outcome}, and the chain file names {expected} ({refusal})',
+    crossingCaptureObserved: 'the AI2II capture check passed {passed} of {total} checks on a capture of a separate exchange published at commit {commit8}; it permits no action of this run',
+    crossingCaptureBlocked: 'the AI2II capture check passed {passed} of {total} checks ({refusal})',
     intentAllowed: 'every tool call equals the declared intent field for field',
     intentBlocked: 'the intent rule stopped the tool calls: {what}',
     payAllowed: 'the tool call equals the declared intent field for field; the grant is in scope; the bank accepted the payment',
@@ -122,6 +163,9 @@ export const LABELS = Object.freeze({
     grantBlocked: 'no grant: {refusal}',
     crossingPassed: '{agent} to {bank}; chain of {hops} hops: {outcome}',
     crossingBlocked: '{agent} to {bank}; chain of {hops} hops: {outcome}; {refusal}',
+    crossingCapturePassed: '{agent} to {bank}; {summary}',
+    crossingCaptureBlocked: '{agent} to {bank}; {summary}; {refusal}',
+    withCaptureReason: '{detail}; {reason}',
     intentPassed: 'tool calls checked: {count}; each equals the declared intent field for field',
     intentBlocked: '{what}',
     intentUndeclared: '{tool} has no declared intent',

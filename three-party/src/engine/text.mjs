@@ -6,7 +6,7 @@
 // timestamp entry is read from that map here.
 
 import path from 'node:path';
-import { LABEL_MAP, timestampNote } from './label-map.mjs';
+import { LABEL_MAP, timestampNote, variantNote } from './label-map.mjs';
 import { LABELS, fill } from './labels.mjs';
 import { clockDigits } from './store.mjs';
 
@@ -82,8 +82,16 @@ export function stepDetailText(step, state, note = null) {
       // The two sides by role, as the state carries them from the label map.
       const roles = state.parties ?? LABEL_MAP.parties;
       const parties = { agent: roles.agent, bank: roles.bank };
-      if (step.status === 'passed') return fill(d.crossingPassed, { ...parties, hops: detail.hops, outcome: detail.outcome });
-      return fill(d.crossingBlocked, { ...parties, hops: detail.hops, outcome: detail.outcome, refusal: detail.refusal });
+      const capture = detail.capture ?? null;
+      if (capture?.used === true) {
+        if (step.status === 'passed') return fill(d.crossingCapturePassed, { ...parties, summary: capture.summary });
+        return fill(d.crossingCaptureBlocked, { ...parties, summary: capture.summary, refusal: detail.refusal });
+      }
+      const line = step.status === 'passed'
+        ? fill(d.crossingPassed, { ...parties, hops: detail.hops, outcome: detail.outcome })
+        : fill(d.crossingBlocked, { ...parties, hops: detail.hops, outcome: detail.outcome, refusal: detail.refusal });
+      // A capture that was there and not used says why.
+      return capture?.used === false && capture.reason ? fill(d.withCaptureReason, { detail: line, reason: capture.reason }) : line;
     }
     case 'intent':
       if (step.status === 'passed') return fill(d.intentPassed, { count: detail.calls.length });
@@ -117,6 +125,11 @@ export function stepNotes(step) {
   const ownResult = step.status === 'passed' || step.status === 'written'
     || (step.status === 'blocked' && refusal !== 'engine-error' && refusal !== 'run-stopped');
   if (ownResult && step.standIn === true && step.standInNote) notes.push(step.standInNote);
+  // The variant a stand-in ran as may say where the part it stands in for
+  // comes from (the crossing's fallback names the AI2II capture and how to
+  // fetch it).
+  const variant = step.variant ? variantNote(step.id, step.variant) : null;
+  if (ownResult && step.standIn === true && variant) notes.push(variant);
   if (step.status === 'written' && step.detail?.timestampEntry) notes.push(timestampNote(step.detail.timestampEntry));
   return notes;
 }

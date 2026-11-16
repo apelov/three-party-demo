@@ -13,23 +13,26 @@ import { RUN_ID } from '../src/engine/store.mjs';
 import { REPO_ROOT, example, movableClock, readJson, removeDir, tempRunsDir, walkFiles } from './support/engine-helpers.mjs';
 
 const STATE_KEYS = ['runId', 'kind', 'startedAt', 'finishedAt', 'fictionalLine', 'poisonedLine', 'parties', 'invoice', 'agent', 'grant', 'steps', 'outcome', 'blockedAt', 'reason', 'paceSeconds'];
-const STEP_KEYS = ['id', 'part', 'partLabel', 'standIn', 'standInNote', 'title', 'status', 'startedAt', 'endedAt', 'detail', 'actionFile', 'recordFile'];
+// The members of the contract, then the variant of the step's part this build adds.
+const STEP_KEYS = ['id', 'part', 'partLabel', 'standIn', 'standInNote', 'title', 'status', 'startedAt', 'endedAt', 'detail', 'actionFile', 'recordFile', 'variant'];
 const UTC = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const statuses = (state) => Object.fromEntries(state.steps.map((s) => [s.id, s.status]));
 const stepOf = (state, id) => state.steps.find((s) => s.id === id);
 const labels = (state) => state.steps.map((s) => ({ id: s.id, part: s.part, partLabel: s.partLabel, standIn: s.standIn, standInNote: s.standInNote, title: s.title }));
 
-// One run per kind, shared by the tests below that read what it left.
+// One run per kind, shared by the tests below that read what it left. Their
+// crossing is the delegation chain check: they are given no AI2II capture.
 const runsDir = tempRunsDir();
+const noCapture = path.join(runsDir, 'no-ai2ii-capture');
 const witness = { clean: [], poisoned: [] };
 const events = { clean: [], poisoned: [] };
 let clean;
 let poisoned;
 
 test('a clean run and a poisoned run complete at pace 0, with no engine error', async () => {
-  clean = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, recordWriter: null, witness: witness.clean, onEvent: (e) => events.clean.push(e) });
-  poisoned = await runToEnd({ kind: 'poisoned', paceSeconds: 0, runsDir, recordWriter: null, witness: witness.poisoned, onEvent: (e) => events.poisoned.push(e) });
+  clean = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, recordWriter: null, ai2iiDir: noCapture, witness: witness.clean, onEvent: (e) => events.clean.push(e) });
+  poisoned = await runToEnd({ kind: 'poisoned', paceSeconds: 0, runsDir, recordWriter: null, ai2iiDir: noCapture, witness: witness.poisoned, onEvent: (e) => events.poisoned.push(e) });
   assert.equal(clean.error, null);
   assert.equal(poisoned.error, null);
   assert.match(clean.runId, RUN_ID);
@@ -199,7 +202,8 @@ test('a poisoned run ends blocked at intent, with pay not reached and the two ca
   assert.equal(state.poisonedLine, 'The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.');
   assert.equal(state.fictionalLine, FICTIONAL_LINE);
   assert.deepEqual(state.invoice, ex.invoice);
-  assert.deepEqual(stepOf(state, 'pay'), stepOf(ex, 'pay'), 'the pay step is the example pay step: not reached, every other member null');
+  // The variant member this build adds is null for a part with one form.
+  assert.deepEqual(stepOf(state, 'pay'), { ...stepOf(ex, 'pay'), variant: null }, 'the pay step is the example pay step: not reached, every other member null');
 
   const detail = stepOf(state, 'intent').detail;
   const exDetail = stepOf(ex, 'intent').detail;

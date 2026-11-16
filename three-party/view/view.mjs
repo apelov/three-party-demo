@@ -604,7 +604,10 @@ function update() {
   head.hidden = trace;
   $('rows').hidden = trace;
   $('flow-space').hidden = trace;
-  const laneSignature = `${app.tier}|${app.full}|${app.many}|${app.labelsStamp}`;
+  // The variants the run's steps name (a crossing that ran the capture check
+  // shows no stand-in mark), so the header follows the run shown.
+  const variants = (app.run?.steps ?? []).map((s) => s.variant ?? '').join(',');
+  const laneSignature = `${app.tier}|${app.full}|${app.many}|${app.labelsStamp}|${variants}`;
   if (!trace && head.dataset.signature !== laneSignature) {
     head.dataset.signature = laneSignature;
     renderLanes(app, head);
