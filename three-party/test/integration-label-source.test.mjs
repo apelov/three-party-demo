@@ -23,7 +23,7 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 
 // The label map, by the SHA-256 of the file as it stands here: a change of a
 // label, a stand-in note or a party role is a deliberate edit of this line too.
-const STAGED_LABEL_MAP = '2736306b70b777bba5aaf407ca667c39e18ad1cec5f25d4bd096fa8465982eb3';
+const STAGED_LABEL_MAP = '112be08d12e18a6f8d9dbfd554390a9bc138cc3d3297cb86818dd4c4c0161b04';
 const V1_LABELS = [j('Ou', 'rs'), j('Crossing (stand-in ', 'for AI2II)'), j('Record (our writer, ', 'his format)')];
 
 // A file is text unless a NUL byte sits in its leading 8000 bytes, the rule

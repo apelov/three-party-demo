@@ -127,9 +127,9 @@ export function intentReason(ruled) {
 // it in abandon when the record step was not reached; credentialFile
 // (the agent's credential, a path under repoRoot or an absolute one); witness
 // (an array a test passes to receive the access token values the bank
-// issues); ai2iiDir and ai2iiSource (the folder the AI2II capture is fetched
-// into, and its source with the pins of its three files: when the three are
-// there and pinned, the crossing step runs the AI2II capture check, and
+// issues); ai2iiDir and ai2iiSource (the folder that holds the AI2II
+// capture, and its source with the pins of its three files: when the three
+// are there and pinned, the crossing step runs the AI2II capture check, and
 // otherwise the delegation chain check).
 export async function startRun({
   kind,

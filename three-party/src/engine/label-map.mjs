@@ -55,11 +55,11 @@ export function variantFields(stepId, variant) {
 }
 
 // The note a variant carries beside its stand-in note (the fallback of the
-// crossing names where the AI2II capture comes from and how it is fetched),
-// or null.
+// crossing says where this repository holds the AI2II capture and how to
+// restore it), or null.
 export function variantNote(stepId, variant) {
   if (!variant) return null;
-  return partVariants(stepId)?.[variant]?.fetchNote ?? null;
+  return partVariants(stepId)?.[variant]?.missingNote ?? null;
 }
 
 // The note of the map for a record's timestamp entry: the stand-in note

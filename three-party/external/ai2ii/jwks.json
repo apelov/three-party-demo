@@ -1,0 +1,38 @@
+{
+  "harbor.example": {
+    "keys": [
+      {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "tBDxnXhAmY7qxcnALbB_WfZjo9WvAtGbUzV6YUSuBsE",
+        "y": "tdj7TB4n6PUjYeUsCSKiIH89GatD6GgkGhJglrbtLU4",
+        "alg": "ES256",
+        "kid": "harbor-1"
+      }
+    ]
+  },
+  "northbank.example": {
+    "keys": [
+      {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "F32AVmGooq0eTA7c0XK41t7XOANMdqru2NSZtpEyn_4",
+        "y": "bS3DBf-g53x3E7SDdY4-bKTJJvu-bKanIj1l2ujq-eA",
+        "alg": "ES256",
+        "kid": "northbank-1"
+      }
+    ]
+  },
+  "opena2a.harbor.example": {
+    "keys": [
+      {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "uM7QtUIvTfYbLhXrK76zcrB9b8dmNimFTcJ30-jneh0",
+        "y": "Qq-pDBog52rjVgliCRLtz1WIi2471qnLyGeVeK_xnSI",
+        "alg": "ES256",
+        "kid": "opena2a-1"
+      }
+    ]
+  }
+}

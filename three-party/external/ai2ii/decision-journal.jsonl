@@ -1,0 +1,1 @@
+{"case": "scenario_1_payment", "service": "northbank-transfer", "status": 200, "decision": "settled", "txn": "7f3a21", "invoice": "4471", "amount": 4200, "supplier": "supplier_acme_iban_xxx", "peer_id": "wimse://harbor.example/agent/payments", "settled_at": "2026-11-15T18:22:27Z", "receipt": "nb-rcpt-7f3a21-4471"}

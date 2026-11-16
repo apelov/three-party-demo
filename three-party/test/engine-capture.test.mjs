@@ -1,17 +1,16 @@
 // The AI2II capture check over synthetic captures made in the test (keys,
 // token, signed request, response, journal, key sets and a libpcap file of
 // the tests' own), the loader that compares the three files with their pins,
-// and the fetch script with its network call replaced.
+// and the three files this repository holds with their NOTICE.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AI2II_SOURCE, DEFAULT_AI2II_DIR, loadCapture, rawUrl } from '../src/engine/ai2ii-source.mjs';
+import { AI2II_SOURCE, DEFAULT_AI2II_DIR, loadCapture } from '../src/engine/ai2ii-source.mjs';
 import { CHECK_NAMES, checkCapture, parseDictionary, readPcap } from '../src/engine/capture.mjs';
 import { LABELS } from '../src/engine/labels.mjs';
-import { fetchAi2ii } from '../../scripts/three-party/fetch-ai2ii.mjs';
 import { IAT, captureFiles, exchangePackets, sha256Hex, sourceFor, writeCapture, writePcap } from './support/capture-fixture.mjs';
 
 const answers = (result) => Object.fromEntries(result.checks.map((c) => [c.name, c.answer]));
@@ -19,7 +18,7 @@ const allPass = Object.fromEntries(CHECK_NAMES.map((name) => [name, 'pass']));
 const run = (made) => checkCapture(made.bytes, { source: sourceFor(made.bytes), files: [] });
 const tempDir = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'three-party-ai2ii-')));
 
-test('the pins are the published files at the full commit, fetched from the raw host at that commit, into three-party/external/ai2ii', () => {
+test('the pins are the published files at the full commit, and this repository holds those three files with their NOTICE in three-party/external/ai2ii, which no ignore rule covers', () => {
   assert.equal(AI2II_SOURCE.repo, 'https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE');
   assert.equal(AI2II_SOURCE.commit, '32f584a2016d7ebd0d2f5156148cc404c496a086');
   assert.deepEqual(AI2II_SOURCE.files, {
@@ -27,10 +26,19 @@ test('the pins are the published files at the full commit, fetched from the raw 
     journal: { name: 'decision-journal.jsonl', size: 316, sha256: '688cb4e4782e46f86f444c08c4d38d71c3f4b8f0f3f9429c306afd9445643a63' },
     keys: { name: 'jwks.json', size: 851, sha256: 'aea167c07199cbea380782d23e3e775daf65dc96ce0474671a9e75ee27e92aaf' },
   });
-  assert.equal(rawUrl(AI2II_SOURCE, 'jwks.json'), 'https://raw.githubusercontent.com/apelov/IETF127-Hackathon-AI2II-WIMSE/32f584a2016d7ebd0d2f5156148cc404c496a086/handover/wimse_ai2ii/jwks.json');
   assert.equal(path.relative(path.resolve(import.meta.dirname, '..'), DEFAULT_AI2II_DIR), path.join('external', 'ai2ii'));
-  const ignore = fs.readFileSync(path.resolve(import.meta.dirname, '..', '.gitignore'), 'utf8').split('\n');
-  assert.ok(ignore.includes('external/ai2ii/'), 'the folder is ignored by git');
+  // The files as committed are the pinned ones, so a run uses them by default.
+  const held = loadCapture();
+  assert.equal(held.use, true, `three-party/external/ai2ii: ${JSON.stringify({ missing: held.missing, differing: held.differing })}`);
+  assert.equal(
+    fs.readFileSync(path.join(DEFAULT_AI2II_DIR, 'NOTICE'), 'utf8'),
+    'Recorded by AI2II (Alexander Pelov, IMT Atlantique, with Ivaylo Petrov), from commit 32f584a. Included with permission under Apache-2.0.\n',
+  );
+  assert.ok(AI2II_SOURCE.commit.startsWith('32f584a'), 'the NOTICE names the pinned commit');
+  for (const ignoreFile of [path.resolve(import.meta.dirname, '..', '.gitignore'), path.resolve(import.meta.dirname, '..', '..', '.gitignore')]) {
+    const lines = fs.readFileSync(ignoreFile, 'utf8').split('\n');
+    assert.deepEqual(lines.filter((l) => /external|ai2ii/i.test(l)), [], `${ignoreFile} leaves the folder tracked`);
+  }
 });
 
 test('a synthetic capture passes all seven checks; the result names the files, the source, the token by claims and SHA-256, and holds no token, signature or Txn-Token value', () => {
@@ -178,43 +186,5 @@ test('the loader uses the three files only when each is there with its pinned si
     assert.equal(loadCapture({ dir }).why, 'mismatch');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('the fetch script asks the raw host at the pinned commit for each file, keeps a file only when it matches its pin, deletes it otherwise and exits 1 naming the file and both digests, and fetches nothing a second time', async () => {
-  const made = captureFiles();
-  const source = sourceFor(made.bytes);
-  const served = { [source.files.capture.name]: made.bytes.capture, [source.files.journal.name]: made.bytes.journal, [source.files.keys.name]: made.bytes.keys };
-  const asked = [];
-  const get = async (url) => {
-    asked.push(url);
-    return served[decodeURIComponent(url.slice(url.lastIndexOf('/') + 1))];
-  };
-  const dir = path.join(tempDir(), 'ai2ii');
-  const lines = { out: [], err: [] };
-  const io = { out: (l) => lines.out.push(l), err: (l) => lines.err.push(l) };
-  try {
-    assert.equal(await fetchAi2ii({ dir, source, get, ...io }), 0);
-    assert.deepEqual(asked, ['capture_scenario1.pcap', 'decision-journal.jsonl', 'jwks.json'].map((name) => `https://raw.githubusercontent.com/test-owner/test-capture/${source.commit}/handover/test/${name}`));
-    assert.deepEqual(fs.readdirSync(dir).sort(), ['capture_scenario1.pcap', 'decision-journal.jsonl', 'jwks.json'], 'no temporary file is left');
-    assert.equal(loadCapture({ dir, source }).use, true);
-    assert.match(lines.out[0], /^fetched capture_scenario1\.pcap: \d+ bytes, sha256 [0-9a-f]{64}, from https:\/\/raw\.githubusercontent\.com\//);
-    assert.deepEqual(lines.err, []);
-    // A second run keeps all three and asks for nothing.
-    asked.length = 0;
-    lines.out.length = 0;
-    assert.equal(await fetchAi2ii({ dir, source, get, ...io }), 0);
-    assert.deepEqual(asked, []);
-    assert.deepEqual(lines.out.slice(0, 3).map((l) => l.split(':')[0]), ['kept capture_scenario1.pcap', 'kept decision-journal.jsonl', 'kept jwks.json']);
-    // A served file that is not the pinned one is deleted and named with both digests.
-    fs.rmSync(path.join(dir, 'jwks.json'));
-    served['jwks.json'] = Buffer.from('{"not":"the pinned key sets"}\n');
-    assert.equal(await fetchAi2ii({ dir, source, get, ...io }), 1);
-    assert.deepEqual(fs.readdirSync(dir).sort(), ['capture_scenario1.pcap', 'decision-journal.jsonl']);
-    const refused = lines.err.find((l) => l.startsWith('refused jwks.json'));
-    assert.ok(refused, lines.err.join('\n'));
-    assert.ok(refused.includes(sha256Hex(served['jwks.json'])) && refused.includes(source.files.keys.sha256), refused);
-  } finally {
-    fs.rmSync(path.dirname(dir), { recursive: true, force: true });
   }
 });

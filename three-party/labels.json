@@ -5,7 +5,7 @@
     "crossing": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "steps": ["crossing", "received"],
       "variants": {
         "supplied": { "label": "WIMSE · AI2II", "standIn": false, "standInNote": null },
-        "fallback": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "fetchNote": "Run node scripts/three-party/fetch-ai2ii.mjs to fetch the capture AI2II published at https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE; the crossing then checks it." }
+        "fallback": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "missingNote": "This repository holds AI2II's capture in three-party/external/ai2ii, and a file of it is missing or changed here; git checkout -- three-party/external/ai2ii restores it, and the crossing then checks it." }
       } },
     "record": { "label": "AEP", "standIn": false, "standInNote": null, "steps": ["record"] },
     "bank": { "label": "Supplier's bank", "standIn": false, "standInNote": null, "steps": ["pay", "pay-again"] }

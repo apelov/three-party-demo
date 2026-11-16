@@ -100,7 +100,7 @@ test('a clean run and a poisoned run: every step of state.json carries the label
     assert.deepEqual(state.parties, map.parties, 'the parties by role, copied from the map');
     assert.deepEqual(Object.keys(state.parties), ['agent', 'bank', 'supplier', 'domainA', 'domainB', 'rawIdentifiersNote']);
     // The values the files of the run carry are the fixtures' own, as before.
-    assert.equal(state.steps.find((s) => s.id === 'crossing').detail.standIn, 'Stand-in for the AI2II capture check, which runs here once its files are fetched');
+    assert.equal(state.steps.find((s) => s.id === 'crossing').detail.standIn, 'Stand-in for the AI2II capture check, which runs here when its files in three-party/external/ai2ii are present');
     assert.equal(state.agent.domain, 'payments.acme-demo.test');
   }
 });
@@ -116,8 +116,8 @@ test('text mode: a stand-in part is marked after its label, the line of a stand-
       credential: 'OpenA2A · ATX · AAP', grant: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II (stand-in)',
       intent: 'OpenA2A · ATX · AAP', pay: "Supplier's bank", record: 'AEP',
     });
-    // The fallback crossing also says where the AI2II capture comes from and how it is fetched.
-    assert.ok(lineOf('crossing').endsWith(`chain of 2 hops: valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.fetchNote}`), lineOf('crossing'));
+    // The fallback crossing also says where the AI2II capture belongs and how to restore it.
+    assert.ok(lineOf('crossing').endsWith(`chain of 2 hops: valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.missingNote}`), lineOf('crossing'));
     assert.ok(lineOf('crossing').includes(`| ${map.parties.agent} to ${map.parties.bank}; `), 'the two sides by role');
     assert.ok(lineOf('record').endsWith(`signer: test key generated for this run. ${map.timestamp.standInNote}`), lineOf('record'));
     // A step of a part that is not a stand-in ends with no note.
@@ -138,7 +138,7 @@ test('text mode: a stand-in part is marked after its label, the line of a stand-
   }
   // A crossing its own check stopped says the note too.
   const refused = { ...crossing, status: 'blocked', detail: { ...crossing.detail, outcome: 'signature_invalid', refusal: 'crossing-chain-not-valid' } };
-  assert.ok(stepLine(refused, clean.state, at).endsWith(`chain of 2 hops: signature_invalid; crossing-chain-not-valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.fetchNote}`));
+  assert.ok(stepLine(refused, clean.state, at).endsWith(`chain of 2 hops: signature_invalid; crossing-chain-not-valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.missingNote}`));
   // The note on the timestamp entry follows the entry.
   assert.equal(timestampNote('stand-in: no timestamp authority'), map.timestamp.standInNote);
   assert.equal(timestampNote('test timestamp authority made for this demo'), map.timestamp.testAuthorityNote);
@@ -162,10 +162,11 @@ test('node three-party/bin/start.mjs --text prints, for both runs, the lines of 
   assert.equal(r.code, 0);
   assert.equal(r.stderr, '');
   printed = r.lines;
-  // The command line runs with the default AI2II folder: the kept transcript of
-  // the fallback when the capture is not fetched, of the capture check when it is.
+  // The command line runs with the default AI2II folder, which this repository
+  // fills: the kept transcript of the capture check, or of the fallback in a
+  // checkout that is missing a file of it.
   const capture = loadCapture();
-  assert.notEqual(capture.why, 'mismatch', 'three-party/external/ai2ii holds files that differ from their pins: fetch them again or remove the folder');
+  assert.notEqual(capture.why, 'mismatch', 'three-party/external/ai2ii holds files that differ from their pins: git checkout -- three-party/external/ai2ii restores them');
   const kept = fs.readFileSync(path.join(THREE_PARTY, 'test', 'fixtures', capture.use ? 'text-mode-both-ai2ii.txt' : 'text-mode-both.txt'), 'utf8');
   assert.ok(kept.endsWith('\n'));
   const keptLines = kept.slice(0, -1).split('\n');

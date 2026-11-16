@@ -21,9 +21,9 @@
 #   three-party-demo-<sha7>.bundle.sha256
 #   ONE-COMMAND.txt                         the one command to run on the other computer
 #
-# The tarball leaves two things out of the export. three-party/stills/: those
-# pictures were taken from the contract's example files, not from a run. And
-# git's ignore files, which do nothing in a copy that has no git directory.
+# The tarball leaves two things out of the export. three-party/stills/: pictures
+# of the screens, which the demo does not need to run. And git's ignore
+# files, which do nothing in a copy that has no git directory.
 
 set -euo pipefail
 

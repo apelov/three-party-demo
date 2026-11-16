@@ -82,7 +82,7 @@ export const LABELS = Object.freeze({
 
   // The crossing stand-in.
   crossing: Object.freeze({
-    standIn: 'Stand-in for the AI2II capture check, which runs here once its files are fetched',
+    standIn: 'Stand-in for the AI2II capture check, which runs here when its files in three-party/external/ai2ii are present',
     stepsRun: '{steps} of {draft} section 6',
     // The crossing when the AI2II capture is on this computer and pinned.
     stepsRunCapture: '{total} checks of the AI2II capture check: {names}',

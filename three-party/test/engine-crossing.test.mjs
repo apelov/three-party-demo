@@ -48,7 +48,7 @@ test('the hop file carries the contract fields in the contract order, and the st
   const file = hopFileContent({ runId: ex.runId, seq: ex.seq, at: ex.at, hop });
   assert.deepEqual(Object.keys(file), Object.keys(ex));
   assert.deepEqual(file, ex);
-  assert.equal(file.standIn, 'Stand-in for the AI2II capture check, which runs here once its files are fetched');
+  assert.equal(file.standIn, 'Stand-in for the AI2II capture check, which runs here when its files in three-party/external/ai2ii are present');
   assert.equal(file.standIn, LABELS.crossing.standIn);
   assert.equal(STEPS_RUN, '1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03 section 6');
   assert.equal(file.from, LABELS.domains.agent);

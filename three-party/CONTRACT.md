@@ -17,13 +17,17 @@ Four parts, each labelled on screen and in text mode. The one source of every pa
 | `part` in `state.json` and in the label map | label | stand-in | what runs |
 |---|---|---|---|
 | `checkpoint` | `OpenA2A · ATX · AAP` | no | the ATX credential check, the short-lived scoped AAP grant and the intent rule |
-| `crossing` | `WIMSE · AI2II` | when AI2II's files are absent | the AI2II capture check (variant `supplied`), or the OpenA2A delegation chain check over a fixture (variant `fallback`, a stand-in) |
+| `crossing` | `WIMSE · AI2II` | when a file of AI2II's capture is missing or changed | the AI2II capture check (variant `supplied`), or the OpenA2A delegation chain check over a fixture (variant `fallback`, a stand-in) |
 | `record` | `AEP` | no | one Action Evidence Package per action, written by the OpenA2A record writer and checked by the OpenA2A verifier for steps 1 to 6 of the format |
 | `bank` | `Supplier's bank` | no | the payment, answered by the mock bank's own payment API |
 
 The crossing has two variants under `parts.crossing.variants`: `supplied` (no stand-in mark, no note) and
-`fallback` (the stand-in mark, its `standInNote`, and a `fetchNote` that says where AI2II's capture comes from
-and how it is fetched). A stand-in part carries its `standInNote` where it is shown. In text mode the label of
+`fallback` (the stand-in mark, its `standInNote`, and a `missingNote` that says this repository holds AI2II's
+capture in `three-party/external/ai2ii`, that a file of it is missing or changed here, and that
+`git checkout -- three-party/external/ai2ii` restores it). The crossing runs as `fallback` only when one of the
+three files is missing from that folder or differs from its pinned size or SHA-256; the `missingNote` then
+follows the `standInNote` in the inspector of the crossing step and at the end of its line in text mode. A
+stand-in part carries its `standInNote` where it is shown. In text mode the label of
 a stand-in part is followed by ` (stand-in)`, and the line of a stand-in step that ran carries the note. The
 timestamp line of a record carries the note of `timestamp` in the map. A stand-in is never shown as the work of
 the author of the part it stands in for.
@@ -53,8 +57,7 @@ three-party/view/                  the screens
 three-party/fixtures/              invoices.json
 three-party/test/                  the tests, named engine-, record-, verifier-, view- and integration-
 three-party/runs/                  run output, ignored by git
-three-party/external/ai2ii/        AI2II's three files once fetched, ignored by git
-scripts/three-party/fetch-ai2ii.mjs  fetches AI2II's three files at a pinned commit and checks each SHA-256
+three-party/external/ai2ii/        AI2II's three files and their NOTICE, committed to this repository
 ```
 
 ## 3. A run on disk
@@ -115,8 +118,8 @@ label map whose `steps` list holds the step id, and on the crossing step from it
 - `crossing`, variant `fallback`: `from`, `to`, `chainFile` (`fixtures/delegation-chain/dc-compact-valid-two-hop.json`),
   `hops` (2), `outcome` (the chain check's outcome name), `stepsRun` (`1 to 5 and 7 of
   draft-asor-wimse-agent-delegation-chain-03 section 6`), `standIn` (`Stand-in for the AI2II capture check, which
-  runs here once its files are fetched`), `hopFile`. When AI2II's files were present but did not match their
-  pins, `capture` (`{used: false, why, reason, files}`) names each file and both digests.
+  runs here when its files in three-party/external/ai2ii are present`), `hopFile`. When AI2II's files were present
+  but did not match their pins, `capture` (`{used: false, why, reason, files}`) names each file and both digests.
 - `crossing`, variant `supplied`: `from`, `to`, `outcome` (`verified`), `chainFile`, `hops`, `standIn` and
   `hopFile` null, and `capture`: `{used: true, check, source: {repo, branch, commit, folder}, files: [{name,
   size, sha256}], exchange, token, signature, txnToken: {carried, checked, sha256}, checks: [{name, answer,

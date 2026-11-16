@@ -104,7 +104,7 @@ test('the variant is set when the run starts: a crossing still pending carries t
 });
 
 test('with no capture, the crossing runs the delegation chain check as before: the fallback variant, the stand-in note and the note on the AI2II capture', async () => {
-  const { state, runDir, error } = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, recordWriter: null, ai2iiDir: path.join(scratch, 'not-fetched') });
+  const { state, runDir, error } = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, recordWriter: null, ai2iiDir: path.join(scratch, 'no-capture-here') });
   assert.equal(error, null);
   const crossing = stepOf(state, 'crossing');
   const map = labelMap();
@@ -112,8 +112,9 @@ test('with no capture, the crossing runs the delegation chain check as before: t
   assert.deepEqual(crossing.detail, stepOf(example('state-clean-done.json'), 'crossing').detail, 'the detail of the contract example, member for member');
   assert.ok(fs.existsSync(path.join(runDir, 'hops', '03-crossing.hop.json')));
   const fallback = map.parts.crossing.variants.fallback;
-  assert.equal(stepLine(crossing, state, at), `[120041] WIMSE · AI2II (stand-in) | Cross into the supplier's bank's trust domain | Passed | Payments agent to Supplier's bank; chain of 2 hops: valid. ${fallback.standInNote} ${fallback.fetchNote}`);
-  assert.ok(fallback.fetchNote.includes('https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE') && fallback.fetchNote.includes('node scripts/three-party/fetch-ai2ii.mjs'));
+  assert.equal(stepLine(crossing, state, at), `[120041] WIMSE · AI2II (stand-in) | Cross into the supplier's bank's trust domain | Passed | Payments agent to Supplier's bank; chain of 2 hops: valid. ${fallback.standInNote} ${fallback.missingNote}`);
+  assert.ok(fallback.missingNote.includes('three-party/external/ai2ii') && fallback.missingNote.includes('git checkout -- three-party/external/ai2ii'), fallback.missingNote);
+  assert.ok(!/fetch/i.test(JSON.stringify(map.parts.crossing)), 'nothing about the crossing tells anyone to fetch the capture');
 });
 
 test('with the files there and one of them not matching its pin, the capture is not used: the crossing falls back and names the file and both digests', async () => {

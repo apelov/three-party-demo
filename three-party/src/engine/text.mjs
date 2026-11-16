@@ -125,9 +125,9 @@ export function stepNotes(step) {
   const ownResult = step.status === 'passed' || step.status === 'written'
     || (step.status === 'blocked' && refusal !== 'engine-error' && refusal !== 'run-stopped');
   if (ownResult && step.standIn === true && step.standInNote) notes.push(step.standInNote);
-  // The variant a stand-in ran as may say where the part it stands in for
-  // comes from (the crossing's fallback names the AI2II capture and how to
-  // fetch it).
+  // The variant a stand-in ran as may say why the part it stands in for did
+  // not run (the crossing's fallback says where the AI2II capture belongs and
+  // how to restore it).
   const variant = step.variant ? variantNote(step.id, step.variant) : null;
   if (ownResult && step.standIn === true && variant) notes.push(variant);
   if (step.status === 'written' && step.detail?.timestampEntry) notes.push(timestampNote(step.detail.timestampEntry));

@@ -1,9 +1,10 @@
-// The AI2II capture the crossing step checks when it is on this computer:
-// the repository and commit it was published at, its three files by name,
-// size and SHA-256, and the folder they are fetched into. The tree holds no
-// file of it; scripts/three-party/fetch-ai2ii.mjs fetches them into that
-// folder, which git ignores. Node built-ins only, and no network: this module
-// reads the folder and hashes what it finds.
+// The AI2II capture the crossing step checks: the repository and commit it
+// was published at, its three files by name, size and SHA-256, and the
+// folder of this repository that holds them, three-party/external/ai2ii,
+// where a NOTICE says where they come from and under which license they are
+// included. Node built-ins only, and no network: this module reads the
+// folder and hashes what it finds. A file missing or changed there makes
+// the crossing run its stand-in instead.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -28,15 +29,6 @@ export const ROLES = Object.freeze(['capture', 'journal', 'keys']);
 export const DEFAULT_AI2II_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'external', 'ai2ii');
 
 const sha256Hex = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
-
-// The address a file of the source is served at: GitHub's raw host, at the
-// pinned commit, never a branch.
-export function rawUrl(source, name) {
-  const m = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(source.repo);
-  if (!m) throw new Error(`not a GitHub repository address: ${source.repo}`);
-  if (!/^[0-9a-f]{40}$/.test(source.commit)) throw new Error(`not a full commit id: ${source.commit}`);
-  return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${source.commit}/${source.folder}/${encodeURIComponent(name)}`;
-}
 
 // Reads the three files from the folder and compares each with its pin.
 //   { use: true, bytes: { capture, journal, keys }, files }

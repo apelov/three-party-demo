@@ -82,7 +82,7 @@ export function partAndPartyStrings(map = labelMap()) {
     // The variants of a part (the crossing's supplied capture check and its
     // fallback): their labels and notes.
     for (const variant of Object.values(part.variants ?? {})) {
-      for (const key of ['label', 'standInNote', 'fetchNote']) if (variant[key]) out.add(variant[key]);
+      for (const key of ['label', 'standInNote', 'missingNote']) if (variant[key]) out.add(variant[key]);
     }
   }
   for (const value of Object.values(map.parties)) out.add(value);
