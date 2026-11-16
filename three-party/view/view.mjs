@@ -134,7 +134,16 @@ app.toggleRecord = (rel) => {
 
 // What the trace and the records ask of the page: open a row's step in the
 // inspector, and open or close the rows inside a step.
-app.choose = (selection) => select(selection);
+app.choose = (selection) => {
+  // A record the audit checked opens the step that wrote it, with its
+  // record marked; the tampered copy and the audit itself open the audit.
+  if (selection.kind === 'offline' && selection.item?.kind === 'records' && app.run) {
+    const file = app.offline?.result?.records?.[selection.item.n]?.file;
+    const index = file ? app.run.steps.findIndex((s) => s.recordFile === file) : -1;
+    if (index >= 0) { select({ kind: 'step', index, item: { kind: 'record', n: 0 } }); return; }
+  }
+  select(selection);
+};
 app.setOpen = (id, open) => {
   app.traceOpen.set(id, open);
   update();
@@ -350,6 +359,10 @@ async function poll(id) {
       applyFollow();
       update();
       focusSelectedRowIfInList();
+      if (app.focusSteps) {
+        const row = stepList().querySelector('[tabindex="0"]');
+        if (row) { row.focus({ preventScroll: true }); app.focusSteps = false; }
+      }
       announce();
     } else {
       // The state is as it was, and the clock has moved.
@@ -394,13 +407,12 @@ async function runKind(kind) {
   app.seen = new Map();
   app.announcedOutcome = null;
   if (app.tab === 'records') { app.tab = 'sequence'; app.view = 'flow'; writeHash(); }
-  update();
   // The run is chosen and running: the keys that follow act on the steps,
-  // so the focus moves there from a control that started it.
+  // so the focus moves there, once the steps are on screen, from the
+  // control that started the run (the control may be gone by then).
   const active = document.activeElement;
-  if (!active || active === document.body || $('pane-left').contains(active) || $('pane-flow').contains(active)) {
-    stepList().querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
-  }
+  app.focusSteps = !active || active === document.body || $('pane-left').contains(active) || $('pane-flow').contains(active);
+  update();
   await poll(res.runId);
 }
 
@@ -445,7 +457,8 @@ function startAgain() {
   app.offlineStamp += 1;
   writeHash();
   update();
-  $('orient').querySelector('button')?.focus({ preventScroll: true });
+  const first = $('orient').querySelector('button');
+  if (first && first.offsetParent) first.focus({ preventScroll: true }); else $('scenes').querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
 }
 
 // The one action the outcome offers next: after a payment that went
@@ -897,7 +910,10 @@ async function start() {
   if (document.fonts?.ready) document.fonts.ready.then(update);
 
   document.body.dataset.ready = 'yes';
-  $('orient').querySelector('button')?.focus();
+  // The focus starts on the first run of the orientation, or, when the page
+  // opens on another tab, on the chosen item of the menu.
+  const first = $('orient').querySelector('button');
+  if (first && first.offsetParent) first.focus(); else $('scenes').querySelector('[tabindex="0"]')?.focus();
 }
 
 start();

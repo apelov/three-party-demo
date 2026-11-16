@@ -516,7 +516,12 @@ mark { background: none; color: inherit; }
 .compare-call { display: flex; flex-direction: column; gap: 4px; }
 .compare-title { display: flex; align-items: baseline; gap: 8px; }
 .compare-title .meta { font-size: var(--t-label); }
-.compare-grid, .compare-args { display: grid; grid-template-columns: minmax(0, 6.5em) minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
+/* Each field of the comparison: its name on a line of its own, then the
+   declared value beside the tool call's, under the two column heads. */
+.compare-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
+.compare-grid .col-pad { display: none; }
+.compare-grid .field { grid-column: 1 / -1; flex-direction: row; gap: 8px; padding-bottom: 0; border-bottom: 0; }
+.compare-args { display: grid; grid-template-columns: minmax(0, 7em) minmax(0, 1fr); column-gap: 12px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
 .compare-grid .mono, .compare-args .mono { font-size: 0.95em; overflow-wrap: normal; white-space: nowrap; }
 .compare-args { grid-template-columns: minmax(0, 8.5em) minmax(0, 1fr); }
 .compare-grid > *, .compare-args > * { padding: 4px 0; border-bottom: 1px solid var(--rule); min-width: 0; }
@@ -556,41 +561,109 @@ mark { background: none; color: inherit; }
 
 [data-highlight="yes"] { outline: 2px solid var(--ink); outline-offset: 4px; }
 
-/* ---- Trace */
+/* ---- Trace: one row per step (its number and title, then its start, how
+   long it took, its state and its bar on the time lane, each under its
+   column header); the rows inside a step follow it, set in from the left. */
 
 .trace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .trace[hidden] { display: none; }
-.trace-grid { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.trace-grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  --t-gutter: 44px;
+  --t-start: 96px;
+  --t-dur: 96px;
+  --t-state: 160px;
+  --t-lane: 200px;
+  --t-gap: 8px;
+  --t-px: 8px;
+  --t-cols: var(--t-gutter) var(--t-start) var(--t-dur) var(--t-state) minmax(var(--t-lane), 1fr);
+}
+@media (max-width: 1439px) { .trace-grid { --t-gutter: 32px; } }
+@media (min-width: 1440px) { .trace-grid { --t-lane: 240px; } }
+@media (min-width: 1920px) { .trace-grid { --t-gutter: 56px; --t-start: 112px; --t-dur: 112px; --t-lane: 320px; --t-gap: 16px; } }
+body[data-size="story"] .trace-grid { --t-state: 184px; }
+
 .trace-head { flex: none; }
-.trace-cols, .trace-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px 88px 152px minmax(160px, 0.8fr); column-gap: 12px; align-items: center; }
-body[data-size="story"] .trace-cols, body[data-size="story"] .trace-row { grid-template-columns: minmax(0, 1fr) 96px 96px 176px minmax(200px, 0.8fr); }
-.trace-cols { padding: 8px 0; border-bottom: 2px solid var(--rule-strong); font-size: var(--t-label); color: var(--muted); }
-.trace-note { padding: 8px 0; }
-.trace-shape { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 .trace-body { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: auto; }
-.trace-row { min-height: 40px; padding: 4px 0; border-bottom: 1px solid var(--rule); }
-.trace-row[data-current="yes"] { box-shadow: inset 3px 0 0 var(--ink); }
-.trace-step { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 8px; }
-.trace-nested .trace-step { padding-left: 48px; font-size: var(--t-label); }
-.trace-toggle { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; color: var(--ink-2); flex: none; }
-.trace-toggle[hidden] { visibility: hidden; display: inline-flex; }
-.trace-chevron { width: 16px; height: 16px; }
-.trace-num { font-size: var(--t-label); color: var(--muted); flex: none; }
-.trace-title { min-width: 0; }
-.trace-row[data-current="yes"] .trace-title { font-weight: 700; }
-.trace-start, .trace-dur { font-size: var(--t-label); color: var(--ink-2); }
-.trace-state { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--t-label); }
-.trace-why { color: var(--muted); }
-.trace-pill { padding: 0 6px; border: 1px solid var(--red); border-radius: 3px; color: var(--red); font-weight: 700; }
-.trace-time { min-width: 0; }
+.trace-cols { display: grid; grid-template-columns: var(--t-cols); column-gap: var(--t-gap); padding: 0 calc(var(--t-px) + 2px) 4px; border-bottom: 2px solid var(--rule-strong); }
+.trace-col { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+.trace-note { display: block; padding: 4px calc(var(--t-px) + 2px) 4px; }
+.trace-shape { display: block; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+
+.trace-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--t-cols);
+  column-gap: var(--t-gap);
+  align-items: center;
+  min-height: 40px;
+  padding: 4px var(--t-px);
+  border-bottom: 1px solid var(--rule);
+}
+.trace-grid[data-run="yes"] .trace-row { cursor: pointer; }
+.trace-row:focus-visible { outline-offset: -2px; }
+.trace-row > .trace-step { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; column-gap: 8px; min-width: 0; }
+.trace-row > .trace-start { grid-column: 2; grid-row: 2; }
+.trace-row > .trace-dur { grid-column: 3; grid-row: 2; }
+.trace-row > .trace-state { grid-column: 4; grid-row: 2; display: flex; align-items: center; min-width: 0; }
+.trace-row > .trace-time { grid-column: 5; grid-row: 2; min-width: 0; }
+.trace-row > .trace-stop { grid-column: 1 / -1; grid-row: 3; display: block; padding: 0 0 2px 32px; }
+
+.trace-toggle { flex: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; color: var(--ink-2); }
+.trace-toggle[hidden] { display: inline-flex; visibility: hidden; }
+.trace-chevron { display: block; width: 16px; height: 16px; }
+.trace-num { flex: none; min-width: 1ch; font-size: var(--t-value); line-height: var(--l-value); color: var(--muted); }
+.trace-num[hidden] { display: none; }
+.trace-title { min-width: 0; font-size: var(--t-value); line-height: var(--l-value); color: var(--ink); }
+.trace-row[data-tone="muted"] .trace-title { color: var(--muted); }
+.trace-start, .trace-dur { font-size: var(--t-label); line-height: var(--l-label); white-space: nowrap; color: var(--ink-2); }
+
+/* The time lane: a track, and on it a bar from the step's start, as wide as
+   the time the step took. The state beside it says in a word and an icon
+   what the bar's colour says. */
 .trace-lane { position: relative; display: block; height: 8px; background: var(--rule); }
-.trace-bar { position: absolute; top: 0; bottom: 0; min-width: 2px; background: var(--ink-2); }
+.trace-lane[hidden] { display: none; }
+.trace-bar { position: absolute; top: 0; bottom: 0; inset-inline-start: 0; min-width: 2px; background: var(--ink-2); }
+.trace-bar[hidden] { display: none; }
 .trace-bar[data-fill="stop"] { background: var(--red); }
 .trace-bar[data-fill="warn"] { background: var(--amber); }
-.trace-stop { grid-column: 1 / -1; display: flex; flex-direction: column; padding: 4px 0 4px 48px; }
-.trace-stop-head { font-weight: 700; color: var(--red); }
-.trace-stop-text { font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); }
-.trace-count { padding: 8px 0; font-size: var(--t-label); color: var(--muted); }
+
+/* The selected step, and the row inside a step that was opened from here:
+   a rule at their start. The stopped step: a red rule, and its headline and
+   the run's sentence under its cells. */
+.trace-row[data-current="yes"]::before,
+.trace-nested[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: var(--ink); }
+.trace-row[data-tone="stop"]::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: var(--red); }
+.trace-row[data-current="yes"] .trace-title { font-weight: 700; }
+.trace-stop-head { display: block; font-size: var(--t-value); line-height: var(--l-value); font-weight: 700; color: var(--red); }
+.trace-stop-text { display: block; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); }
+
+/* A row inside a step: its name, then what the run carries for it, on one
+   line where the pane has the width and on two where it has not. */
+.trace-nested { display: flex; flex-wrap: wrap; align-items: center; min-height: 28px; padding-left: calc(var(--t-px) + 32px); font-size: var(--t-label); line-height: var(--l-label); }
+.trace-nested > [role="gridcell"]:not(:empty) { margin-inline-end: 12px; }
+.trace-nested > .trace-step { display: block; }
+.trace-nested > .trace-dur { color: var(--muted); }
+.trace-nested > .trace-state { flex-wrap: wrap; column-gap: 8px; }
+.trace-nested.trace-timed { display: grid; padding-left: var(--t-px); }
+.trace-nested.trace-timed > .trace-step { padding-left: 32px; }
+.trace-nested.trace-timed > [role="gridcell"] { margin-inline-end: 0; }
+.trace-why { font-weight: 700; color: var(--red); white-space: nowrap; }
+.trace-pill { display: inline-block; padding: 0 8px; border: 1px solid var(--red); border-radius: 3px; color: var(--red); font-size: var(--t-label); font-weight: 700; line-height: 22px; white-space: nowrap; }
+.trace-count { flex: none; padding: 4px calc(var(--t-px) + 2px) 8px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+
+body[data-size="story"] .trace-row[aria-level="1"] { min-height: 48px; }
+
+@media (max-width: 1023px) {
+  .trace-grid { --t-lane: 96px; }
+  .trace-body { overflow-y: visible; }
+}
+@media (max-width: 639px) {
+  .trace-grid { --t-gutter: 0px; --t-start: 64px; --t-dur: 88px; --t-state: 144px; --t-lane: 0px; }
+}
 
 /* ---- Footer: one quiet line */
 

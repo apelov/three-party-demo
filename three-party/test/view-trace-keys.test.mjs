@@ -22,7 +22,7 @@ const focus = (page) => page.evaluate(() => {
     span: row && row === node ? row.dataset.span : null,
     flowStep: node.closest('#rows') ? node.dataset.step ?? null : null,
     id: node.id,
-    view: node.closest('#view-switch') ? node.dataset.view : null,
+    tab: node.getAttribute('role') === 'tab' ? node.dataset.tab : null,
     copy: node.classList.contains('copy-btn'),
     outlineWidth: style.outlineWidth,
     outlineStyle: style.outlineStyle,
@@ -32,12 +32,12 @@ const ringed = (f, where) => {
   assert.notEqual(f.outlineWidth, '0px', `a focus ring ${where}`);
   assert.notEqual(f.outlineStyle, 'none', `a focus ring ${where}`);
 };
-const state = (page) => page.evaluate(() => ({ hash: location.hash, view: document.body.dataset.view, mode: document.body.dataset.mode, pressed: [...document.querySelectorAll('#view-switch button')].map((b) => `${b.dataset.view}:${b.getAttribute('aria-pressed')}`), flowShown: !document.getElementById('rows').hidden, traceShown: !document.getElementById('trace').hidden }));
+const state = (page) => page.evaluate(() => ({ hash: location.hash, tab: document.body.dataset.tab, mode: document.body.dataset.mode, selected: [...document.querySelectorAll('#tabs [role="tab"]')].map((b) => `${b.dataset.tab}:${b.getAttribute('aria-selected')}`), shown: ['sequence', 'trace', 'records'].filter((t) => !document.getElementById(`panel-${t}`).hidden) }));
 const inspector = (page) => page.evaluate(() => {
   const host = document.getElementById('pane-inspector');
   return {
     panel: host.querySelector('.insp').dataset.panel,
-    number: host.querySelector('#inspector-heading .row-num')?.textContent ?? null,
+    number: host.querySelector('#inspector-heading .row-num')?.textContent.match(/\d+/)?.[0] ?? null,
     heading: host.querySelector('#inspector-heading').textContent,
     marked: [...host.querySelectorAll('[data-highlight="yes"]')].map((n) => ({ cls: n.className, tool: n.dataset.tool ?? null, file: n.dataset.file ?? null, kind: n.dataset.kind ?? null, text: n.textContent.slice(0, 60) })),
     artifacts: [...host.querySelectorAll('.artifact')].map((a) => a.dataset.file),
@@ -47,57 +47,60 @@ const expandedOf = async (page, span) => (await traceRows(page)).find((r) => r.s
 
 const SERVER = () => ({ examples: examplesWith({ add: { 'manifest.json': poisonedManifest() } }) });
 
-test('the switch and its key: T shows the trace and the flow in turn, the address names the view beside the mode from then on, a click on either half does the same, the three panes stay where they are and a reload keeps the trace showing', async () => {
+test('the tabs and their key: T shows the trace and the sequence in turn, the address names the tab beside the mode from then on, a click on a tab does the same, the panes stay where they are and a reload keeps the trace showing', async () => {
   const view = await openView(browser, { hash: '#inspect' });
   const { page } = view;
   try {
-    const sw = await page.evaluate(() => {
-      const group = document.getElementById('view-switch');
-      return { role: group.getAttribute('role'), name: group.getAttribute('aria-label'), buttons: [...group.children].map((b) => ({ tag: b.tagName, text: b.textContent, pressed: b.getAttribute('aria-pressed'), height: b.getBoundingClientRect().height, width: b.getBoundingClientRect().width })) };
+    const tabs = await page.evaluate(() => {
+      const list = document.getElementById('tabs');
+      return { role: list.getAttribute('role'), name: list.getAttribute('aria-label'), tabs: [...list.children].map((b) => ({ role: b.getAttribute('role'), id: b.id, text: b.textContent, controls: b.getAttribute('aria-controls'), height: b.getBoundingClientRect().height, width: b.getBoundingClientRect().width })) };
     });
-    assert.equal(sw.role, 'group');
-    assert.equal(sw.name, COPY['view.switchName']);
-    assert.deepEqual(sw.buttons.map((b) => [b.tag, b.text, b.pressed]), [['BUTTON', COPY['view.flow'], 'true'], ['BUTTON', COPY['view.trace'], 'false']]);
-    for (const b of sw.buttons) assert.ok(b.height >= 24 && b.width >= 24, `a half of the switch is at least 24 by 24 px (${b.width} by ${b.height})`);
-    assert.deepEqual(await state(page), { hash: '#inspect', view: 'flow', mode: 'inspect', pressed: ['flow:true', 'trace:false'], flowShown: true, traceShown: false }, 'an address that names no view means the flow');
+    assert.equal(tabs.role, 'tablist');
+    assert.equal(tabs.name, COPY['ui.tabsName']);
+    assert.deepEqual(tabs.tabs.map((t) => [t.role, t.id, t.text, t.controls]), [['tab', 'tab-sequence', COPY['ui.tabSequence'], 'panel-sequence'], ['tab', 'tab-trace', COPY['ui.tabTrace'], 'panel-trace'], ['tab', 'tab-records', COPY['ui.tabRecords'], 'panel-records']]);
+    for (const t of tabs.tabs) assert.ok(t.height >= 24 && t.width >= 24, `a tab is at least 24 by 24 px (${t.width} by ${t.height})`);
+    assert.deepEqual(await state(page), { hash: '#inspect', tab: 'sequence', mode: 'inspect', selected: ['sequence:true', 'trace:false', 'records:false'], shown: ['sequence'] }, 'an address that names no tab means the sequence');
 
     await runAndWait(view, 'poisoned', 'blocked');
-    const panes = () => page.evaluate(() => ['pane-left', 'pane-flow', 'pane-inspector', 'topbar', 'footer', 'invoice', 'mode-switch', 'view-switch'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }));
+    const panes = () => page.evaluate(() => ['pane-left', 'pane-flow', 'pane-inspector', 'topbar', 'footer', 'mode-switch', 'tabs'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }));
     const before = await panes();
 
     await page.keyboard.press('t');
-    assert.deepEqual(await state(page), { hash: '#inspect-trace', view: 'trace', mode: 'inspect', pressed: ['flow:false', 'trace:true'], flowShown: false, traceShown: true });
-    assert.deepEqual(await panes(), before, 'the panes, the invoice and the switches do not move');
+    assert.deepEqual(await state(page), { hash: '#inspect-trace', tab: 'trace', mode: 'inspect', selected: ['sequence:false', 'trace:true', 'records:false'], shown: ['trace'] });
+    assert.deepEqual(await panes(), before, 'the panes and the tab list do not move');
     await page.keyboard.press('t');
-    assert.deepEqual(await state(page), { hash: '#inspect-flow', view: 'flow', mode: 'inspect', pressed: ['flow:true', 'trace:false'], flowShown: true, traceShown: false });
+    assert.deepEqual(await state(page), { hash: '#inspect-sequence', tab: 'sequence', mode: 'inspect', selected: ['sequence:true', 'trace:false', 'records:false'], shown: ['sequence'] });
     assert.deepEqual(await panes(), before);
 
-    // The mode keys keep the view, and the address says both.
+    // The mode keys keep the tab, and the address says both.
     await page.keyboard.press('Shift+T');
-    assert.equal((await state(page)).view, 'flow', 'with Shift the key is not the switch');
+    assert.equal((await state(page)).tab, 'sequence', 'with Shift the key is not the switch');
     await page.keyboard.press('t');
     await page.keyboard.press('s');
-    assert.deepEqual([(await state(page)).hash, (await state(page)).view, (await state(page)).mode], ['#story-trace', 'trace', 'story']);
+    assert.deepEqual([(await state(page)).hash, (await state(page)).tab, (await state(page)).mode], ['#story-trace', 'trace', 'story']);
     await page.keyboard.press('i');
     assert.equal((await state(page)).hash, '#inspect-trace');
 
-    // A click on a half of the switch.
-    await page.click('#view-switch [data-view="flow"]');
-    assert.deepEqual([(await state(page)).hash, (await state(page)).view], ['#inspect-flow', 'flow']);
-    await page.click('#view-switch [data-view="trace"]');
-    assert.deepEqual([(await state(page)).hash, (await state(page)).view], ['#inspect-trace', 'trace']);
-    await page.click('#view-switch [data-view="trace"]');
-    assert.equal((await state(page)).view, 'trace', 'the half that is pressed stays pressed');
+    // A click on a tab.
+    await page.click('#tab-sequence');
+    assert.deepEqual([(await state(page)).hash, (await state(page)).tab], ['#inspect-sequence', 'sequence']);
+    await page.click('#tab-records');
+    assert.deepEqual([(await state(page)).hash, (await state(page)).tab, (await state(page)).shown], ['#inspect-records', 'records', ['records']]);
+    assert.deepEqual(await panes(), before);
+    await page.click('#tab-trace');
+    assert.deepEqual([(await state(page)).hash, (await state(page)).tab], ['#inspect-trace', 'trace']);
+    await page.click('#tab-trace');
+    assert.equal((await state(page)).tab, 'trace', 'the tab shown stays shown');
 
     await page.reload();
     await page.waitForFunction(() => document.body.dataset.ready === 'yes');
-    assert.deepEqual(await state(page), { hash: '#inspect-trace', view: 'trace', mode: 'inspect', pressed: ['flow:false', 'trace:true'], flowShown: false, traceShown: true }, 'a reload keeps the trace showing');
+    assert.deepEqual(await state(page), { hash: '#inspect-trace', tab: 'trace', mode: 'inspect', selected: ['sequence:false', 'trace:true', 'records:false'], shown: ['trace'] }, 'a reload keeps the trace showing');
 
-    // The address drives the page too.
+    // The address drives the page too; the sequence's earlier name still opens it.
     await page.evaluate(() => { location.hash = '#story-flow'; });
-    await page.waitForFunction(() => document.body.dataset.view === 'flow' && document.body.dataset.mode === 'story');
+    await page.waitForFunction(() => document.body.dataset.tab === 'sequence' && document.body.dataset.mode === 'story');
     await page.evaluate(() => { location.hash = '#story-trace'; });
-    await page.waitForFunction(() => document.body.dataset.view === 'trace');
+    await page.waitForFunction(() => document.body.dataset.tab === 'trace');
     assert.deepEqual(view.errors, []);
   } finally {
     await view.close();
@@ -118,17 +121,17 @@ test('the keys of the grid: Tab reaches the switch and then the trace\'s selecte
     assert.equal(f.span, 'intent', 'with the focus on a step when the view changes, it moves to that step\'s row of the trace');
     ringed(f, 'on the selected row of the trace');
 
-    // Back to the switch with Shift+Tab, then forward with Tab: the two
-    // halves of the switch, the run's copy control, then the selected row.
-    for (let i = 0; i < 3; i += 1) await page.keyboard.press('Shift+Tab');
+    // Back to the tab list with Shift+Tab (one stop, on the tab shown), then
+    // forward with Tab to the selected row.
+    await page.keyboard.press('Shift+Tab');
     const stops = [];
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 2; i += 1) {
       f = await focus(page);
       ringed(f, `at stop ${i}`);
-      stops.push(f.view ? `view:${f.view}` : f.copy ? 'copy' : f.span ? `row:${f.span}` : f.id);
-      if (i < 3) await page.keyboard.press('Tab');
+      stops.push(f.tab ? `tab:${f.tab}` : f.copy ? 'copy' : f.span ? `row:${f.span}` : f.id);
+      if (i < 1) await page.keyboard.press('Tab');
     }
-    assert.deepEqual(stops, ['view:flow', 'view:trace', 'copy', 'row:intent']);
+    assert.deepEqual(stops, ['tab:trace', 'row:intent']);
 
     const rows = await traceRows(page);
     const order = rows.map((r) => r.span);
@@ -152,11 +155,11 @@ test('the keys of the grid: Tab reaches the switch and then the trace\'s selecte
     await press('ArrowDown', order[order.length - 1], 'Down on the last row stays');
     // Moving the focus selects nothing: the selection is where it was.
     assert.equal((await traceRows(page)).filter((r) => r.selected === 'true').map((r) => r.span).join(), 'intent');
-    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent), '4');
+    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent.match(/\d+/)[0]), '4');
 
     // The digits still select while a row holds the focus, and the focus goes with the selection.
     await press('2', 'grant', 'a digit selects its step and the focus follows');
-    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent), '2');
+    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent.match(/\d+/)[0]), '2');
     await press('4', 'intent');
 
     // Left closes the open step, Right opens it.
@@ -181,15 +184,15 @@ test('the keys of the grid: Tab reaches the switch and then the trace\'s selecte
     await press('ArrowRight', 'crossing', 'a step with nothing inside');
     await press('ArrowLeft', 'crossing');
     assert.equal(await selectedStep(page), 3, 'Left and Right on a row of the trace are not the previous and the next step');
-    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent), '3');
+    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent.match(/\d+/)[0]), '3');
 
     // With the focus outside the trace the keys of the page keep their meaning.
     await page.focus('#run-control');
     await page.keyboard.press('ArrowRight');
-    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent), '4', 'Right is the next step');
+    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent.match(/\d+/)[0]), '4', 'Right is the next step');
     await page.keyboard.press('ArrowLeft');
     await page.keyboard.press('ArrowLeft');
-    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent), '2', 'Left is the previous step');
+    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent.match(/\d+/)[0]), '2', 'Left is the previous step');
     await page.keyboard.press('0');
     assert.equal(await page.evaluate(() => document.querySelector('#pane-inspector .insp').dataset.panel), 'overview');
     assert.deepEqual(view.errors, []);
@@ -205,7 +208,7 @@ test('from a row to the step\'s real data: Enter on the second tool call opens s
   try {
     await runAndWait(view, 'poisoned', 'blocked');
     await page.waitForFunction(() => document.querySelectorAll('#trace-body [data-kind="record"]').length > 0);
-    assert.equal((await inspector(page)).panel, 'overview', 'Inspect starts on the run as a whole');
+    assert.equal((await inspector(page)).panel, 'intent', 'a run is followed to its stopped step in Inspect as in Story');
 
     // By keys: from the leading row down to the second call.
     await page.keyboard.press('4');
@@ -219,7 +222,8 @@ test('from a row to the step\'s real data: Enter on the second tool call opens s
     let insp = await inspector(page);
     assert.equal(insp.panel, 'intent');
     assert.equal(insp.number, '4');
-    assert.equal(insp.heading, `4${POISONED.steps[3].title}`);
+    // The inspector names the step by its number; its title stands once, in the sequence.
+    assert.equal(insp.heading, COPY['sect.step'].replace('{n}', '4'));
     assert.deepEqual(insp.marked.map((m) => m.tool), [POISONED.steps[3].detail.calls[1].tool], 'the second call is the one marked');
     // The example files hold the action file of the pay step alone, so on
     // this server the intent step shows its state pane and no action file.
@@ -301,7 +305,7 @@ test('the control at a row\'s start opens and closes the rows inside the step by
     assert.equal(rows.find((r) => r.span === 'grant').toggle.label, filled('trace.collapse', { n: 2 }));
     assert.equal(rows.filter((r) => r.parent === 'grant').length, 4);
     assert.equal(await selectedStep(page), 4, 'opening a step selects nothing');
-    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent), '4');
+    assert.equal(await page.evaluate(() => document.querySelector('#inspector-heading .row-num').textContent.match(/\d+/)[0]), '4');
 
     await page.click('#trace-body [data-span="grant"] .trace-toggle');
     assert.equal(await expandedOf(page, 'grant'), 'false');
@@ -338,7 +342,10 @@ test('the offline check from the trace: Enter on its row opens the check in the 
   const { page } = view;
   try {
     await runAndWait(view, 'clean', 'paid');
+    // The audit opens the Records tab; T brings the trace back with the audit's row.
     await page.keyboard.press('o');
+    await page.waitForFunction(() => document.body.dataset.tab === 'records');
+    await page.keyboard.press('t');
     await page.waitForFunction(() => document.querySelector('#trace-body [data-span="offline-check"]') !== null);
     await page.keyboard.press('1');
     assert.equal((await inspector(page)).panel, 'credential');
@@ -352,10 +359,15 @@ test('the offline check from the trace: Enter on its row opens the check in the 
     insp = await inspector(page);
     assert.equal(insp.panel, 'offline');
     assert.deepEqual(insp.marked.map((m) => [m.file, m.kind]), [[offline.tampered[0].file, 'tampered']]);
+    // A record the audit checked opens the step that wrote it, with its
+    // record section marked and the audit's verdict in it.
     await page.click('#trace-body [data-span="offline-check/records/2"]');
     insp = await inspector(page);
-    assert.deepEqual(insp.marked.map((m) => [m.file, m.kind]), [[offline.records[2].file, 'records']]);
-    assert.deepEqual((await traceRows(page)).filter((r) => r.selected === 'true').map((r) => r.span), ['offline-check/records/2']);
+    const step = example('state-clean-done.json').steps.findIndex((s) => s.recordFile === offline.records[2].file);
+    assert.equal(insp.panel, example('state-clean-done.json').steps[step].id);
+    assert.equal(insp.marked.length, 1);
+    assert.equal(await page.evaluate(() => document.querySelector('#pane-inspector [data-highlight="yes"]').closest('.insp-section').dataset.section), 'record');
+    assert.equal(await page.evaluate(() => document.querySelector('#pane-inspector [data-section="record"] .verdict')?.dataset.verdict ?? null), offline.records[2].verdict);
     assert.deepEqual(view.errors, []);
   } finally {
     await view.close();

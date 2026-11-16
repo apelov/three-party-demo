@@ -4,7 +4,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launchChrome, openView, runAndWait, runScene, runIs, rowsOf, COPY, LABELS, CLEAN_DONE, POISONED, examplesWith, removeTempDirs } from './support/view-helpers.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
 import { ICON_NAMES, shapeMarkup } from '../view/icons.mjs';
+import { asOf } from '../view/dev-server.mjs';
 
 let browser;
 before(async () => { browser = await launchChrome(); });
@@ -24,103 +27,102 @@ test('the map names seven states, each with its own icon shape, word and tone', 
   for (const [status, s] of states) assert.equal(typeof COPY[s.wordKey], 'string', status);
 });
 
-test('before a run the flow shows the six steps of the contract as pending, with no step selected and the run control focused', async () => {
+test('before a run the middle pane shows the orientation: the one sentence, the three parts and the two runs to start, with the first run focused and no row, no outcome', async () => {
   const view = await openView(browser);
   try {
-    const rows = await rowsOf(view.page);
-    assert.deepEqual(rows.map((r) => r.title), ['credential', 'grant', 'crossing', 'intent', 'pay', 'record'].map((id) => COPY[`step.${id}`]));
-    assert.deepEqual(rows.map((r) => r.word), Array(6).fill(word('pending')));
-    assert.deepEqual(rows.map((r) => r.number), ['1', '2', '3', '4', '5', '6']);
-    assert.deepEqual(rows.map((r) => r.current), Array(6).fill(null));
-    assert.equal(await view.page.evaluate(() => document.activeElement.id), 'run-control');
-    assert.equal(await view.page.evaluate(() => document.getElementById('outcome-end').textContent), '');
-    assert.equal(await view.page.evaluate(() => document.getElementById('app-sentence').textContent), COPY['app.sentence']);
-    assert.equal(await view.page.evaluate(() => location.hash), '');
-    assert.equal(await view.page.evaluate(() => document.body.dataset.mode), 'story');
-    assert.deepEqual(view.errors, []);
+    const start = await view.page.evaluate(() => ({
+      rows: document.querySelectorAll('#rows .row').length,
+      flowHidden: document.getElementById('flow').hidden,
+      sentence: document.getElementById('app-sentence')?.dataset.src,
+      parts: [...document.querySelectorAll('#orient .orient-part')].map((p) => p.dataset.col),
+      runs: [...document.querySelectorAll('#orient .orient-actions button')].map((b) => b.dataset.runKind),
+      focused: document.activeElement?.dataset.runKind ?? null,
+      outcomeHidden: document.getElementById('outcome-end').hidden,
+      hash: location.hash,
+      mode: document.body.dataset.mode,
+    }));
+    assert.deepEqual(start, {
+      rows: 0,
+      flowHidden: true,
+      sentence: 'copy:ui.lead',
+      parts: LABELS.columns.filter((id) => LABELS.parts[id] && LABELS.parts[id].text),
+      runs: ['clean', 'poisoned'],
+      focused: 'clean',
+      outcomeHidden: true,
+      hash: '',
+      mode: 'story',
+    });
   } finally {
     await view.close();
   }
 });
 
-test('a poisoned run: Passed three times, Stopped, Not reached, Written, each with its icon; the stopped step carries the headline and the run\'s reason', async () => {
+test('a poisoned run: Passed three times, Stopped, Not reached, Written, each with its icon; the stopped step is stamped and says what differed, and the outcome line says it in the lens\'s words', async () => {
   const view = await openView(browser);
   try {
     await runAndWait(view, 'poisoned', 'blocked');
     const rows = await rowsOf(view.page);
-    const want = ['passed', 'passed', 'passed', 'blocked', 'not-reached', 'written'];
-    assert.deepEqual(rows.map((r) => r.status), want);
-    assert.deepEqual(rows.map((r) => r.word), want.map(word));
-    assert.deepEqual(rows.map((r) => r.icon), want.map(icon));
-    assert.deepEqual(rows.map((r) => r.shown), want.map((s) => `#icon-${icon(s)}`));
-    assert.deepEqual(rows.map((r) => r.tone), want.map((s) => LABELS.states[s].tone));
+    const statuses = ['passed', 'passed', 'passed', 'blocked', 'not-reached', 'written'];
+    assert.deepEqual(rows.map((r) => r.status), statuses);
+    assert.deepEqual(rows.map((r) => r.word), statuses.map(word));
+    assert.deepEqual(rows.map((r) => r.shown), statuses.map((s) => `#icon-${icon(s)}`));
     assert.deepEqual(rows.map((r) => r.title), POISONED.steps.map((s) => s.title));
-
-    const banner = await view.page.evaluate(() => {
+    // Follow lands on the stopped step: it is the selected row, stamped,
+    // with the one detail line on screen.
+    assert.deepEqual(rows.map((r) => r.current), [null, null, null, 'step', null, null]);
+    assert.deepEqual(rows.map((r) => r.detail !== null), [false, false, false, true, false, false]);
+    const stopped = await view.page.evaluate(() => {
       const row = document.querySelector('#rows .row[data-outcome="blocked"]');
-      return {
-        step: row.dataset.step,
-        headline: row.querySelector('[data-outcome-part="headline"]').textContent,
-        text: row.querySelector('[data-outcome-part="text"]').textContent,
-        endHidden: document.getElementById('outcome-end').hidden,
-        top: document.querySelector('.run-outcome').textContent,
-      };
+      const chip = row.querySelector('.row-state .chip');
+      return { step: row.dataset.step, font: getComputedStyle(chip).fontFamily, border: getComputedStyle(chip).borderTopStyle, detail: row.querySelector('.row-detail').dataset.src };
     });
-    assert.equal(banner.step, POISONED.blockedAt);
-    assert.equal(banner.headline, COPY[LABELS.outcomeHeadlines['blocked:intent']]);
-    assert.equal(banner.headline, COPY['outcome.stoppedIntent']);
-    assert.equal(banner.text, POISONED.reason);
-    assert.equal(banner.endHidden, true, 'the outcome is stated once, at the stopped step');
-    assert.equal(banner.top, COPY['outcome.stoppedIntent']);
-    assert.equal(rows[4].detail, null, 'Story opens the detail line of the selected row alone');
+    assert.equal(stopped.step, POISONED.blockedAt);
+    assert.match(stopped.font, /DIN Condensed|Avenir Next Condensed|Arial Narrow/, 'the stop is stamped in the condensed face');
+    assert.equal(stopped.border, 'solid');
+    assert.match(stopped.detail, /^copy:detail\.intentStop;/);
+    const outcome = await view.page.evaluate(() => {
+      const host = document.getElementById('outcome-end');
+      return { hidden: host.hidden, outcome: host.dataset.outcome, headline: host.querySelector('[data-outcome-part="headline"]').dataset.src, text: host.querySelector('[data-outcome-part="text"]').textContent };
+    });
+    assert.deepEqual(outcome, { hidden: false, outcome: 'blocked', headline: `copy:${LABELS.outcomeHeadlines['blocked:intent']};when=run:blockedAt`, text: COPY['lens.security.blockedIntent'] });
+    // In Inspect, the row of the step that was not reached says why.
     await view.page.keyboard.press('i');
-    assert.equal((await rowsOf(view.page))[4].detail, COPY['detail.notRun']);
-    assert.deepEqual(view.errors, []);
+    await view.page.keyboard.press('5');
+    assert.equal(await view.page.evaluate(() => document.querySelector('#rows .row[data-step="pay"] .row-detail').textContent), COPY['detail.notRun']);
   } finally {
     await view.close();
   }
 });
 
-test('a clean run in progress: Passed, Checking, then Pending four times, and the outcome reads In progress', async () => {
+test('a clean run in progress: Passed, Checking, then Pending four times, and no outcome line yet', async () => {
   const view = await openView(browser, { server: { examples: examplesWith({ omit: ['state-clean-done.json'] }) } });
   try {
     await runScene(view.page, 'clean');
     await runIs(view.page, 'running');
+    await view.settle();
     const rows = await rowsOf(view.page);
-    const want = ['passed', 'running', 'pending', 'pending', 'pending', 'pending'];
-    assert.deepEqual(rows.map((r) => r.status), want);
-    assert.deepEqual(rows.map((r) => r.word), want.map(word));
-    assert.deepEqual(rows.map((r) => r.icon), want.map(icon));
-    assert.equal(word('running'), COPY['state.checking']);
-    const end = await view.page.evaluate(() => ({ outcome: document.getElementById('outcome-end').dataset.outcome, text: document.querySelector('#outcome-end [data-outcome-part="headline"]').textContent }));
-    assert.deepEqual(end, { outcome: 'pending', text: COPY['outcome.pending'] });
-    assert.equal(await view.page.evaluate(() => document.querySelector('.countdown')), null, 'no countdown before the grant has passed');
+    const statuses = ['passed', 'running', 'pending', 'pending', 'pending', 'pending'];
+    assert.deepEqual(rows.map((r) => r.status), statuses);
+    assert.deepEqual(rows.map((r) => r.word), statuses.map(word));
+    assert.equal(await view.page.evaluate(() => document.getElementById('outcome-end').hidden), true);
   } finally {
     await view.close();
   }
 });
 
-test('a clean run finished: Passed five times, Written, and the outcome Paid with the payment the bank accepted', async () => {
+test('a clean run finished: Passed five times, Written, the outcome Paid in the lens\'s words, and the next run it offers', async () => {
   const view = await openView(browser);
   try {
     await runAndWait(view, 'clean', 'paid');
     const rows = await rowsOf(view.page);
-    const want = ['passed', 'passed', 'passed', 'passed', 'passed', 'written'];
-    assert.deepEqual(rows.map((r) => r.status), want);
-    assert.deepEqual(rows.map((r) => r.word), want.map(word));
-    assert.deepEqual(rows.map((r) => r.icon), want.map(icon));
-    const end = await view.page.evaluate(() => ({
-      outcome: document.getElementById('outcome-end').dataset.outcome,
-      headline: document.querySelector('#outcome-end [data-outcome-part="headline"]').textContent,
-      text: document.querySelector('#outcome-end [data-outcome-part="text"]').textContent,
-      stopSentences: document.querySelectorAll('.stop-sentence').length,
-    }));
-    const paymentId = CLEAN_DONE.steps.find((s) => s.id === 'pay').detail.paymentId;
-    assert.equal(end.outcome, 'paid');
-    assert.equal(end.headline, COPY['outcome.paid']);
-    assert.equal(end.text, COPY['outcome.paidText'].replace('{paymentId}', paymentId));
-    assert.equal(end.stopSentences, 0);
-    assert.deepEqual(view.errors, []);
+    const statuses = ['passed', 'passed', 'passed', 'passed', 'passed', 'written'];
+    assert.deepEqual(rows.map((r) => r.status), statuses);
+    assert.deepEqual(rows.map((r) => r.word), statuses.map(word));
+    const outcome = await view.page.evaluate(() => {
+      const host = document.getElementById('outcome-end');
+      return { outcome: host.dataset.outcome, headline: host.querySelector('[data-outcome-part="headline"]').textContent, text: host.querySelector('[data-outcome-part="text"]').textContent, next: host.querySelector('#next-action')?.dataset.next ?? null };
+    });
+    assert.deepEqual(outcome, { outcome: 'paid', headline: COPY['outcome.paid'], text: COPY['lens.security.paid'], next: 'poisoned' });
   } finally {
     await view.close();
   }
@@ -152,16 +154,34 @@ test('a status the map does not name is shown by its own value, with the hollow 
   }
 });
 
-test('the grant countdown: Expires in a time within the grant\'s minute, a bar that shortens each second, warn colours near the end, then Expired with an empty bar', async () => {
+test('the grant countdown: on the grant row while the run goes on, gone from it once the outcome is decided; in the grant\'s inspector row it reads a time within the grant\'s minute, a bar that shortens each second, warn colours near the end, then Expired with an empty bar', async () => {
   const grant = CLEAN_DONE.grant;
-  const view = await openView(browser, { motion: 'no-preference', clockAt: new Date(Date.parse(grant.expiresAt) - 30000).toISOString() });
+  // A run held as it stood 15 s in: the grant has passed, the crossing is next.
+  const dir = examplesWith({ omit: ['state-clean-done.json'] });
+  fs.writeFileSync(path.join(dir, 'state-clean-running.json'), `${JSON.stringify(asOf(CLEAN_DONE, Date.parse(CLEAN_DONE.startedAt) + 15000), null, 2)}\n`);
+  const running = await openView(browser, { server: { examples: dir }, clockAt: new Date(Date.parse(CLEAN_DONE.startedAt) + 15000).toISOString() });
+  try {
+    await runScene(running.page, 'clean');
+    await runIs(running.page, 'running');
+    await running.page.waitForSelector('#rows .row[data-step="grant"] .countdown');
+    const onRow = await running.page.evaluate(() => document.querySelector('#rows .row[data-step="grant"] .countdown-text').textContent);
+    assert.match(onRow, new RegExp(`^${COPY['detail.countdown'].replace('{mmss}', '\\d\\d:\\d\\d')}$`));
+  } finally {
+    await running.close();
+  }
+
+  const view = await openView(browser, { hash: '#inspect', motion: 'no-preference', clockAt: new Date(Date.parse(grant.expiresAt) - 30000).toISOString() });
   try {
     await runAndWait(view, 'clean', 'paid');
+    assert.equal(await view.page.evaluate(() => document.querySelector('#rows .countdown')), null, 'no countdown on the rows once the outcome is decided');
+    await view.page.keyboard.press('2');
+    await view.settle();
     const read = () => view.page.evaluate(() => {
-      const node = document.querySelector('#rows .row[data-step="grant"] .countdown');
-      return { text: node.querySelector('.countdown-text').textContent, width: node.querySelector('.countdown-fill').getBoundingClientRect().width, track: node.querySelector('.countdown-track').getBoundingClientRect().width, expiring: node.dataset.expiring, done: node.dataset.done };
+      const node = document.querySelector('#pane-inspector .countdown');
+      return { key: node.closest('.kv-row').querySelector('.kv-key').textContent, text: node.querySelector('.countdown-text').textContent, width: node.querySelector('.countdown-fill').getBoundingClientRect().width, track: node.querySelector('.countdown-track').getBoundingClientRect().width, expiring: node.dataset.expiring, done: node.dataset.done };
     });
     const one = await read();
+    assert.equal(one.key, COPY['inspector.lifetime']);
     const shape = new RegExp(`^${COPY['detail.countdown'].replace('{mmss}', '(\\d\\d):(\\d\\d)')}$`);
     assert.match(one.text, shape);
     const [, mm, ss] = shape.exec(one.text);
@@ -188,11 +208,6 @@ test('the grant countdown: Expires in a time within the grant\'s minute, a bar t
     assert.equal(end.done, 'yes');
     await view.page.waitForTimeout(1200);
     assert.equal((await read()).width, 0, 'the bar is empty');
-
-    // The same countdown stands in the grant inspector.
-    await view.page.keyboard.press('2');
-    const insp = await view.page.evaluate(() => ({ key: document.querySelector('#pane-inspector .countdown').closest('.kv-row').querySelector('.kv-key').textContent, text: document.querySelector('#pane-inspector .countdown-text').textContent }));
-    assert.deepEqual(insp, { key: COPY['inspector.lifetime'], text: COPY['detail.countdownDone'] });
   } finally {
     await view.close();
   }

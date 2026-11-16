@@ -24,12 +24,16 @@ const stop = (page) => page.evaluate(() => {
     : node.id === 'run-control' ? 'run'
       : node.closest('#step-controls') ? node.id
         : node.closest('#mode-switch') ? `mode:${node.dataset.mode}`
-          : node.closest('#view-switch') ? `view:${node.dataset.view}`
-            : node.closest('#run-line') ? 'copy'
-              : node.closest('#trace-body') ? `trace:${node.dataset.span}`
-                : node.closest('#rows') ? `flow:${node.dataset.step}`
-                  : node.closest('#pane-inspector') ? 'inspector'
-                    : node.tagName;
+          : node.id === 'lens-select' ? 'lens'
+            : node.getAttribute('role') === 'tab' ? `tab:${node.dataset.tab}`
+              : node.closest('#run-line') ? 'copy'
+                : node.closest('#trace-body') ? `trace:${node.dataset.span}`
+                  : node.closest('#rows') ? `flow:${node.dataset.step}`
+                    : node.id === 'next-action' ? `next:${node.dataset.next}`
+                      : node.closest('#pane-inspector') ? 'inspector'
+                        : node.id === 'help-button' ? 'help'
+                          : node.dataset.runKind ? `start:${node.dataset.runKind}`
+                            : node.tagName;
   // Elements that stay in place while the page scrolls, and lie over it.
   const over = [...document.querySelectorAll('body *')].filter((other) => other !== node && !other.contains(node) && !node.contains(other) && ['sticky', 'fixed'].includes(getComputedStyle(other).position)).filter((other) => {
     const o = other.getBoundingClientRect();
@@ -63,35 +67,42 @@ function assertInSight(s, where) {
   assert.equal(s.ring, true, `${where}: ${s.kind} shows its ring`);
 }
 
-// A stopped run by the keyboard alone, with step 4 selected; then back to
-// the scene list, and forward stop by stop until the focus leaves the page
-// or comes round again.
+// A stopped run by the keyboard alone, from the orientation (Tab to the
+// poisoned invoice, Enter), with step 4 selected; then back to the page's
+// first stop, the run's copy control, and forward stop by stop to the
+// control that lists the keys, the page's last stop.
+async function startPoisoned(page) {
+  // From the orientation: Tab to the poisoned invoice and Enter. From the
+  // menu (the page opened on another tab): Down to the poisoned invoice and Enter.
+  if ((await stop(page))?.kind === 'scene') await page.keyboard.press('ArrowDown'); else await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+}
+
 async function walk(view) {
   const { page } = view;
-  await page.keyboard.press('Shift+Tab');
-  await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('r');
+  await startPoisoned(page);
   await runIs(page, 'blocked');
   await view.settle();
   await page.keyboard.press('4');
   await view.settle();
-  for (let i = 0; i < 40 && (await stop(page))?.kind !== 'scene'; i += 1) await page.keyboard.press('Shift+Tab');
+  for (let i = 0; i < 40 && (await stop(page))?.kind !== 'copy'; i += 1) await page.keyboard.press('Shift+Tab');
   const stops = [];
   for (let i = 0; i < 60; i += 1) {
     const s = await stop(page);
-    if (!s || (stops.length > 0 && s.kind === 'scene')) break;
+    if (!s) break;
     stops.push(s);
+    if (s.kind === 'help') break;
     await page.keyboard.press('Tab');
   }
   return stops;
 }
 
-// The path of the page: the scene list, the run control, the three step
-// controls, the mode switch, the switch between the flow and the trace, the
-// run's copy control, the selected step (one stop for the list of steps),
-// then the controls of the inspector. The offline check has no control of
-// its own: it is scene 6 of the scene list, run by the run control.
-const PATH = ['scene', 'run', 'step-back', 'step-forward', 'step-replay', 'mode:story', 'mode:inspect', 'view:flow', 'view:trace', 'copy'];
+// The path of the page: the top bar (the run's copy control, the lens, the
+// mode switch), the menu (one stop), the run control, the three step
+// controls, the tab list (one stop, on the tab shown), then the selected
+// step (one stop for the list of steps), the outcome's next action, the
+// controls of the inspector, and the control that lists the keys.
+const PATH = ['copy', 'lens', 'mode:story', 'mode:inspect', 'scene', 'run', 'step-back', 'step-forward', 'step-replay'];
 
 for (const [width, height] of [[1280, 800], [1440, 900], [1920, 1080]]) {
   test(`${width}x${height}, the trace in Inspect: the stops come in the order of the page, each inside the window with its ring and nothing over it; the trace is one stop, on its selected row`, async () => {
@@ -99,10 +110,11 @@ for (const [width, height] of [[1280, 800], [1440, 900], [1920, 1080]]) {
     try {
       const stops = await walk(view);
       const kinds = stops.map((s) => s.kind);
-      assert.deepEqual(kinds.slice(0, PATH.length + 1), [...PATH, 'trace:intent']);
-      const rest = kinds.slice(PATH.length + 1);
-      assert.ok(rest.length >= 2, `the inspector's controls follow (${rest.length} stops)`);
-      assert.deepEqual([...new Set(rest)], ['inspector']);
+      assert.deepEqual(kinds.slice(0, PATH.length + 3), [...PATH, 'tab:trace', 'trace:intent', 'next:audit']);
+      const rest = kinds.slice(PATH.length + 3);
+      assert.ok(rest.length >= 3, `the inspector's controls follow (${rest.length} stops)`);
+      assert.deepEqual([...new Set(rest)], ['inspector', 'help']);
+      assert.equal(rest[rest.length - 1], 'help');
       stops.forEach((s, i) => assertInSight(s, `stop ${i + 1}`));
       assert.deepEqual(view.errors, []);
     } finally {
@@ -116,7 +128,8 @@ test('1440x900, the flow in Story: the same path, with the flow\'s selected row 
   try {
     const stops = await walk(view);
     const kinds = stops.map((s) => s.kind);
-    assert.deepEqual(kinds.slice(0, PATH.length + 1), [...PATH, 'flow:intent']);
+    assert.deepEqual(kinds.slice(0, PATH.length + 3), [...PATH, 'tab:sequence', 'flow:intent', 'next:audit']);
+    assert.equal(kinds[kinds.length - 1], 'help');
     stops.forEach((s, i) => assertInSight(s, `stop ${i + 1}`));
   } finally {
     await view.close();
@@ -127,9 +140,7 @@ test('1280x800, the trace in Inspect, where its rows scroll inside the pane: the
   const view = await openView(browser, { width: 1280, height: 800, hash: '#inspect-trace', server: { examples: examplesWith({ add: { 'manifest.json': poisonedManifest() } }) } });
   const { page } = view;
   try {
-    await page.keyboard.press('Shift+Tab');
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('r');
+    await startPoisoned(page);
     await runIs(page, 'blocked');
     await page.waitForFunction(() => document.querySelectorAll('#trace-body [data-kind="record"]').length > 0);
     await view.settle();

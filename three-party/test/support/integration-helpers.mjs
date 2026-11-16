@@ -106,15 +106,14 @@ export async function openScreens(browser, url, { width = 1440, height = 900, ha
 // The run id the page shows, or null before a run.
 export const shownRunId = (page) => page.evaluate(() => document.querySelector('#run-line .run-id .mono')?.textContent ?? null);
 
-// Chooses a scene and presses the run control, both with a real click, and
-// waits until the page shows a run of that kind that is not the run it
-// showed before, so that nothing after this reads the earlier run's state.
-// Returns the new run's id.
+// Runs an item of the menu with a real click (a click on an item chooses it
+// and runs it), and waits until the page shows a run of that kind that is
+// not the run it showed before, so that nothing after this reads the
+// earlier run's state. Returns the new run's id.
 export async function startFromScreens(view, kind, limitMs = 30000) {
   const { page } = view;
   const previous = await shownRunId(page);
   await page.click(`.scene[data-kind="${kind}"]`);
-  await page.click('#run-control');
   await page.waitForFunction(([wanted, earlier]) => {
     const id = document.querySelector('#run-line .run-id .mono')?.textContent ?? null;
     return id !== null && id !== earlier && id.startsWith(`${wanted}-`);
@@ -132,20 +131,19 @@ export async function runFromScreens(view, kind, limitMs = 30000) {
     const row = document.querySelector('#rows .row[data-step="record"]');
     return Boolean(row) && !['pending', 'running'].includes(row.dataset.status) && document.body.dataset.run !== 'running';
   }, null, { timeout: limitMs });
-  // The offline control is offered once the page has read the finished state.
-  await page.click('.scene[data-kind="offline-check"]');
-  await page.waitForFunction(() => document.getElementById('run-control').getAttribute('aria-disabled') === 'false', null, { timeout: limitMs });
+  // The audit is offered once the page has read the finished state.
+  await page.waitForFunction(() => document.querySelector('.scene[data-kind="offline-check"]').getAttribute('aria-disabled') === 'false', null, { timeout: limitMs });
   await view.settle();
   assert.equal(await shownRunId(page), runId);
   return runId;
 }
 
-// With the offline scene chosen, presses the run control and waits for the
-// offline panel.
+// Runs the audit from the menu with a real click and waits for its result:
+// the Records tab and the offline panel of the inspector.
 export async function offlineCheckFromScreens(view, limitMs = 30000) {
   const { page } = view;
   await page.click('.scene[data-kind="offline-check"]');
-  await page.click('#run-control');
   await page.waitForSelector('#pane-inspector [data-panel="offline"]', { timeout: limitMs });
+  await page.waitForFunction(() => document.body.dataset.tab === 'records', null, { timeout: limitMs });
   await view.settle();
 }

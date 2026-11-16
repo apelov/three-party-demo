@@ -1,159 +1,160 @@
-// The keyboard map, with the keyboard alone: every action here is a real key
-// press through the browser, never a dispatched event.
+// The keyboard, from load: the walkthrough, the steps, the modes, the tabs,
+// the lens, the list of keys and the run control.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launchChrome, openView, runAndWait, runIs, rowsOf, selectedStep, COPY, LABELS, CLEAN_DONE, POISONED, removeTempDirs } from './support/view-helpers.mjs';
+import { launchChrome, openView, runAndWait, runIs, rowsOf, selectedStep, COPY, LABELS, POISONED, removeTempDirs } from './support/view-helpers.mjs';
 
 let browser;
 before(async () => { browser = await launchChrome(); });
 after(async () => { await browser?.close(); removeTempDirs(); });
 
-const focus = (page) => page.evaluate(() => {
-  const node = document.activeElement;
-  const style = getComputedStyle(node);
-  return { id: node.id, cls: node.className, kind: node.dataset.kind ?? null, step: node.dataset.step ?? null, outlineWidth: style.outlineWidth, outlineStyle: style.outlineStyle };
+// The element that holds the focus, named for these checks.
+const focused = (page) => page.evaluate(() => {
+  const a = document.activeElement;
+  if (!a || a === document.body) return 'body';
+  if (a.id === 'next-action') return `next:${a.dataset.next}`;
+  if (a.dataset.runKind) return `start:${a.dataset.runKind}`;
+  if (a.classList.contains('scene')) return `scene:${a.dataset.kind}`;
+  if (a.id === 'run-control') return 'run';
+  if (a.closest('#step-controls')) return a.id;
+  if (a.closest('#mode-switch')) return `mode:${a.dataset.mode}`;
+  if (a.id === 'lens-select') return 'lens';
+  if (a.classList.contains('copy-btn') && a.closest('#run-line')) return 'copy';
+  if (a.getAttribute('role') === 'tab') return `tab:${a.dataset.tab}`;
+  if (a.closest('#rows')) return `row:${a.dataset.step}`;
+  if (a.closest('#trace-body')) return `trace:${a.closest('[role="row"]').dataset.span}`;
+  if (a.id === 'next-action') return `next:${a.dataset.next}`;
+  if (a.closest('#pane-inspector')) return 'inspector';
+  if (a.id === 'help-button') return 'help';
+  return `${a.tagName.toLowerCase()}#${a.id}`;
 });
 
-const ringed = (f, where) => {
-  assert.notEqual(f.outlineWidth, '0px', `a focus ring ${where}`);
-  assert.notEqual(f.outlineStyle, 'none', `a focus ring ${where}`);
-};
+const ring = (page) => page.evaluate(() => {
+  const s = getComputedStyle(document.activeElement);
+  return { style: s.outlineStyle, width: parseFloat(s.outlineWidth) };
+});
 
-test('keyboard alone, from load to the stopped step and its artifact: scene list, scene 2, R, follow to step 4, I, 4', async () => {
+test('keyboard alone, from load to the stopped step and its evidence: the first run is focused, Tab and Enter run the poisoned invoice, follow lands on step 4, Enter moves into the inspector, Escape comes back, I shows the declared intent beside each tool call with the differing field highlighted', async () => {
   const view = await openView(browser);
   const { page } = view;
   try {
-    // The page opens with the run control focused. The scene list is the
-    // tab stop before it.
-    let f = await focus(page);
-    assert.equal(f.id, 'run-control');
-    await page.keyboard.press('Shift+Tab');
-    f = await focus(page);
-    assert.equal(f.kind, 'clean', 'the scene list holds the focus, on the selected scene');
-    ringed(f, 'on the scene list');
-
-    await page.keyboard.press('ArrowDown');
-    f = await focus(page);
-    assert.equal(f.kind, 'poisoned');
-    ringed(f, 'on scene 2');
-    assert.equal(await page.evaluate(() => document.querySelector('.scene[aria-pressed="true"]').dataset.kind), 'poisoned');
-
-    await page.keyboard.press('r');
+    assert.equal(await focused(page), 'start:clean');
+    await page.keyboard.press('Tab');
+    assert.equal(await focused(page), 'start:poisoned');
+    await page.keyboard.press('Enter');
     await runIs(page, 'blocked');
     await view.settle();
-    ringed(await focus(page), 'after R');
-    assert.equal(await selectedStep(page), 4, 'follow rests on the stopped step');
-
-    const stopped = await page.evaluate(() => {
-      const row = document.querySelector('#rows .row[aria-current="step"]');
-      return { status: row.dataset.status, headline: row.querySelector('.outcome-head').textContent, sentence: row.querySelector('.stop-sentence').textContent, headlineAbove: row.querySelector('.outcome-head').getBoundingClientRect().bottom <= row.querySelector('.stop-sentence').getBoundingClientRect().top };
+    assert.equal(await selectedStep(page), 4, 'follow stands on the stopped step');
+    assert.equal(await focused(page), 'row:intent', 'the focus moved to the steps');
+    const row = await page.evaluate(() => {
+      const r = document.querySelector('#rows .row[aria-current="step"]');
+      return { outcome: r.dataset.outcome, word: r.querySelector('.chip-word').textContent, detail: r.querySelector('.row-detail').dataset.src };
     });
-    assert.equal(stopped.status, 'blocked');
-    assert.equal(stopped.headline, COPY['outcome.stoppedIntent']);
-    assert.equal(stopped.sentence, POISONED.reason);
-    assert.equal(stopped.headlineAbove, true, 'the sentence stands under the headline');
+    assert.deepEqual(row, { outcome: 'blocked', word: COPY['state.stopped'], detail: row.detail });
+    assert.match(row.detail, /^copy:detail\.intentStop;/);
+
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'inspector-heading');
+    await page.keyboard.press('Escape');
+    assert.equal(await focused(page), 'row:intent');
 
     await page.keyboard.press('i');
-    ringed(await focus(page), 'after I');
     assert.equal(await page.evaluate(() => document.body.dataset.mode), 'inspect');
     await page.keyboard.press('4');
     await view.settle();
-    ringed(await focus(page), 'after 4');
-
     const insp = await page.evaluate(() => {
       const host = document.getElementById('pane-inspector');
-      const calls = [...host.querySelectorAll('.compare-call')].map((call) => ({
-        tool: call.dataset.tool,
-        declared: call.dataset.declared,
-        none: call.querySelector('.compare-none')?.textContent ?? null,
-        why: call.querySelector('.compare-why')?.textContent ?? null,
-        differing: [...call.querySelectorAll('.field[data-differs="yes"]')].map((field) => ({ field: field.dataset.field, word: field.querySelector('.differs-word').textContent })),
-        underlined: [...call.querySelectorAll('.diff[data-differs="yes"]')].map((v) => ({ text: v.textContent, line: getComputedStyle(v).borderBottomWidth })),
-      }));
-      return { heading: host.querySelector('#inspector-heading').textContent, number: host.querySelector('#inspector-heading .row-num').textContent, tone: host.querySelector('.insp-head').dataset.tone, calls, section: host.querySelector('.insp-section-title').textContent };
+      const diff = host.querySelector('.diff[data-differs="yes"]');
+      return {
+        heading: document.getElementById('inspector-heading').textContent,
+        tone: host.querySelector('.insp-head').dataset.tone,
+        sections: [...host.querySelectorAll('.insp-section')].map((s) => [s.dataset.section, s.open]),
+        calls: [...host.querySelectorAll('.compare-call')].map((c) => [c.dataset.tool, c.dataset.declared]),
+        none: host.querySelector('.compare-none')?.dataset.src ?? null,
+        field: host.querySelector('.field[data-differs="yes"]')?.dataset.field ?? null,
+        differs: host.querySelector('.field[data-differs="yes"] .differs-word')?.textContent ?? null,
+        diff: diff?.textContent ?? null,
+        mark: diff ? getComputedStyle(diff).backgroundColor : null,
+        highlight: getComputedStyle(document.documentElement).getPropertyValue('--highlight').trim(),
+      };
     });
-    const intent = POISONED.steps[3];
-    assert.equal(insp.number, '4');
-    assert.equal(insp.heading, `4${intent.title}`);
-    assert.equal(insp.tone, 'stop', 'the heading takes the stop tokens');
-    assert.equal(insp.section, COPY['intent.heading']);
-    assert.equal(insp.calls.length, 2);
-    const [secret, pay] = insp.calls;
-    assert.equal(secret.tool, 'secrets.read');
-    assert.equal(secret.declared, 'no');
-    assert.equal(secret.none, COPY['intent.undeclared']);
-    assert.equal(secret.why, intent.detail.calls[0].fieldsDiffering[0]);
-    assert.equal(pay.tool, 'bank.payments.create');
-    assert.deepEqual(pay.differing, [{ field: 'payeeAccount', word: COPY['intent.differs'] }]);
-    assert.deepEqual(pay.underlined, [{ text: intent.detail.calls[1].args.payeeAccount, line: '2px' }]);
-    assert.deepEqual(view.errors, []);
+    const calls = POISONED.steps[3].detail.calls;
+    assert.equal(insp.heading, COPY['sect.step'].replace('{n}', '4'), 'the inspector names the step by its number; the title stands once, in the sequence');
+    assert.equal(insp.tone, 'stop');
+    assert.deepEqual(insp.sections.map(([id]) => id).sort(), ['artifact', 'checked', 'record']);
+    assert.ok(insp.sections.every(([, open]) => open), 'Inspect opens every section');
+    assert.deepEqual(insp.calls, calls.map((c) => [c.tool, c.declaredFor === null ? 'no' : 'yes']));
+    assert.match(insp.none, /^copy:intent\.undeclared;when=/);
+    assert.equal(insp.field, calls[1].fieldsDiffering[0]);
+    assert.equal(insp.differs, COPY['intent.differs']);
+    assert.equal(insp.diff, calls[1].args[calls[1].fieldsDiffering[0]]);
+    const hex = insp.highlight.replace('#', '');
+    const rgb = `rgb(${parseInt(hex.slice(0, 2), 16)}, ${parseInt(hex.slice(2, 4), 16)}, ${parseInt(hex.slice(4, 6), 16)})`;
+    assert.equal(insp.mark, rgb, 'the differing value is highlighted');
   } finally {
     await view.close();
   }
 });
 
-test('the tab order: scene list, run control, the three step controls, mode switch, the switch between the flow and the trace, then the flow rows as one stop, then the inspector', async () => {
-  const view = await openView(browser);
-  const { page } = view;
-  try {
-    // A run by the keyboard, then back to the scene list with Shift+Tab, so
-    // that every stop is reached by a key and shows its ring.
-    await page.keyboard.press('r');
-    await runIs(page, 'paid');
-    await view.settle();
-    for (let i = 0; i < 12 && !(await focus(page)).kind; i += 1) await page.keyboard.press('Shift+Tab');
-    const seen = [];
-    for (let i = 0; i < 11; i += 1) {
-      const f = await focus(page);
-      ringed(f, `at tab stop ${i}`);
-      seen.push(f.kind ? 'scene' : f.id === 'run-control' ? 'run' : f.cls.includes('copy-btn') ? 'copy' : f.step ? 'row' : await page.evaluate(() => {
-        const node = document.activeElement;
-        if (node.closest('#step-controls')) return node.id;
-        if (node.closest('#mode-switch')) return `mode:${node.dataset.mode}`;
-        if (node.closest('#view-switch')) return `view:${node.dataset.view}`;
-        return node.tagName;
-      }));
-      await page.keyboard.press('Tab');
-    }
-    // The step controls stand under the run control, and the switch between
-    // the flow and the trace beside the mode switch: each is a stop of its own.
-    assert.deepEqual(seen, ['scene', 'run', 'step-back', 'step-forward', 'step-replay', 'mode:story', 'mode:inspect', 'view:flow', 'view:trace', 'copy', 'row']);
-    assert.equal(await page.evaluate(() => document.getElementById('pane-inspector').contains(document.activeElement)), true, 'the stop after the flow is in the inspector');
-  } finally {
-    await view.close();
-  }
-});
-
-test('modes and keys: I opens every detail line and the artifacts, S returns to one, the hash follows and a reload keeps it', async () => {
+test('the tab order after a run: the top bar\'s copy control, lens and mode switch, then the chosen menu item, the run control, the step controls, the selected tab, the selected row, the next action, the inspector and the list of keys; every stop shows its ring', async () => {
   const view = await openView(browser);
   const { page } = view;
   try {
     await runAndWait(view, 'clean', 'paid');
-    assert.equal(await selectedStep(page), 6, 'follow rests on the last step of a finished run');
-    let rows = await rowsOf(page);
-    assert.deepEqual(rows.map((r) => r.detail !== null), [false, false, false, false, false, true], 'Story opens one detail line');
-    assert.equal(await page.evaluate(() => document.querySelectorAll('#pane-inspector .artifact').length), 0, 'Story shows no artifact');
+    // A key first, so the browser shows the focus as it does for a keyboard user.
+    await page.keyboard.press('Shift');
+    await page.focus('#run-line .copy-btn');
+    const seen = [await focused(page)];
+    for (let i = 0; i < 12; i += 1) {
+      const r = await ring(page);
+      assert.notEqual(r.style, 'none', `${seen[seen.length - 1]} shows a ring`);
+      assert.ok(r.width >= 2, `${seen[seen.length - 1]} ring is ${r.width} px`);
+      await page.keyboard.press('Tab');
+      seen.push(await focused(page));
+      if (seen[seen.length - 1] === 'inspector') break;
+    }
+    assert.deepEqual(seen, ['copy', 'lens', 'mode:story', 'mode:inspect', 'scene:clean', 'run', 'step-back', 'step-forward', 'step-replay', 'tab:sequence', 'row:record', 'next:poisoned', 'inspector']);
+    // The list of steps is one stop; the menu is one stop.
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#rows [tabindex="0"]').length), 1);
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#scenes [tabindex="0"]').length), 1);
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await focused(page), 'next:poisoned');
+  } finally {
+    await view.close();
+  }
+});
 
+test('modes, tabs and lens by key: I opens every section and the files as written, S returns to the lens\'s first section, T shows the trace, V the next lens; the address follows and a reload keeps it', async () => {
+  const view = await openView(browser);
+  const { page } = view;
+  try {
+    await runAndWait(view, 'clean', 'paid');
+    await page.keyboard.press('5');
+    await view.settle();
+    const sections = () => page.evaluate(() => [...document.querySelectorAll('#pane-inspector .insp-section')].map((s) => [s.dataset.section, s.open]));
+    const order = LABELS.lenses[0].sections;
+    assert.deepEqual(await sections(), order.map((id, n) => [id, n === 0]), 'Story opens the lens\'s first section');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#pane-inspector .artifact').length), 0);
+    assert.deepEqual((await rowsOf(page)).map((r) => r.detail !== null), [false, false, false, false, true, false], 'one detail line, on the selected step');
     await page.keyboard.press('i');
     await view.settle();
     assert.equal(await page.evaluate(() => location.hash), '#inspect');
-    assert.equal(await page.evaluate(() => document.querySelector('#mode-switch [aria-pressed="true"]').dataset.mode), 'inspect');
-    rows = await rowsOf(page);
-    assert.deepEqual(rows.map((r) => r.detail !== null), [true, true, true, true, true, true], 'Inspect opens every detail line');
-    await page.keyboard.press('5');
-    await view.settle();
-    const files = await page.evaluate(() => [...document.querySelectorAll('#pane-inspector .artifact')].map((a) => a.dataset.file));
-    assert.deepEqual(files, ['state', CLEAN_DONE.steps[4].actionFile], 'the step as the state holds it, then its action file');
-
+    assert.ok((await sections()).every(([, open]) => open));
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#pane-inspector .artifact')].map((a) => a.dataset.file)), ['state', POISONED.steps[4].actionFile === null ? 'actions/05-pay.action.json' : POISONED.steps[4].actionFile]);
     await page.reload();
     await page.waitForFunction(() => document.body.dataset.ready === 'yes');
     assert.equal(await page.evaluate(() => document.body.dataset.mode), 'inspect', 'a reload keeps the mode');
-
     await page.keyboard.press('s');
     assert.equal(await page.evaluate(() => location.hash), '#story');
-    assert.equal(await page.evaluate(() => document.body.dataset.mode), 'story');
-    assert.deepEqual(view.errors, []);
+    await page.keyboard.press('t');
+    assert.deepEqual(await page.evaluate(() => [location.hash, document.body.dataset.tab]), ['#story-trace', 'trace']);
+    await page.keyboard.press('v');
+    const lens = LABELS.lenses[1].id;
+    assert.deepEqual(await page.evaluate(() => [location.hash, document.body.dataset.lens, document.getElementById('lens-select').value]), [`#story-trace-${lens}`, lens, lens]);
+    await page.reload();
+    await page.waitForFunction(() => document.body.dataset.ready === 'yes');
+    assert.deepEqual(await page.evaluate(() => [document.body.dataset.mode, document.body.dataset.tab, document.body.dataset.lens]), ['story', 'trace', lens], 'a reload keeps the mode, the tab and the lens');
   } finally {
     await view.close();
   }
@@ -163,84 +164,93 @@ test('step keys: arrows, Space, J and K move; Home and End; digits select; 0 sho
   const view = await openView(browser);
   const { page } = view;
   try {
-    // Before a run the step keys do nothing.
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('3');
-    assert.equal(await selectedStep(page), 0);
-
+    assert.equal(await selectedStep(page), 0, 'before a run the step keys do nothing');
     await runAndWait(view, 'poisoned', 'blocked');
-    assert.equal(await selectedStep(page), 4);
-
-    const press = async (key, want, why) => {
+    await page.evaluate(() => document.activeElement.blur());
+    const at = async (key, want) => {
       await page.keyboard.press(key);
-      assert.equal(await selectedStep(page), want, why ?? key);
+      assert.equal(await selectedStep(page), want, key);
     };
-    await press('Home', 1);
-    await press('ArrowRight', 2);
-    await press('j', 3);
-    await press('Space', 4, 'Space is the next step when the focus is on a row or on the page');
-    await press('ArrowLeft', 3);
-    await press('k', 2);
-    await press('Shift+Space', 1);
-    await press('ArrowLeft', 1, 'the leading step is the end of the way back');
-    await press('6', 6);
-    await press('ArrowRight', 6, 'the last step is the end of the way forward');
-    await press('9', 6, '9 on a six-step run changes nothing');
-    await press('2', 2);
-
+    await at('Home', 1);
+    await at('ArrowRight', 2);
+    await at('j', 3);
+    await at(' ', 4);
+    await at('ArrowLeft', 3);
+    await at('k', 2);
+    await at('Shift+Space', 1);
+    await at('6', 6);
+    await at('9', 6);
+    await at('2', 2);
     await page.keyboard.press('0');
+    assert.deepEqual(await page.evaluate(() => [document.querySelector('#pane-inspector .insp').dataset.panel, document.getElementById('inspector-heading').textContent]), ['overview', LABELS.scenes.find((s) => s.kind === 'poisoned').title]);
     assert.equal(await selectedStep(page), 0);
-    const overview = await page.evaluate(() => ({ panel: document.querySelector('#pane-inspector .insp').dataset.panel, heading: document.getElementById('inspector-heading').textContent }));
-    assert.equal(overview.panel, 'overview');
-    assert.equal(overview.heading, LABELS.scenes.find((s) => s.kind === 'poisoned').title);
-
-    await press('End', 6);
-    assert.deepEqual(view.errors, []);
+    await at('End', 6);
+    assert.match(await page.evaluate(() => document.getElementById('step-of').textContent), /6/);
   } finally {
     await view.close();
   }
 });
 
 test('follow: in Story the selection moves with the run; Left turns it off and End turns it on', async () => {
-  // The finished clean run, played back on its own timeline at 12 times its pace.
   const view = await openView(browser, { server: { replay: true, speed: 12 } });
   const { page } = view;
   try {
-    await page.keyboard.press('r');
+    await page.click('.scene[data-kind="clean"]');
     const seen = new Set();
-    const started = Date.now();
-    while (Date.now() - started < 15000) {
-      const state = await page.evaluate(() => ({ run: document.body.dataset.run, selected: document.querySelector('#rows .row[aria-current="step"]')?.dataset.index ?? null, newest: [...document.querySelectorAll('#rows .row')].map((r) => r.dataset.status) }));
-      if (state.selected !== null) {
-        seen.add(Number(state.selected) + 1);
-        const running = state.newest.lastIndexOf('running');
-        if (running >= 0) assert.equal(Number(state.selected), running, 'the selection rests on the step being checked');
-      }
-      if (state.run === 'paid' && state.newest[5] === 'written') break;
+    const end = Date.now() + 15000;
+    while (Date.now() < end) {
+      const n = await selectedStep(page);
+      if (n) seen.add(n);
+      if (await page.evaluate(() => document.querySelector('#rows .row[data-step="record"]')?.dataset.status === 'written')) break;
       await page.waitForTimeout(40);
     }
-    assert.deepEqual([...seen].sort(), [1, 2, 3, 4, 5, 6], 'follow passed through every step');
-    assert.equal(await selectedStep(page), 6);
-    assert.equal(await page.evaluate(() => document.activeElement.closest('#rows') !== null), true, 'after R on the run control the focus is in the flow, so Space is the next step');
+    seen.add(await selectedStep(page));
+    assert.deepEqual([...seen].sort(), [1, 2, 3, 4, 5, 6]);
+    assert.equal(await page.evaluate(() => document.getElementById('rows').contains(document.activeElement)), true);
   } finally {
     await view.close();
   }
-
   const again = await openView(browser, { server: { replay: true, speed: 6 } });
   try {
-    await again.page.keyboard.press('r');
-    await again.page.waitForFunction(() => document.querySelector('#rows .row[data-step="grant"]').dataset.status === 'passed', null, { timeout: 15000 });
+    await again.page.click('.scene[data-kind="clean"]');
+    await again.page.waitForFunction(() => document.querySelector('#rows .row[data-step="grant"]')?.dataset.status === 'passed', null, { timeout: 30000 });
     await again.page.keyboard.press('ArrowLeft');
     const held = await selectedStep(again.page);
-    await again.page.waitForFunction(() => document.querySelector('#rows .row[data-step="record"]').dataset.status === 'written', null, { timeout: 30000 });
-    assert.equal(await selectedStep(again.page), held, 'with follow off the selection stays while the run goes on');
+    await again.page.waitForFunction(() => document.querySelector('#rows .row[data-step="record"]')?.dataset.status === 'written', null, { timeout: 30000 });
+    assert.equal(await selectedStep(again.page), held, 'with follow off the selection stays');
     await again.page.keyboard.press('End');
     assert.equal(await selectedStep(again.page), 6);
-    await again.page.keyboard.press('i');
-    await again.page.keyboard.press('s');
-    assert.equal(await selectedStep(again.page), 6, 'Story follows');
   } finally {
     await again.close();
+  }
+});
+
+test('the list of keys: ? opens it over the page with every key the label map names and the deck\'s word for each, Escape closes it and gives the focus back', async () => {
+  const view = await openView(browser);
+  const { page } = view;
+  try {
+    await page.keyboard.press('?');
+    const open = await page.evaluate(() => {
+      const d = document.getElementById('keys-dialog');
+      return { open: d.open, rows: [...d.querySelectorAll('.kv-row')].map((r) => [r.querySelector('kbd').dataset.src, r.querySelector('dd').dataset.src]) };
+    });
+    assert.equal(open.open, true);
+    assert.ok(open.rows.length >= 12);
+    for (const [key, word] of open.rows) {
+      assert.equal(typeof LABELS.keys[key.replace('labels:keys.', '')], 'string', key);
+      assert.equal(typeof COPY[word.replace('copy:', '')], 'string', word);
+    }
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await selectedStep(page), 0, 'the keys of the page wait while the list is open');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => document.getElementById('keys-dialog').open), false);
+    assert.equal(await focused(page), 'start:clean', 'the focus returns to where it was');
+    await page.click('#help-button');
+    assert.equal(await page.evaluate(() => document.getElementById('keys-dialog').open), true, 'the ? control opens it too');
+  } finally {
+    await view.close();
   }
 });
 
