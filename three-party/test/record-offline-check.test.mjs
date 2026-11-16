@@ -813,3 +813,45 @@ test('the one place the verifier is run from runs it on each record file of a wr
   assert.deepEqual(fs.readdirSync(path.join(THREE_PARTY, 'src', 'verifier')), ['aep-verify.mjs']);
   assert.equal(fs.existsSync(path.join(THREE_PARTY, 'verifier')), false);
 });
+
+// The entries of a package the writer stored (method 0), read from their
+// local headers in order: enough for a test to build a changed copy.
+function storedEntries(buffer) {
+  const entries = [];
+  let at = 0;
+  while (at + 30 <= buffer.length && buffer.readUInt32LE(at) === 0x04034b50) {
+    const size = buffer.readUInt32LE(at + 18);
+    const nameLength = buffer.readUInt16LE(at + 26);
+    const extraLength = buffer.readUInt16LE(at + 28);
+    const name = buffer.subarray(at + 30, at + 30 + nameLength).toString('utf8');
+    const start = at + 30 + nameLength + extraLength;
+    entries.push({ name, data: buffer.subarray(start, start + size) });
+    at = start + size;
+  }
+  return entries;
+}
+
+test('a record turned into the early response form, where metadata.json is not bound by the signature, passes steps 1 to 6 yet ends the check with exit 4: this writer writes only the profile form, so a reason edited after signing cannot pass as signed', () => {
+  const own = writtenRun();
+  const record = own.manifest.records[0];
+  const file = path.join(own.runDir, record.file);
+  const entries = storedEntries(fs.readFileSync(file));
+  assert.deepEqual(entries.map((entry) => entry.name).sort(), ['canonical.bin', 'hash.sha256', 'metadata.json', 'public_key.pem', 'response.txt', 'signature.sig', 'timestamp.tsr']);
+  const canonical = entries.find((entry) => entry.name === 'canonical.bin').data;
+  // The signature, the hash and canonical.bin are kept: the run's private key
+  // never reaches a file, so a copy can only be re-shaped, not re-signed.
+  const forged = storeZip(entries.map((entry) => {
+    if (entry.name === 'response.txt') return { name: entry.name, data: canonical };
+    if (entry.name === 'metadata.json') return { name: entry.name, data: Buffer.from('{"decision":"allow","reason":"edited after signing"}') };
+    return entry;
+  }));
+  fs.writeFileSync(file, forged);
+  const records = own.manifest.records.map((item) => (item.file === record.file ? { ...item, sha256: sha256(forged) } : item));
+  fs.writeFileSync(own.manifestFile, `${JSON.stringify({ ...own.manifest, records }, null, 2)}\n`);
+  const ran = runOfflineCheck([own.runDir]);
+  assert.ok(ran.lines.includes(`${record.file}: pass-1-6`), 'the verifier passes steps 1 to 6 on the early form, as the format allows');
+  assert.equal(ran.status, 4, ran.stderr);
+  assert.ok(ran.stderr.includes(`offline-check: ${record.file}: in the early response form, in which metadata.json is not bound by the signature; this writer writes only the profile form\n`), ran.stderr);
+  const written = readJson(resultFile(own.runDir)).records.find((item) => item.file === record.file);
+  assert.equal(written.notes[0], 'offline check: in the early response form, in which metadata.json is not bound by the signature; this writer writes only the profile form');
+});

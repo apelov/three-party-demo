@@ -293,7 +293,7 @@ been refused.
 
 | Exit status | Meaning |
 |---|---|
-| 0 | every record passed steps 1 to 6, every tampered copy was rejected, and the disk and the manifest name the same files with the same hashes; the result is written and says whether the network denial was shown or not measured |
+| 0 | every record passed steps 1 to 6 in the profile form, in which the signature covers metadata.json, every tampered copy was rejected, and the disk and the manifest name the same files with the same hashes; the result is written and says whether the network denial was shown or not measured |
 | 4 | the verifier ran and the result is not that; the result is written, and standard error names each difference |
 | 1 | an error: a wrong argument, a directory that is not a run, a private key in the run directory, no pin; nothing is written |
 | 3 | the method was applied and the probe still reached the network; nothing is checked and nothing is written |

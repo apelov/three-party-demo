@@ -524,8 +524,17 @@ function answerOf(child, file) {
 // result not as expected whatever the verdicts are (a file on disk that the
 // manifest does not name, a file the manifest names that is not on disk, a
 // hash that differs from the manifest's, a name of the manifest that is not
-// a record file, a file the verifier gave no answer on). A finding is also
+// a record file, a file the verifier gave no answer on, a record in the early
+// response form). A finding is also
 // the leading note of its file.
+// The verifier's note, word for word, on a package in the format's early
+// response form: canonical.bin is response.txt alone, so metadata.json is
+// not bound by the signature. The format allows that form; this writer writes
+// only the profile form, so a record of a run in the early form is a finding:
+// its decision and reason could have been edited after signing.
+const EARLY_FORM_NOTE = 'step 3: early response form (response.txt alone); metadata is not signature-bound';
+const EARLY_FORM_FINDING = 'in the early response form, in which metadata.json is not bound by the signature; this writer writes only the profile form';
+
 export async function callVerifier({ runDir, pinFile, prefix = [], timeoutMs = 10000 }) {
   const lists = recordFilesOf(runDir);
   const result = { records: [], tampered: [], findings: [] };
@@ -546,6 +555,7 @@ export async function callVerifier({ runDir, pinFile, prefix = [], timeoutMs = 1
       if (onDisk && inManifest && item.sha256 !== null && item.sha256 !== manifestSha256) {
         finding(item, manifestSha256 === null ? `${MANIFEST} gives no SHA-256 for it` : `its SHA-256 differs from the one ${MANIFEST} gives`);
       }
+      if (kind === 'records' && answer && answer.notes.includes(EARLY_FORM_NOTE)) finding(item, EARLY_FORM_FINDING);
       if (!onDisk) finding(item, `named in ${MANIFEST} and not on disk`);
       if (!inManifest) finding(item, `on disk and not named in ${MANIFEST}`);
       result[kind].push(item);
