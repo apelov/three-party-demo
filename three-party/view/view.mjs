@@ -928,7 +928,9 @@ async function start() {
   $('trace').addEventListener('click', (event) => traceClick(app, event));
   $('outcome-end').addEventListener('click', onNextAction);
   $('keys-dialog').addEventListener('close', () => { keysOpener?.focus?.(); keysOpener = null; });
-  window.addEventListener('resize', update);
+  // A window that changes size (a laptop mirrored to a projector) brings the
+  // step selected back into sight once more, at the new size.
+  window.addEventListener('resize', () => { app.shown = null; update(); });
   window.addEventListener('hashchange', () => {
     const next = readHash();
     app.tab = next.tab;

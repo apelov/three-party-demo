@@ -235,3 +235,32 @@ for (const [width, height, under] of [[1024, 768, true], [1280, 720, false]]) {
     }
   });
 }
+
+test('a window that shrinks after a step is chosen, as when a laptop is mirrored to a projector, brings that step back into sight above the outcome', async () => {
+  const view = await openView(browser, { width: 1440, height: 900 });
+  const { page } = view;
+  try {
+    await runScene(page, 'poisoned');
+    await runIs(page, 'blocked');
+    await view.settle();
+    await page.keyboard.press('4');
+    await view.settle();
+    // 577 px high: what a 1280x720 Chrome window leaves the page under its
+    // own bars, measured in Chrome on 2026-11-16.
+    await page.setViewportSize({ width: 1280, height: 577 });
+    await view.settle();
+    const seen = await page.evaluate(() => {
+      const row = document.querySelector('#rows .row[aria-current="step"]').getBoundingClientRect();
+      const end = document.getElementById('outcome-end');
+      const bar = end.hidden ? null : end.getBoundingClientRect();
+      return {
+        over: Boolean(bar) && row.bottom > bar.top + 0.5 && row.top < bar.bottom - 0.5,
+        inWindow: row.top >= -0.5 && row.bottom <= window.innerHeight + 0.5,
+      };
+    });
+    assert.deepEqual(seen, { over: false, inWindow: true }, 'step 4 lies whole in the smaller window and the outcome is not over it');
+    assert.deepEqual(view.errors, []);
+  } finally {
+    await view.close();
+  }
+});
