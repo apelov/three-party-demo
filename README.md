@@ -77,9 +77,9 @@ offline check runs an OpenA2A verifier written from that format.
 
 ## What is real and what isn't yet
 
-- **The records** are written in the AEP format, as its
-  [format page](https://github.com/tyche-institute/eatf-verifier/blob/main/docs/aep-format.md)
-  gives it (`three-party/FORMAT-SOURCE.txt` names the text by its SHA-256),
+- **The records** are written in the AEP format, as its format page,
+  `docs/aep-format.md` in eatf-verifier, gives it
+  (`three-party/FORMAT-SOURCE.txt` names that text by its SHA-256),
   and checked by an OpenA2A verifier for steps 1 to 6 of the format's ordered
   verification. Steps 7 to 10 are not run.
 - **The AEP reference verifier** has not yet been run on these records.
