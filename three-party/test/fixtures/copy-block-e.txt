@@ -109,3 +109,4 @@ lens.standards.pay = The bank's answer is kept in this step's AEP record; the re
 lens.standards.record = Action Evidence Packages in the AEP format: steps 1 to 6 are checked here, steps 7 to 10 are not run.
 lens.standards.paid = ATX and AAP checks passed, the WIMSE crossing passed, and one AEP record was written per action.
 lens.standards.blockedIntent = ATX and AAP checks passed, then the intent rule rejected the calls; AEP records cover every step that ran.
+audit.subDenied = Each record is checked by the verifier with network access denied.

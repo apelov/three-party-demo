@@ -7,7 +7,7 @@
 import { el, put, add, from, value, clear } from './dom.mjs';
 import { copyButton } from './parts.mjs';
 import { offlineOf } from './flow.mjs';
-import { manifestOf, auditVerdict } from './inspector.mjs';
+import { manifestOf, auditVerdict, checksOf } from './inspector.mjs';
 import { fileUrl } from './api.mjs';
 
 function stepOfRecord(app, item) {
@@ -72,7 +72,8 @@ export function renderRecords(app, host, actions) {
           copyButton(app, item.sha256, source(`${kind}[${n}].sha256`).replace(/^run:/, ''))),
         el('span', { class: 'ledger-cell', role: 'gridcell', data: { verdictFor: String(item.file) } },
           check >= 0 ? auditVerdict(app, offline[kind][check], cSource, tampered) : put('span', 'muted', app.w.word('insp.notAudited')),
-          tampered && check >= 0 ? put('span', 'record-flag', app.w.word('offline.expected')) : null)));
+          tampered && check >= 0 ? put('span', 'record-flag', app.w.word('offline.expected')) : null,
+          check >= 0 ? checksOf(offline[kind][check], cSource) : null)));
     });
   }
 

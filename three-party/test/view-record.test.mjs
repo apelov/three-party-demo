@@ -14,78 +14,86 @@ const MANIFEST = example('manifest.json');
 const OFFLINE = example('offline-check.json');
 const offlineScene = LABELS.scenes.find((s) => s.kind === 'offline-check');
 
-test('the offline check scene: its control is not available before a run has finished and says why; after a run it runs the check and the inspector shows the result in the deck\'s words', async () => {
+test('the audit: not available before a run has finished, and it says why; after a run it checks the records, the Records tab shows each package with its verdict and the inspector what checked them, in the deck\'s words', async () => {
   // The check follows a finished run, so the browser's clock stands after the
-  // run's end: the grant has run out and the flow's text no longer changes.
+  // run's end: the grant has run out and the sequence's text no longer changes.
   const view = await openView(browser, { clockAt: new Date(Date.parse(CLEAN_DONE.finishedAt) + 5000).toISOString() });
   const { page } = view;
   try {
-    await page.click('.scene[data-kind="offline-check"]');
-    let control = await page.evaluate(() => {
-      const c = document.getElementById('run-control');
-      return { text: c.textContent, name: c.getAttribute('aria-label'), disabled: c.getAttribute('aria-disabled'), described: c.getAttribute('aria-describedby'), help: document.getElementById('run-help').hidden ? null : document.getElementById('run-help').textContent };
-    });
-    assert.deepEqual(control, { text: offlineScene.button, name: COPY['button.runName'].replace('{scene}', offlineScene.title), disabled: 'true', described: 'run-help', help: COPY['help.offlineDisabled'] });
-    // A press of the pointer on the control while it is not available.
-    // page.click waits for an enabled control, so the pointer itself is
-    // moved there and pressed.
-    const box = await page.locator('#run-control').boundingBox();
+    const item = () => page.evaluate(() => { const b = document.querySelector('.scene[data-kind="offline-check"]'); return { disabled: b.getAttribute('aria-disabled'), described: b.getAttribute('aria-describedby') }; });
+    assert.deepEqual(await item(), { disabled: 'true', described: 'run-help' });
+    // A press of the pointer on the item while it is not available chooses it; nothing runs.
+    const box = await page.locator('.scene[data-kind="offline-check"]').boundingBox();
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const control = await page.evaluate(() => {
+      const c = document.getElementById('run-control');
+      return { text: c.textContent, disabled: c.getAttribute('aria-disabled'), described: c.getAttribute('aria-describedby'), help: document.getElementById('run-help').hidden ? null : document.getElementById('run-help').textContent };
+    });
+    assert.deepEqual(control, { text: offlineScene.button, disabled: 'true', described: 'run-help', help: COPY['help.offlineDisabled'] });
+    const cbox = await page.locator('#run-control').boundingBox();
+    await page.mouse.click(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
     await page.keyboard.press('r');
     await page.keyboard.press('o');
     await view.settle();
-    assert.equal([...view.served.keys()].some((k) => k.includes('offline-check')), false, 'nothing is asked of the server while the control is not available');
+    assert.equal([...view.served.keys()].some((k) => k.includes('offline-check')), false, 'nothing is asked of the server while the audit is not available');
 
     await runAndWait(view, 'clean', 'paid');
-    await page.click('.scene[data-kind="offline-check"]');
-    control = await page.evaluate(() => ({ disabled: document.getElementById('run-control').getAttribute('aria-disabled'), help: document.getElementById('run-help').hidden }));
-    assert.deepEqual(control, { disabled: 'false', help: true });
-    // The flow as the check must leave it: every step with its number, title,
-    // state and icon. The open detail line goes with the selection.
+    assert.deepEqual(await item(), { disabled: 'false', described: null });
     const flowOf = async () => (await rowsOf(page)).map(({ step, status, tone, icon, shown, word, title, number }) => ({ step, status, tone, icon, shown, word, title, number }));
     const flowBefore = await flowOf();
-    await page.keyboard.press('r');
-    await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
+    const marks = () => page.evaluate(() => [...document.querySelectorAll('#rows .rec-mark')].map((m) => m.dataset.state));
+    assert.deepEqual(await marks(), ['signed', 'signed', 'signed', 'signed', 'signed'], 'each action\'s record is signed');
+    await page.keyboard.press('o');
+    await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline' && document.body.dataset.tab === 'records');
     await view.settle();
-    assert.deepEqual(await flowOf(), flowBefore, 'the flow is unchanged');
-    assert.equal(flowBefore.length, CLEAN_DONE.steps.length);
-    assert.equal(await selectedStep(page), 0, 'the inspector holds the check, so no step is the selected one');
+    assert.deepEqual(await flowOf(), flowBefore, 'the steps are unchanged');
+    assert.deepEqual(await marks(), ['verified', 'verified', 'verified', 'verified', 'verified'], 'each record mark reads verified');
+    assert.equal(await selectedStep(page), 0, 'the inspector holds the audit, so no step is the selected one');
 
+    // The Records tab: the count, then one ruled row per package.
+    const tab = await page.evaluate(() => ({
+      counts: [...document.querySelectorAll('#records-tab .records-count')].map((n) => n.textContent),
+      rows: [...document.querySelectorAll('#records-tab .ledger-row.record')].map((r) => ({ file: r.dataset.file, kind: r.dataset.kind, verdict: r.querySelector('.verdict span').textContent, tone: r.querySelector('.verdict').dataset.tone, flags: [...r.querySelectorAll('.record-flag')].map((f) => f.textContent), sha: r.querySelector('.mono[title]').textContent, full: r.querySelector('.mono[title]').title })),
+    }));
+    assert.deepEqual(tab.counts, [COPY['offline.summaryPass'].replace('{pass}', OFFLINE.summary.pass), COPY['offline.summaryReject'].replace('{reject}', OFFLINE.summary.reject).replace('{expectedRejects}', OFFLINE.summary.expectedRejects)]);
+    assert.equal(tab.rows.length, MANIFEST.records.length + MANIFEST.tampered.length);
+    MANIFEST.records.forEach((rec, i) => {
+      assert.deepEqual(tab.rows[i], { file: rec.file, kind: 'records', verdict: COPY['offline.pass'], tone: 'ok', flags: [], sha: rec.sha256.slice(0, 16), full: rec.sha256 });
+    });
+    const bad = OFFLINE.tampered[0];
+    assert.deepEqual(tab.rows[MANIFEST.records.length], { file: bad.file, kind: 'tampered', verdict: COPY['offline.reject'].replace('{n}', bad.firstFailingStep), tone: 'stop', flags: [COPY['offline.tampered'], COPY['offline.expected']], sha: MANIFEST.tampered[0].sha256.slice(0, 16), full: MANIFEST.tampered[0].sha256 });
+
+    // The inspector: what checked them, and what the verifier said of the tampered copy.
     const panel = await page.evaluate(() => {
       const host = document.getElementById('pane-inspector');
       const pair = (i) => { const r = host.querySelectorAll('.kv-row')[i]; return [r.querySelector('.kv-key').textContent, r.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()]; };
       return {
         heading: host.querySelector('#inspector-heading').textContent,
-        sub: host.querySelector('.insp-head .insp-sub').textContent,
+        sentence: host.querySelector('[data-section="checked"] .insp-text').textContent,
         verifier: pair(0), network: pair(1), signer: pair(2),
-        rows: [...host.querySelectorAll('.record')].map((r) => ({ file: r.dataset.file, kind: r.dataset.kind, verdict: r.querySelector('.verdict span').textContent, tone: r.querySelector('.verdict').dataset.tone, flags: [...r.querySelectorAll('.record-line')[0].querySelectorAll('.record-flag')].map((f) => f.textContent), notes: [...r.querySelectorAll('.insp-note')].map((n) => n.textContent), noteLabel: r.querySelector('.record-line .record-line .record-flag')?.textContent })),
-        summary: [...host.querySelectorAll('.insp-big')].map((n) => n.textContent),
-        limit: host.querySelector('.insp > .insp-sub').textContent,
+        tampered: [...host.querySelectorAll('.record[data-kind="tampered"]')].map((r) => ({ file: r.dataset.file, notes: [...r.querySelectorAll('.insp-note')].map((n) => n.textContent) })),
+        limits: [...host.querySelectorAll('[data-section="limits"] .insp-note')].map((n) => n.textContent),
+        limitsOpen: host.querySelector('[data-section="limits"]').open,
       };
     });
     assert.equal(panel.heading, offlineScene.title);
-    assert.equal(panel.sub, COPY['offline.sub']);
+    assert.equal(panel.sentence, COPY['audit.subDenied']);
     const sha16 = OFFLINE.verifier.sha256.slice(0, 16);
-    assert.deepEqual(panel.verifier, [COPY['offline.verifier'], `${COPY['offline.verifierValue'].replace('{sha16}', sha16)} ${COPY['inspector.copy']}`]);
+    assert.deepEqual(panel.verifier, [COPY['offline.verifier'], `${COPY['audit.verifierValue'].replace('{sha16}', sha16)} ${COPY['inspector.copy']}`]);
     assert.deepEqual(panel.network, [COPY['offline.network'], COPY['offline.networkValue']]);
     assert.deepEqual(panel.signer, [COPY['offline.signer'], `${COPY['offline.signerValue']} ${OFFLINE.pin}`]);
-    assert.equal(panel.rows.length, OFFLINE.records.length + OFFLINE.tampered.length);
-    OFFLINE.records.forEach((rec, i) => {
-      assert.deepEqual(panel.rows[i], { file: rec.file, kind: 'records', verdict: COPY['offline.pass'], tone: 'ok', flags: [], notes: rec.notes, noteLabel: COPY['offline.note'] });
-    });
-    const bad = OFFLINE.tampered[0];
-    assert.deepEqual(panel.rows[OFFLINE.records.length], { file: bad.file, kind: 'tampered', verdict: COPY['offline.reject'].replace('{n}', bad.firstFailingStep), tone: 'neutral', flags: [COPY['offline.tampered'], COPY['offline.expected']], notes: bad.notes, noteLabel: COPY['offline.note'] });
-    assert.deepEqual(panel.summary, [COPY['offline.summaryPass'].replace('{pass}', OFFLINE.summary.pass), COPY['offline.summaryReject'].replace('{reject}', OFFLINE.summary.reject).replace('{expectedRejects}', OFFLINE.summary.expectedRejects)]);
-    assert.equal(panel.limit, COPY['limit.steps']);
+    assert.deepEqual(panel.tampered, [{ file: bad.file, notes: bad.notes }]);
+    assert.equal(panel.limitsOpen, false, 'the limits wait until asked for');
+    assert.ok(panel.limits.includes(COPY['limit.steps']));
 
     // The record step now carries the verdict of each package.
     await page.keyboard.press('6');
     await view.settle();
-    const verdicts = await page.evaluate(() => [...document.querySelectorAll('#pane-inspector .record')].map((r) => ({ file: r.dataset.file, under: r.querySelector('[data-verdict-for] .record-flag')?.textContent ?? null, verdict: r.querySelector('.verdict span')?.textContent ?? null })));
-    assert.deepEqual(verdicts.slice(0, 5), MANIFEST.records.map((rec) => ({ file: rec.file, under: COPY['inspector.stepsPassed'], verdict: COPY['offline.pass'] })));
-    assert.deepEqual(verdicts[5], { file: MANIFEST.tampered[0].file, under: COPY['inspector.stepsPassed'], verdict: COPY['offline.reject'].replace('{n}', bad.firstFailingStep) });
+    const verdicts = await page.evaluate(() => [...document.querySelectorAll('#pane-inspector .records .record')].map((r) => ({ file: r.dataset.file, verdict: r.querySelector('.verdict span')?.textContent ?? null })));
+    assert.deepEqual(verdicts.slice(0, 5), MANIFEST.records.map((rec) => ({ file: rec.file, verdict: COPY['offline.pass'] })));
+    assert.deepEqual(verdicts[5], { file: MANIFEST.tampered[0].file, verdict: COPY['offline.reject'].replace('{n}', bad.firstFailingStep) });
 
-    // The O key runs the check again and returns to its panel.
+    // The O key runs the audit again and returns to it.
     await page.keyboard.press('o');
     await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
     assert.equal(await page.evaluate(() => document.querySelector('.scene[aria-pressed="true"]').dataset.kind), 'offline-check');
@@ -95,36 +103,37 @@ test('the offline check scene: its control is not available before a run has fin
   }
 });
 
-test('the record step before the offline check: the manifest rows with their hashes and actions, the tampered copy marked, and no verdict yet', async () => {
+test('the record step before the audit: each package of the manifest with its file, nothing audited yet, and the Records tab offers the audit', async () => {
   const view = await openView(browser, { hash: '#inspect' });
   const { page } = view;
   try {
     await runAndWait(view, 'clean', 'paid');
     await page.keyboard.press('6');
     await view.settle();
-    const panel = await page.evaluate(() => {
+    const step = await page.evaluate(() => {
       const host = document.getElementById('pane-inspector');
       return {
-        section: host.querySelector('.insp-section-title').textContent,
-        keys: [...host.querySelectorAll('.kv-key')].map((k) => k.textContent),
-        format: [...host.querySelectorAll('.kv-row')].find((r) => r.querySelector('.kv-key').dataset.src === 'copy:record.format').querySelector('.kv-value').textContent,
-        note: host.querySelector('.insp-section > .insp-sub').textContent,
-        rows: [...host.querySelectorAll('.record')].map((r) => ({ file: r.querySelector('a.record-file').textContent, href: r.querySelector('a.record-file').getAttribute('href'), sha: r.querySelector('.record-line .mono[title]').textContent, full: r.querySelector('.record-line .mono[title]').title, flags: [...r.querySelectorAll('.record-flag')].map((f) => f.textContent), verdict: r.querySelector('.verdict') !== null, entries: r.querySelector('.record-open') !== null })),
+        rows: [...host.querySelectorAll('.records .record')].map((r) => ({ file: r.dataset.file, kind: r.dataset.kind, link: r.querySelector('a.record-file').getAttribute('href'), verdict: r.querySelector('.verdict') !== null })),
+        format: [...host.querySelectorAll('.kv-key')].some((k) => k.dataset.src === 'copy:record.format'),
+        timestamp: host.querySelector('[data-note="timestamp"]')?.dataset.src ?? null,
         artifacts: [...host.querySelectorAll('.artifact')].map((a) => a.dataset.file),
       };
     });
-    assert.equal(panel.section, COPY['inspector.package']);
-    for (const key of [COPY['record.format'], COPY['record.signer'], COPY['record.timestamp'], 'written', 'signerPublicKey', 'signerSha256', 'credentialSha256']) assert.ok(panel.keys.includes(key), key);
-    const commit = /[0-9a-f]{40}/.exec(CLEAN_DONE.steps[5].detail.format)[0];
-    assert.equal(panel.format, COPY['record.formatValue'].replace('{formatCommit}', commit.slice(0, 8)));
-    assert.equal(panel.note, COPY['record.credentialNote']);
-    assert.equal(panel.rows.length, 6);
-    MANIFEST.records.forEach((rec, i) => {
-      assert.deepEqual(panel.rows[i], { file: rec.file, href: `/api/runs/${CLEAN_DONE.runId}/files/${rec.file}`, sha: rec.sha256.slice(0, 16), full: rec.sha256, flags: [], verdict: false, entries: false });
-    });
-    assert.deepEqual(panel.rows[5].flags, [COPY['offline.tampered'], COPY['offline.expected']]);
-    assert.deepEqual(panel.artifacts, ['state', CLEAN_DONE.steps[5].recordFile]);
+    assert.deepEqual(step.rows.map((r) => [r.file, r.kind, r.verdict]), [...MANIFEST.records.map((r) => [r.file, 'records', false]), ...MANIFEST.tampered.map((r) => [r.file, 'tampered', false])]);
+    for (const r of step.rows) assert.equal(r.link, `/api/runs/${CLEAN_DONE.runId}/files/${r.file}`);
+    assert.equal(step.format, true);
+    assert.match(step.timestamp, /^labels:timestamp\./);
+    assert.deepEqual(step.artifacts, ['state', CLEAN_DONE.steps[5].recordFile]);
     assertCensus(await census(page), docsFrom(view.served, CLEAN_DONE.runId));
+
+    await page.click('#tab-records');
+    const tab = await page.evaluate(() => ({ count: document.querySelector('#records-tab .records-count').dataset.src, button: document.getElementById('records-audit')?.textContent ?? null, verdicts: [...document.querySelectorAll('#records-tab [data-verdict-for]')].map((c) => c.textContent) }));
+    assert.equal(tab.count, 'copy:insp.notAudited');
+    assert.equal(tab.button, COPY['ui.audit']);
+    assert.deepEqual(tab.verdicts, Array(MANIFEST.records.length + MANIFEST.tampered.length).fill(COPY['insp.notAudited']));
+    await page.click('#records-audit');
+    await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
+    assert.deepEqual(view.errors, []);
   } finally {
     await view.close();
   }
@@ -144,11 +153,12 @@ test('a package the server holds: its Entries control lists the names of the zip
     const { page } = view;
     try {
       await runAndWait(view, 'clean', 'paid');
-      await page.keyboard.press('6');
+      // The package of the payment, in the record section of its step.
+      await page.keyboard.press('5');
       await view.settle();
       const rel = 'records/05-pay.aep';
-      const open = await page.evaluate(() => [...document.querySelectorAll('#pane-inspector .record')].filter((r) => r.querySelector('.record-open')).map((r) => r.dataset.file));
-      assert.deepEqual(open, [rel, 'records/tampered/05-pay.aep'], 'the packages the server holds have an Entries control; the others have none');
+      const open = await page.evaluate(() => [...document.querySelectorAll('#pane-inspector [data-section="record"] .record')].filter((r) => r.querySelector('.record-open')).map((r) => r.dataset.file));
+      assert.deepEqual(open, [rel], 'the package the server holds has an Entries control');
       const button = page.locator(`.record[data-file="${rel}"] .record-open`);
       assert.equal(await button.textContent(), COPY['inspector.entries']);
       assert.equal(await button.getAttribute('aria-expanded'), 'false');
@@ -229,7 +239,7 @@ test('a server that does not offer the offline check, or files, leaves those ele
   }
 });
 
-test('a later revision that adds checks to a record row of the offline check: each name is listed with its value, in the offline pane and on the record step, and a row with no checks shows no list', async () => {
+test('a later revision that adds checks to a record row of the offline check: each name is listed with its value, in the Records tab and on the record step, and a row with no checks shows no list', async () => {
   // A fixture of a later revision, in the two forms a list of names and
   // values can take: a map of names to values, and a list of objects.
   const later = structuredClone(OFFLINE);
@@ -239,7 +249,9 @@ test('a later revision that adds checks to a record row of the offline check: ea
   const asList = [[['name', 'check-a'], ['value', 'pass'], ['step', '1']], [['name', 'check-b'], ['value', 'pass'], ['step', '2']]];
   const view = await openView(browser, { hash: '#inspect', clockAt: new Date(Date.parse(CLEAN_DONE.finishedAt) + 5000).toISOString(), server: { examples: examplesWith({ add: { 'offline-check.json': later } }) } });
   const { page } = view;
-  const listed = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#pane-inspector .record')].map((r) => [r.dataset.file, [...r.querySelectorAll('.checks > li')].map((li) => [...li.querySelectorAll('.kv-row')].map((row) => [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').textContent]))])));
+  const listsIn = (selector) => page.evaluate((sel) => Object.fromEntries([...document.querySelectorAll(sel)].map((r) => [r.dataset.file, [...r.querySelectorAll('.checks > li')].map((li) => [...li.querySelectorAll('.kv-row')].map((row) => [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').textContent]))])), selector);
+  const ledger = () => listsIn('#records-tab .ledger-row.record');
+  const listed = () => listsIn('#pane-inspector .records .record');
   const expect = (lists, where) => {
     assert.deepEqual(lists[later.records[0].file], asMap, `${where}: a map of names to values`);
     assert.deepEqual(lists[later.records[1].file], asList, `${where}: a list of objects, a row per field`);
@@ -250,7 +262,7 @@ test('a later revision that adds checks to a record row of the offline check: ea
     await page.keyboard.press('o');
     await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
     await view.settle();
-    expect(await listed(), 'the offline pane');
+    expect(await ledger(), 'the Records tab');
     assertCensus(await census(page), docsFrom(view.served, CLEAN_DONE.runId));
 
     await page.keyboard.press('6');
@@ -282,16 +294,19 @@ test('the network row follows the result: denied in the deck\'s words where the 
       const panel = await page.evaluate(() => {
         const host = document.getElementById('pane-inspector');
         const row = [...host.querySelectorAll('.kv-row')][1];
-        return { sub: host.querySelector('.insp-head .insp-sub').textContent, network: [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()], text: host.textContent };
+        return { sub: host.querySelector('[data-section="checked"] .insp-text').textContent, network: [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()], text: host.textContent };
       });
+      // The deck's older line for a denial names the verifier with a word the
+      // screens no longer use; its line without that word stands in its place.
+      assert.equal(panel.text.includes(COPY['offline.sub']), false, `${name}: offline.sub`);
       if (denied) {
-        assert.equal(panel.sub, COPY['offline.sub'], name);
+        assert.equal(panel.sub, COPY['audit.subDenied'], name);
         assert.deepEqual(panel.network, [COPY['offline.network'], COPY['offline.networkValue']], name);
         for (const key of ['offline.subNotMeasured', 'offline.networkNotMeasured']) assert.equal(panel.text.includes(COPY[key]), false, `${name}: ${key}`);
       } else {
         assert.equal(panel.sub, COPY['offline.subNotMeasured'], name);
         assert.deepEqual(panel.network, [COPY['offline.network'], `${COPY['offline.networkNotMeasured']} ${notMeasured}`], name);
-        for (const key of ['offline.sub', 'offline.networkValue']) assert.equal(panel.text.includes(COPY[key]), false, `${name}: ${key}`);
+        for (const key of ['audit.subDenied', 'offline.networkValue']) assert.equal(panel.text.includes(COPY[key]), false, `${name}: ${key}`);
       }
       assertCensus(await census(page), docsFrom(view.served, CLEAN_DONE.runId));
       assert.deepEqual(view.errors, [], name);
@@ -309,6 +324,8 @@ test('the copy control: beside every hash and id, named for its value; a press p
     await runAndWait(view, 'clean', 'paid');
     await page.keyboard.press('1');
     await view.settle();
+    // In Story the artifact section opens when asked for.
+    await page.click('#pane-inspector [data-section="artifact"] summary');
     const sha = CLEAN_DONE.agent.credentialSha256;
     const shown = await page.evaluate(() => {
       const value = document.querySelector('#pane-inspector .kv-value .mono[title]');

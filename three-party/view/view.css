@@ -726,3 +726,5 @@ kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px so
 /* The entries of a record package, in Inspect */
 .entries { display: flex; flex-direction: column; gap: 8px; flex-basis: 100%; }
 .entries .kv-list { font-size: var(--t-label); line-height: var(--l-label); }
+.ledger .checks, .insp .records .checks { flex-basis: 100%; font-size: var(--t-label); }
+.ledger .checks .kv, .insp .records .checks .kv { grid-template-columns: minmax(0, 7em) minmax(0, 1fr); }

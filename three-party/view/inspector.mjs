@@ -362,6 +362,29 @@ export function manifestOf(app) {
   return manifest ? { manifest, rel, source: (path, shape) => from.file(rel, path, shape) } : null;
 }
 
+// The verifier's own steps on one package, once a revision of the contract
+// adds checks to a record row of the offline check: a list with each name and
+// its value, as the check wrote them. A step set out as an object gives one
+// row per field; a row with no checks gives no list.
+export function checksOf(rec, source) {
+  const checks = rec?.checks;
+  if (!checks || typeof checks !== 'object') return null;
+  const scalar = (v) => ['string', 'number', 'boolean'].includes(typeof v) && v !== '';
+  const named = (key) => /^[A-Za-z0-9_-]+$/.test(key);
+  const pathIn = (node, base, key) => (Array.isArray(node) ? `${base}[${key}]` : `${base}.${key}`);
+  const items = [];
+  for (const key of Object.keys(checks).filter(named)) {
+    const path = pathIn(checks, 'checks', key);
+    const item = checks[key];
+    const fields = scalar(item) ? [path]
+      : item && typeof item === 'object' && !Array.isArray(item) ? Object.keys(item).filter((f) => named(f) && scalar(item[f])).map((f) => `${path}.${f}`)
+        : [];
+    const rows = table(fields.map((p) => plain(rec, p, source)));
+    if (rows) items.push(el('li', null, rows));
+  }
+  return items.length ? el('ul', { class: 'kv-list checks' }, items) : null;
+}
+
 // The verdict of the offline check on one package, in the deck's words.
 export function auditVerdict(app, rec, source, tampered) {
   if (!rec) return null;
@@ -387,7 +410,8 @@ function recordOfStep(app, i, step) {
       return el('div', { class: 'record', data: { file: String(item.file), kind } },
         el('a', { class: 'record-file mono', href: fileUrl(app.runId, item.file), src: source(`${kind}[${n}].file`), text: String(item.file), data: { focusKey: `link:${item.file}` } }),
         kind === 'tampered' ? put('span', 'record-flag', app.w.word('offline.tampered')) : null,
-        check >= 0 ? auditVerdict(app, offline[kind][check], cSource, kind === 'tampered') : null);
+        check >= 0 ? auditVerdict(app, offline[kind][check], cSource, kind === 'tampered') : null,
+        check >= 0 ? checksOf(offline[kind][check], cSource) : null);
     });
     return el('div', { class: 'records' }, list('records'), list('tampered'));
   }
@@ -537,7 +561,9 @@ function offlinePanel(app) {
   return el('div', { class: 'insp', data: { panel: 'offline' } },
     el('div', { class: 'insp-head', data: { tone: 'neutral' } },
       el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : null))),
-    section(app, 'checked', 'sect.checked', auditFacts(app, result, source),
+    section(app, 'checked', 'sect.checked',
+      result.verifier ? put('p', 'insp-text', networkOf(result, source).denied ? app.w.chosen('audit.subDenied', networkOf(result, source).whyNot) : app.w.chosen('offline.subNotMeasured', networkOf(result, source).whyNot)) : null,
+      auditFacts(app, result, source),
       tampered.map((rec, n) => el('div', { class: 'record', data: { file: String(rec.file), kind: 'tampered' } },
         put('span', 'mono', value(result, `tampered[${n}].file`, undefined, source)),
         auditVerdict(app, rec, (p, shape) => source(`tampered[${n}].${p}`, shape), true),
@@ -548,11 +574,15 @@ function offlinePanel(app) {
 // What the audit names of itself: the verifier by SHA-256, the network while
 // it checked (denied, or not measured, said plainly and never as denied),
 // and the signer it trusted.
-export function auditFacts(app, result, source) {
-  const sha = result.verifier?.sha256;
+export function networkOf(result, source) {
   const hasField = typeof result.networkDenied === 'string';
   const denied = hasField ? result.networkDenied === 'yes' : String(result.network ?? '').startsWith('denied: ');
-  const whyNot = source(hasField ? 'networkDenied' : 'network');
+  return { denied, whyNot: source(hasField ? 'networkDenied' : 'network') };
+}
+
+export function auditFacts(app, result, source) {
+  const sha = result.verifier?.sha256;
+  const { denied, whyNot } = networkOf(result, source);
   return table(
     sha ? row(app.w.word('offline.verifier'),
       put('span', null, app.w.lineNodes('audit.verifierValue', { sha16: [String(sha).slice(0, 16), source('verifier.sha256', 'hex16')] }, ['sha16']), { title: String(sha) }),

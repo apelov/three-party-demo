@@ -47,7 +47,7 @@ const NOT_MEASURED_BLOCK = 'copy-block-d.txt';
 // lenses.
 const SCREENS_BLOCK = 'copy-block-e.txt';
 
-test('copy.json holds the 102 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 111 of the block for the rebuilt screens: each key and value byte for byte, and nothing else', () => {
+test('copy.json holds the 102 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 112 of the block for the rebuilt screens: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
   const notMeasured = blockLines(NOT_MEASURED_BLOCK);
@@ -55,10 +55,10 @@ test('copy.json holds the 102 lines of the staged copy deck and, after them, the
   assert.equal(deck.length, 102);
   assert.equal(added.length, 68 - LEFT_OUT.length);
   assert.equal(notMeasured.length, 2);
-  assert.equal(screens.length, 111);
+  assert.equal(screens.length, 112);
   const lines = [...deck, ...added, ...notMeasured, ...screens];
   const members = 102 + added.length + notMeasured.length + screens.length;
-  assert.equal(members, 279);
+  assert.equal(members, 280);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);
