@@ -139,7 +139,7 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 mark { background: none; color: inherit; }
 
-.mono { font-family: var(--mono); font-size: 0.88em; overflow-wrap: anywhere; }
+.mono { font-family: var(--mono); font-size: max(12px, 0.88em); overflow-wrap: anywhere; }
 /* An id inside a sentence stays whole; a hash in a list may break anywhere. */
 .insp-text .mono, .insp-lens .mono, .row-detail .mono, .outcome-text .mono, .invoice .mono { overflow-wrap: normal; white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums lining-nums; }
@@ -324,7 +324,6 @@ mark { background: none; color: inherit; }
 .invoice[hidden] { display: none; }
 .invoice-strip { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 24px; row-gap: 4px; font-size: var(--t-label); line-height: var(--l-label); }
 .invoice-heading { font-weight: 700; }
-.invoice-heading .mono, .invoice-value .mono { font-size: 0.88em; }
 .invoice-field { display: inline-flex; align-items: baseline; gap: 8px; }
 .invoice-key { font-size: var(--t-label); color: var(--muted); }
 .hidden-line { display: flex; align-items: baseline; gap: 12px; font-size: var(--t-label); line-height: var(--l-label); }
@@ -345,7 +344,7 @@ mark { background: none; color: inherit; }
 .lane { display: contents; }
 .lane-line { grid-row: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding-left: 8px; font-weight: 700; font-size: var(--t-label); line-height: var(--l-label); text-wrap: balance; }
 .lane-credit { grid-row: 2; display: flex; align-items: center; padding-left: 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); white-space: nowrap; }
-.lane-line .lane-title { white-space: nowrap; }
+.lane-line .lane-title { min-width: 0; overflow-wrap: anywhere; }
 .lane[data-origin="yes"] .lane-line, .lane[data-origin="yes"] .lane-credit { padding-left: 0; }
 
 .rows { position: relative; }
@@ -508,7 +507,7 @@ mark { background: none; color: inherit; }
 .kv { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr); border-top: 1px solid var(--rule); }
 .kv-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; column-gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
 .kv-key { font-size: var(--t-label); line-height: var(--l-value); color: var(--muted); overflow-wrap: anywhere; }
-.kv-key.mono { font-size: calc(var(--t-label) * 0.92); }
+.kv-key.mono { font-size: max(12px, calc(var(--t-label) * 0.88)); }
 .kv-value { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .kv-list { display: flex; flex-direction: column; }
 
@@ -730,3 +729,18 @@ kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px so
 .entries .kv-list { font-size: var(--t-label); line-height: var(--l-label); }
 .ledger .checks, .insp .records .checks { flex-basis: 100%; font-size: var(--t-label); }
 .ledger .checks .kv, .insp .records .checks .kv { grid-template-columns: minmax(0, 7em) minmax(0, 1fr); }
+
+/* Inspect is the dense mode: tighter rows. A run of more than six steps
+   takes the tighter rows in either mode, so its steps stay on screen. */
+body[data-size="inspect"] .row, .flow[data-many="yes"] .row { padding: 4px 0; grid-template-rows: auto 24px auto; }
+body[data-size="inspect"] .lifeline, .flow[data-many="yes"] .lifeline { margin-block: -4px; }
+body[data-size="inspect"] .row[data-status="blocked"], .flow[data-many="yes"] .row[data-status="blocked"] { grid-template-rows: auto 44px auto; row-gap: 2px; }
+
+/* When the panes stack, a wide piece scrolls inside its own box, never the page. */
+@media (max-width: 1023px) {
+  .flow, .records-tab, .trace-body { overflow-x: auto; }
+  .seq { min-width: 560px; }
+  .ledger { min-width: 560px; }
+  .pane, .tab-panel, .outcome { min-width: 0; max-width: 100%; }
+  .lens-pick, .mode-switch { flex-wrap: wrap; }
+}

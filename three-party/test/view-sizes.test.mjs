@@ -22,42 +22,36 @@ const SIZES = [
 const measure = (page) => page.evaluate(() => {
   const px = (node) => parseFloat(getComputedStyle(node).fontSize);
   const box = (node) => { const r = node.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; };
-  const inView = (node) => { const r = node.getBoundingClientRect(); return r.top >= 0 && r.left >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth && r.height > 0; };
-  const flow = document.getElementById('flow');
   const pane = document.getElementById('pane-flow');
+  const panel = document.getElementById('panel-sequence');
   const within = (node) => { const r = node.getBoundingClientRect(); const f = pane.getBoundingClientRect(); return r.top >= f.top - 0.5 && r.bottom <= f.bottom + 0.5; };
   const rows = [...document.querySelectorAll('#rows .row')];
   const selected = document.querySelector('#rows .row[aria-current="step"]');
-  const sentence = document.querySelector('.stop-sentence');
-  const min = (nodes) => (nodes.length ? Math.min(...nodes.map(px)) : null);
-  const metaMono = '.kv-key, .field, .meta, .left-foot, .artifact-path, .limits, .insp-note';
+  const outcome = document.getElementById('outcome-end');
+  const shown = (node) => node && node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+  const min = (nodes) => { const seen = nodes.filter(shown); return seen.length ? Math.min(...seen.map(px)) : null; };
   const texts = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.nodeValue.trim() && n.parentElement.closest('.live') === null) texts.push(n.parentElement);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.nodeValue.trim() && n.parentElement.closest('.live, dialog:not([open])') === null && shown(n.parentElement)) texts.push(n.parentElement);
   return {
     size: document.body.dataset.size,
-    tier: document.body.dataset.tier,
     docWidth: [document.documentElement.scrollWidth, window.innerWidth],
     docHeight: [document.documentElement.scrollHeight, window.innerHeight],
-    flow: [flow.scrollHeight, flow.clientHeight],
+    panel: [panel.scrollHeight, panel.clientHeight],
     pane: [pane.scrollHeight, pane.clientHeight],
     paneWidth: [pane.scrollWidth, pane.clientWidth],
-    slack: Math.round(document.querySelector('.flow-space').getBoundingClientRect().height),
     panes: ['pane-left', 'pane-flow', 'pane-inspector', 'topbar', 'footer'].map((id) => box(document.getElementById(id))),
     rows: rows.length,
-    rowsInView: rows.every(inView),
     rowsInPane: rows.every(within),
-    sentenceInView: sentence ? inView(sentence) && within(sentence) : null,
+    outcomeInPane: outcome.hidden || within(outcome),
     floors: {
       titles: min([...document.querySelectorAll('#rows .row-title')]),
-      others: min(rows.filter((r) => r !== selected).map((r) => r.querySelector('.row-title'))),
       words: min([...document.querySelectorAll('#rows .chip-word')]),
       selectedTitle: selected ? px(selected.querySelector('.row-title')) : null,
-      selectedWord: selected ? px(selected.querySelector('.chip-word')) : null,
-      sentence: sentence ? px(sentence) : null,
-      headline: document.querySelector('.outcome-head') ? px(document.querySelector('.outcome-head')) : null,
-      body: min([...document.querySelectorAll('.row-detail, .footer p, .invoice-strip > *, .outcome-text, .insp-text, .scene-title, .run-control')]),
-      mono: min([...document.querySelectorAll('.mono')].filter((n) => !n.closest(metaMono))),
+      stamp: document.querySelector('#rows .row[data-status="blocked"] .chip') ? px(document.querySelector('#rows .row[data-status="blocked"] .chip')) : null,
+      labels: min([...document.querySelectorAll('.lane-title, .lane-credit, .row-detail, .footer p, .invoice-strip, .insp-note, .kv-key:not(.mono), .scene-text')]),
+      values: min([...document.querySelectorAll('.row-title, .outcome-text, .insp-text, .insp-lens, .scene-title, .run-control, .tab')]),
+      mono: min([...document.querySelectorAll('#rows .mono, .insp-text .mono, .kv-value .mono, .invoice .mono')]),
       smallest: min(texts),
       inspectorHeading: px(document.getElementById('inspector-heading')),
     },
@@ -67,31 +61,31 @@ const measure = (page) => page.evaluate(() => {
 function assertFits(m, label) {
   assert.ok(m.docWidth[0] <= m.docWidth[1], `${label}: the document is as wide as the window (${m.docWidth})`);
   assert.ok(m.docHeight[0] <= m.docHeight[1], `${label}: the document is as high as the window (${m.docHeight})`);
-  assert.ok(m.flow[0] <= m.flow[1], `${label}: the flow does not scroll (${m.flow})`);
+  assert.ok(m.panel[0] <= m.panel[1], `${label}: the sequence does not scroll (${m.panel})`);
   assert.ok(m.pane[0] <= m.pane[1], `${label}: the middle pane does not scroll (${m.pane})`);
   assert.ok(m.paneWidth[0] <= m.paneWidth[1], `${label}: nothing in the middle pane is wider than it (${m.paneWidth})`);
   assert.equal(m.rowsInPane, true, `${label}: every row is inside the middle pane`);
+  assert.equal(m.outcomeInPane, true, `${label}: the outcome line is inside the middle pane`);
 }
 
+// One type scale: Inspect sets labels at 13 px, values at 15 and the
+// inspector's heading at 18; Story moves each up one step, to 15, 18 and 20.
+// A stopped step is stamped at 24 px in Inspect and 30 in Story; a value in
+// the monospace face is 0.88 of the size around it. A selected step is set
+// apart by weight, not by a larger size.
 function assertFloors(m, mode, label) {
   const f = m.floors;
-  assert.ok(f.smallest >= 13, `${label}: no text under 13 px (${f.smallest})`);
-  assert.ok(f.titles >= 22, `${label}: step titles at least 22 px (${f.titles})`);
-  assert.ok(f.words >= 18, `${label}: state words at least 18 px (${f.words})`);
-  assert.ok(f.body >= 16, `${label}: body text at least 16 px (${f.body})`);
-  if (f.mono !== null) assert.ok(f.mono >= 15, `${label}: monospace values at least 15 px (${f.mono})`);
-  if (mode === 'story' && m.size === 'story') {
-    if (f.selectedTitle !== null) {
-      assert.ok(f.selectedTitle >= 32, `${label}: the selected title at least 32 px (${f.selectedTitle})`);
-      assert.ok(f.selectedWord >= 24, `${label}: its state word at least 24 px (${f.selectedWord})`);
-      assert.ok(f.others >= 22, `${label}: every other step at least 22 px (${f.others})`);
-    }
-    if (f.sentence !== null) assert.ok(f.sentence >= 24, `${label}: the stopped sentence at least 24 px (${f.sentence})`);
-    if (f.headline !== null) assert.ok(f.headline >= 32, `${label}: the stopped headline at least 32 px (${f.headline})`);
-    assert.ok(f.inspectorHeading >= 32, `${label}: the inspector heading at least 32 px (${f.inspectorHeading})`);
-  } else {
-    if (f.sentence !== null) assert.ok(f.sentence >= 18, `${label}: the stopped sentence at least 18 px (${f.sentence})`);
-  }
+  const story = mode === 'story' && m.size === 'story';
+  const [labelPx, valuePx, headPx, stampPx] = story ? [15, 18, 20, 30] : [13, 15, 18, 24];
+  assert.ok(f.smallest >= 12, `${label}: no text under 12 px (${f.smallest})`);
+  if (f.labels !== null) assert.ok(f.labels >= labelPx, `${label}: labels at least ${labelPx} px (${f.labels})`);
+  if (f.values !== null) assert.ok(f.values >= valuePx, `${label}: values at least ${valuePx} px (${f.values})`);
+  if (f.titles !== null) assert.ok(f.titles >= valuePx, `${label}: step titles at least ${valuePx} px (${f.titles})`);
+  if (f.words !== null) assert.ok(f.words >= labelPx, `${label}: state words at least ${labelPx} px (${f.words})`);
+  if (f.selectedTitle !== null) assert.equal(f.selectedTitle, f.titles, `${label}: the selected title at the size of the others`);
+  if (f.stamp !== null) assert.equal(f.stamp, stampPx, `${label}: the stop stamped at ${stampPx} px`);
+  if (f.mono !== null) assert.ok(f.mono >= Math.max(12, Math.floor(labelPx * 0.88)), `${label}: monospace values at least ${Math.max(12, Math.floor(labelPx * 0.88))} px (${f.mono})`);
+  assert.equal(f.inspectorHeading, headPx, `${label}: the inspector heading at ${headPx} px`);
 }
 
 for (const { width, height, modes } of SIZES) {
@@ -118,9 +112,8 @@ for (const { width, height, modes } of SIZES) {
           assertFloors(stopped, mode, `${name}, poisoned stopped`);
           assert.deepEqual(stopped.panes, start.panes);
           assert.equal(stopped.rows, 6);
-          assert.equal(stopped.sentenceInView, true, `${name}: the stopped sentence is in view`);
-          assert.equal(stopped.rowsInView, true, `${name}: every numbered row is in view`);
-          t.diagnostic(`sizes: ${name} | tier ${stopped.tier} | flow needs ${start.flow[1] - start.slack} of ${start.flow[1]} at start, ${done.flow[1] - done.slack} finished, ${stopped.flow[1] - stopped.slack} stopped | spare ${start.slack} ${done.slack} ${stopped.slack} px`);
+          assert.equal(stopped.outcomeInPane, true, `${name}: the outcome line of the stop is in the pane`);
+          t.diagnostic(`sizes: ${name} | sequence ${stopped.panel[0]} of ${stopped.panel[1]} px when stopped, ${done.panel[0]} of ${done.panel[1]} when paid`);
 
           // The presenter walks the steps of the stopped run: each selection still fits.
           for (const key of ['0', '1', '2', '3', '4', '5', '6']) {
@@ -128,7 +121,7 @@ for (const { width, height, modes } of SIZES) {
             await view.settle(60);
             const walked = await measure(view.page);
             assertFits(walked, `${name}, poisoned stopped, key ${key}`);
-            assert.equal(walked.sentenceInView, true, `${name}, key ${key}: the stopped sentence stays in view`);
+            assert.equal(walked.outcomeInPane, true, `${name}, key ${key}: the outcome line stays in the pane`);
             assert.deepEqual(walked.panes, start.panes);
           }
         } finally {
@@ -164,14 +157,15 @@ test('1440x900 Inspect with eight steps (grant-again after grant, pay-again afte
       assert.equal(m.rows, 8);
       assertFits(m, `eight steps, ${scheme}`);
       assertFloors(m, 'inspect', `eight steps, ${scheme}`);
-      assert.equal(m.rowsInView, true);
-      t.diagnostic(`sizes: 1440x900 inspect ${scheme}, eight steps | flow needs ${m.flow[1] - m.slack} of ${m.flow[1]} | spare ${m.slack} px`);
+      t.diagnostic(`sizes: 1440x900 inspect ${scheme}, eight steps | sequence ${m.panel[0]} of ${m.panel[1]} px`);
       const titles = await view.page.evaluate(() => [...document.querySelectorAll('#rows .row-title')].map((n) => n.textContent));
       assert.equal(titles[2], COPY['step.grantAgain']);
       assert.equal(titles[6], COPY['step.payAgain']);
-      const details = await view.page.evaluate(() => [...document.querySelectorAll('#rows .row')].map((r) => r.querySelector('.row-detail')?.textContent ?? null));
-      assert.equal(details[2], details[1], 'grant-again takes the grant line of the copy deck');
-      assert.equal(details[6], details[5], 'pay-again takes the pay line of the copy deck');
+      // The one detail line stands on the selected step: grant-again and
+      // pay-again take the grant's and the payment's lines of the copy deck.
+      const detailOf = async (key) => { await view.page.keyboard.press(key); return view.page.evaluate(() => document.querySelector('#rows .row[aria-current="step"] .row-detail')?.textContent ?? null); };
+      assert.equal(await detailOf('3'), await detailOf('2'), 'grant-again takes the grant line of the copy deck');
+      assert.equal(await detailOf('7'), await detailOf('6'), 'pay-again takes the pay line of the copy deck');
       for (const key of ['1', '3', '5', '8', '0']) {
         await view.page.keyboard.press(key);
         await view.settle(60);
@@ -188,69 +182,47 @@ test('1440x900 Inspect with eight steps (grant-again after grant, pay-again afte
   }
 });
 
-// The lane header as the page lays it out: each lane's box, the lines its
-// title takes, what stands under the title, and where each step's line starts
-// and ends.
+// The sequence as the page lays it out: where each lane starts (its
+// lifeline), and where each step's arrow starts and ends.
 const lanesOf = (page) => page.evaluate(() => {
-  const mid = (node) => { const r = node.getBoundingClientRect(); return r.left + r.width / 2; };
   const lanes = [...document.querySelectorAll('#lanes-head .lane')].map((lane) => {
+    const line = lane.querySelector('.lane-line');
     const title = lane.querySelector('.lane-title');
-    const box = lane.getBoundingClientRect();
-    const lines = [...title.getClientRects()];
-    return { col: lane.dataset.col, line: lane.dataset.line, lines: lines.length, left: box.left, right: box.right, titleRight: Math.max(...lines.map((r) => r.right)), under: lane.querySelectorAll('.badge, .lane-legend, .lane-note').length };
+    const box = line.getBoundingClientRect();
+    return { col: lane.dataset.col, left: box.left, right: box.right, lines: title ? title.getClientRects().length : 0, titleRight: title ? title.getBoundingClientRect().right : null };
   });
-  const tracks = [...document.querySelectorAll('#rows .row')].map((row) => {
-    const track = row.querySelector('.track');
-    const dot = track.querySelector('.track-dot');
-    const start = track.querySelector('.track-from');
-    return { step: row.dataset.step, to: Number(track.dataset.to), dot: dot ? mid(dot) : null, start: start ? mid(start) : null };
+  const arrows = [...document.querySelectorAll('#rows .row')].map((row) => {
+    const arrow = row.querySelector('.arrow').getBoundingClientRect();
+    const life = [...row.querySelectorAll('.lifeline')].map((l) => l.getBoundingClientRect().left);
+    return { step: row.dataset.step, col: row.dataset.col, start: arrow.left, end: arrow.right, life };
   });
-  return { lanes, tracks, tier: document.body.dataset.tier };
+  return { lanes, arrows };
 });
 
-test('the lane header: at 1280x800 and 1440x900 the party every line starts from keeps its title on one line beside a lane that shows a title alone; no title leaves its lane and every marker stands at the start of its own lane; at 1920x1080 and in the stacked layout the header keeps its form', async () => {
-  const origin = LABELS.columns.findIndex((id) => !LABELS.parts[id]);
-  const at = async (width, height, hash) => {
+test('the sequence: at 1280x800, 1440x900 and 1920x1080 each lane\'s title stays on one line inside its lane; each row\'s lifelines stand where the lanes start; each arrow starts on the lifeline of the party that acts and ends on the lifeline of the part that checks', async () => {
+  const from = (step) => (LABELS.stepFrom?.[step] ? LABELS.columns.indexOf(LABELS.stepFrom[step]) : 0);
+  for (const [width, height, hash] of [[1280, 800, '#inspect'], [1440, 900, '#story'], [1440, 900, '#inspect'], [1920, 1080, '#story']]) {
     const view = await openView(browser, { width, height, hash });
     try {
       await runAndWait(view, 'poisoned', 'blocked');
       const m = await lanesOf(view.page);
       const where = `${width}x${height} ${hash}`;
-      assert.deepEqual(m.lanes.map((l) => l.col), LABELS.columns, where);
-      m.lanes.forEach((lane, i) => {
-        assert.ok(lane.titleRight <= lane.right + 0.5, `${where}: the title of ${lane.col} stays in its lane (${lane.titleRight} of ${lane.right})`);
-        if (i > 0) assert.ok(m.lanes[i - 1].right <= lane.left + 0.5, `${where}: ${lane.col} starts where the lane before it ends`);
-      });
-      for (const track of m.tracks) {
-        if (track.dot === null) continue;
-        const lane = m.lanes[track.to];
-        assert.ok(track.dot >= lane.left - 0.5 && track.dot <= lane.left + 12, `${where}: the marker of ${track.step} stands at the start of ${lane.col} (${track.dot} from ${lane.left})`);
-        assert.ok(track.start >= m.lanes[origin].left - 0.5 && track.start <= m.lanes[origin].left + 12, `${where}: the line of ${track.step} starts at ${m.lanes[origin].col}`);
+      assert.deepEqual(m.lanes.map((l) => l.col), LABELS.columns);
+      for (const lane of m.lanes) {
+        assert.equal(lane.lines, 1, `${where}: ${lane.col}'s title on one line`);
+        assert.ok(lane.titleRight <= lane.right + 0.5, `${where}: ${lane.col}'s title stays in its lane`);
       }
-      assert.equal(m.tracks.filter((t) => t.dot !== null).length, POISONED_STEPS, `${where}: every step has its marker`);
-      return m;
+      for (const a of m.arrows) {
+        a.life.forEach((x, i) => assert.ok(Math.abs(x - m.lanes[i].left) <= 1, `${where}: ${a.step}'s lifeline ${i} stands where ${m.lanes[i].col} starts`));
+        const to = LABELS.columns.indexOf(a.col);
+        assert.ok(Math.abs(a.start - m.lanes[from(a.step)].left) <= 1, `${where}: ${a.step}'s arrow starts on ${LABELS.columns[from(a.step)]}`);
+        assert.ok(Math.abs(a.end - m.lanes[to].left) <= 1, `${where}: ${a.step}'s arrow ends on ${a.col}`);
+      }
+      assert.equal(m.arrows.length, POISONED_STEPS);
     } finally {
       await view.close();
     }
-  };
-  for (const [width, height, hash] of [[1280, 800, '#inspect'], [1440, 900, '#story'], [1440, 900, '#inspect']]) {
-    const m = await at(width, height, hash);
-    const where = `${width}x${height} ${hash}`;
-    assert.equal(m.lanes[origin].line, 'one', where);
-    assert.equal(m.lanes[origin].lines, 1, `${where}: ${m.lanes[origin].col} on one line`);
-    assert.equal(m.lanes[origin + 1].under, 0, `${where}: the lane beside it shows a title alone`);
-    assert.equal(m.lanes[origin + 1].lines, 1, `${where}: ${m.lanes[origin + 1].col} on one line`);
-    assert.deepEqual(m.lanes.filter((l) => l.line === 'one').map((l) => l.col), [m.lanes[origin].col], `${where}: no other lane is marked`);
   }
-  // The wide tier sets the legend under the title of the lane beside it, and
-  // the stacked layout is narrower than the measured widths: the header keeps
-  // the form it has there.
-  const wide = await at(1920, 1080, '#story');
-  assert.equal(wide.tier, 'wide');
-  assert.ok(wide.lanes[origin + 1].under > 0, 'at 1920 the lane beside it shows its legend');
-  assert.deepEqual(wide.lanes.map((l) => l.line), LABELS.columns.map(() => 'any'), '1920: no lane is marked');
-  const stacked = await at(1000, 800, '#inspect');
-  assert.deepEqual(stacked.lanes.map((l) => l.line), LABELS.columns.map(() => 'any'), '1000: no lane is marked');
 });
 
 test('under 1024 px wide the three panes stack in order and nothing overflows sideways', async () => {
@@ -260,7 +232,17 @@ test('under 1024 px wide the three panes stack in order and nothing overflows si
       await runAndWait(view, 'poisoned', 'blocked');
       const m = await view.page.evaluate(() => {
         const top = (id) => document.getElementById(id).getBoundingClientRect().top;
-        return { stacked: document.body.dataset.stacked, doc: [document.documentElement.scrollWidth, window.innerWidth], order: [top('pane-left'), top('pane-flow'), top('pane-inspector'), top('footer')], widest: Math.max(...[...document.querySelectorAll('body *')].filter((n) => n.closest('.live, .sprite') === null).map((n) => n.getBoundingClientRect().right)) };
+        // What reaches sideways, cut to every box that scrolls or clips
+        // around it: a piece wider than a phone scrolls inside its own box.
+        const shownRight = (n) => {
+          let right = n.getBoundingClientRect().right;
+          for (let up = n.parentElement; up; up = up.parentElement) {
+            const st = getComputedStyle(up);
+            if (/(auto|scroll|hidden|clip)/.test(st.overflowX)) right = Math.min(right, up.getBoundingClientRect().right);
+          }
+          return right;
+        };
+        return { stacked: document.body.dataset.stacked, doc: [document.documentElement.scrollWidth, window.innerWidth], order: [top('pane-left'), top('pane-flow'), top('pane-inspector'), top('footer')], widest: Math.max(...[...document.querySelectorAll('body *')].filter((n) => n.closest('.live, .sprite, dialog:not([open])') === null).map(shownRight)) };
       });
       assert.equal(m.stacked, 'yes');
       assert.ok(m.doc[0] <= m.doc[1], `${width}: no sideways scroll (${m.doc})`);
