@@ -4,32 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title data-src="copy:app.title"></title>
+<title data-src="copy:ui.title"></title>
 <link rel="stylesheet" href="./view.css">
 <script type="module" src="./view.mjs"></script>
 </head>
-<body data-mode="story" data-size="inspect" data-tier="standard" data-ready="no">
+<body data-mode="story" data-tab="sequence" data-lens="security" data-ready="no">
 <header class="topbar" id="topbar">
   <h1 class="app-title" id="app-title"></h1>
-</header>
-<nav class="pane pane-left" id="pane-left" aria-labelledby="scenes-heading"></nav>
-<div class="switches" id="switches">
+  <p class="where" id="where"></p>
+  <div class="top-run" id="run-line"></div>
+  <div class="lens-pick" id="lens-pick"></div>
   <div class="mode-switch" id="mode-switch" role="group"></div>
-  <div class="view-switch" id="view-switch" role="group"></div>
-</div>
-<div class="run-line" id="run-line"></div>
+</header>
+<nav class="pane pane-left" id="pane-left"></nav>
 <main class="pane pane-flow" id="pane-flow" aria-labelledby="app-title">
-  <section class="invoice" id="invoice"></section>
-  <div class="flow" id="flow">
-    <div class="lanes-head" id="lanes-head"></div>
-    <div class="rows" id="rows" role="list"></div>
-    <div class="trace" id="trace" hidden></div>
-    <div class="flow-space" id="flow-space"></div>
-    <section class="outcome outcome-end" id="outcome-end"></section>
-  </div>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <section class="tab-panel" id="panel-sequence" role="tabpanel" aria-labelledby="tab-sequence">
+    <div class="orient" id="orient"></div>
+    <div class="invoice" id="invoice"></div>
+    <div class="flow" id="flow">
+      <div class="seq" id="seq">
+        <div class="lanes-head" id="lanes-head"></div>
+        <div class="rows" id="rows" role="list"></div>
+      </div>
+    </div>
+  </section>
+  <section class="tab-panel" id="panel-trace" role="tabpanel" aria-labelledby="tab-trace" hidden>
+    <div class="trace" id="trace"></div>
+  </section>
+  <section class="tab-panel" id="panel-records" role="tabpanel" aria-labelledby="tab-records" hidden>
+    <div class="records-tab" id="records-tab"></div>
+  </section>
+  <section class="outcome" id="outcome-end"></section>
 </main>
 <aside class="pane pane-inspector" id="pane-inspector" aria-labelledby="inspector-heading"></aside>
 <footer class="footer" id="footer"></footer>
+<dialog class="keys-dialog" id="keys-dialog" aria-labelledby="keys-title"></dialog>
 <div class="live" id="live" aria-live="polite" role="status"></div>
 </body>
 </html>

@@ -1,227 +1,118 @@
-// The middle pane: the invoice, the lane header and one row per step.
+// The middle pane's Sequence tab and the outcome under every tab.
 //
-// A row is built once for a step and then brought up to date in place, so a
-// change of state changes attributes on elements that stay: that is what lets
-// the colours pass through the one transition the stylesheet defines.
+// Before a run it shows the orientation: one sentence, the three parts that
+// take part in the payment, and the two runs to start. During and after a
+// run it shows the invoice and the sequence: five lifelines, one per party
+// or part, and one row per step whose arrow runs from the lifeline that acts
+// to the lifeline that checks or answers, with the step's state where the
+// arrow arrives. A step that acted leaves a mark on the record lifeline:
+// outlined until its record is signed, filled once it is, and checked once
+// the offline audit has passed it.
+//
+// Every resting piece sits in a grid slot. A row is built once for a step
+// and then brought up to date in place, so a change of state changes
+// attributes on elements that stay, and the colours pass through the one
+// transition the stylesheet defines for them.
 
-import { el, put, add, from, value, camel, clear } from './dom.mjs';
-import { stateOf, chip, setChip, badge, countdown, compare, headlineOf } from './parts.mjs';
+import { el, put, add, from, value, clear } from './dom.mjs';
+import { stateOf, chip, setChip, badge, countdown, headlineOf, columnsOf, partOf, shownPart, columnTitle, creditOf, lensOutcomeLine, baseId } from './parts.mjs';
 import { iconEl } from './icons.mjs';
-import { STEP_ORDER } from './constants.mjs';
 
-const baseId = (id) => String(id).replace(/-again$/, '');
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// The width, in the units of the lane weights, that a lane showing a title
-// and nothing under it gives to the lane of the party beside it.
-const LANE_ROOM = 0.9;
-// The width, in the same units, that a stand-in's note adds to its lane.
-const NOTE_ROOM = 0.9;
-// The space, in px, a line keeps for its two end markers beside its label.
-const MARKER_ROOM = 10;
-// The space, in px, a note that runs on leaves before the lane it stops at,
-// beside that lane's own padding, so two notes do not read as one text.
-const NOTE_GUTTER = 12;
+export { partOf, shownPart };
 
-// The column a step's marker sits in, and the column every line starts at
-// (the party column: the one that is not a part of the label map).
-function columnsOf(app) {
-  const cols = app.labels.columns ?? [];
-  const parts = app.labels.parts ?? {};
-  const origin = Math.max(0, cols.findIndex((id) => !parts[id]));
-  return { cols, parts, origin };
+// ---- Orientation: before any run
+
+function sceneOf(app, kind) {
+  const all = app.labels.scenes ?? [];
+  const s = all.findIndex((scene) => scene.kind === kind);
+  return s >= 0 ? { scene: all[s], s } : null;
 }
 
-export function partOf(app, stepId) {
+// The action that runs a scene: the scene's own button from the label map,
+// or, from a server with no label map, the deck's line for it.
+export function sceneButton(app, kind, cls, press) {
+  const found = sceneOf(app, kind);
+  if (!found) return null;
+  const words = app.w.label(`scenes[${found.s}].button`) ?? app.w.line('button.runName', { scene: [found.scene.title, from.labels(`scenes[${found.s}].title`)] });
+  if (!words) return null;
+  return el('button', { class: `btn ${cls}`, type: 'button', src: words.src, text: words.text, data: { runKind: kind }, on: { click: press } });
+}
+
+export function renderOrientation(app, host, press) {
+  const signature = `${app.run ? 'run' : 'none'}|${app.labelsStamp}`;
+  if (host.dataset.signature === signature) return;
+  host.dataset.signature = signature;
+  clear(host);
+  host.hidden = Boolean(app.run);
+  if (app.run) return;
   const { cols, parts } = columnsOf(app);
-  const col = app.labels.stepColumns?.[stepId];
-  return { col, index: cols.indexOf(col), part: parts[col] ?? null };
+  // The parts that check or record: those the screens' own file gives a line.
+  const shown = cols.filter((id) => parts[id] && typeof parts[id].text === 'string' && parts[id].text !== '');
+  add(host,
+    put('p', 'orient-lead', app.w.word('ui.lead'), { id: 'app-sentence' }),
+    el('div', { class: 'orient-parts', role: 'list' }, shown.map((id) => {
+      const { part } = shownPart(app, id);
+      return el('div', { class: 'orient-part', role: 'listitem', data: { col: id } },
+        el('div', { class: 'orient-name' }, put('span', 'lane-title', columnTitle(app, id))),
+        part?.standIn ? el('p', { class: 'orient-credit' }, badge(app)) : put('p', 'orient-credit', creditOf(app, id)),
+        put('p', 'orient-text', app.w.label(`parts.${id}.text`)));
+    })),
+    el('div', { class: 'orient-actions' },
+      sceneButton(app, 'clean', 'btn-primary', () => press('clean')),
+      sceneButton(app, 'poisoned', 'btn-quiet', () => press('poisoned'))));
 }
 
-// A part as the run shown uses it: the variant of the label map that a step
-// of the run names (the crossing's supplied capture check or its fallback),
-// with the path of its strings in the map; the part itself when the run
-// names none, and before a run.
-export function shownPart(app, col) {
-  const part = app.labels.parts?.[col] ?? null;
-  const step = (app.run?.steps ?? []).find((s) => s.variant && app.labels.stepColumns?.[s.id] === col);
-  const variant = step && part?.variants && Object.hasOwn(part.variants, step.variant) ? step.variant : null;
-  return variant ? { part: part.variants[variant], path: `parts.${col}.variants.${variant}` } : { part, path: `parts.${col}` };
-}
-
-// ---- Invoice
-
-export function hiddenBox(app) {
-  const run = app.run;
-  if (!run?.invoice?.hidden) return null;
-  return el('div', { class: 'hidden-box' },
-    put('span', 'hidden-label', app.w.word('hidden.label')),
-    put('p', 'hidden-text', value(run, 'invoice.hidden.text')),
-    put('p', 'hidden-note', value(run, 'poisonedLine')));
-}
-
-function invoiceWords(app) {
-  const inv = app.run.invoice;
-  return {
-    heading: app.w.lineNodes('invoice.heading', { invoiceId: [inv.invoiceId, from.run('invoice.invoiceId')] }, ['invoiceId']),
-    amount: app.w.line('invoice.amountValue', { amount: [inv.amount, from.run('invoice.amount')], currency: [inv.currency, from.run('invoice.currency')] }),
-    payTo: app.w.lineNodes('invoice.payToValue', { account: [inv.payTo?.account, from.run('invoice.payTo.account')] }, ['account']),
-  };
-}
-
-export function invoiceStrip(app) {
-  if (!app.run?.invoice) return null;
-  const words = invoiceWords(app);
-  return el('div', { class: 'invoice-strip' },
-    put('span', 'invoice-heading', words.heading),
-    put('span', 'invoice-value num', words.amount),
-    put('span', 'invoice-value', words.payTo));
-}
-
-// The full card: who it is from (by role), the amount, where it pays to and
-// the invoice lines; on a poisoned run, with withHidden, the hidden text.
-export function invoiceCard(app, withHidden) {
-  if (!app.run?.invoice) return null;
-  const words = invoiceWords(app);
-  const field = (key, valueNode) => (valueNode ? el('div', { class: 'invoice-field' }, put('dt', null, app.w.word(key)), el('dd', null, valueNode)) : null);
-  const lines = Array.isArray(app.run.invoice.lines) ? app.run.invoice.lines : [];
-  return el('div', { class: 'invoice-card' },
-    el('dl', { class: 'invoice-fields' },
-      put('span', 'invoice-heading', words.heading),
-      field('invoice.from', put('span', null, app.w.label('parties.supplier'))),
-      field('invoice.amount', put('span', 'num', words.amount)),
-      field('invoice.payTo', put('span', null, words.payTo))),
-    lines.length ? el('ul', { class: 'invoice-lines' }, lines.map((_, i) => put('li', null, value(app.run, `invoice.lines[${i}]`)))) : null,
-    withHidden ? hiddenBox(app) : null);
-}
-
-// Where the hidden text of a poisoned invoice shows: in the middle pane when
-// Inspect has the height for the full card there, in the run overview of the
-// inspector otherwise. It is on screen in one place at a time.
-export function cardInFlow(app) {
-  return app.mode === 'inspect' && app.tier === 'wide';
-}
+// ---- Invoice: one ruled line, and the hidden text of a poisoned invoice
 
 export function renderInvoice(app, host) {
+  const run = app.run;
+  const signature = run ? `${app.runId}|${app.labelsStamp}` : 'none';
+  if (host.dataset.signature === signature) return;
+  host.dataset.signature = signature;
   clear(host);
-  if (!app.run) return;
-  add(host, cardInFlow(app) ? invoiceCard(app, true) : invoiceStrip(app));
+  host.hidden = !run?.invoice;
+  if (!run?.invoice) return;
+  const inv = run.invoice;
+  const field = (labelKey, words, cls) => (words ? el('span', { class: 'invoice-field' }, put('span', 'invoice-key', app.w.word(labelKey)), put('span', `invoice-value${cls ? ` ${cls}` : ''}`, words)) : null);
+  add(host,
+    el('div', { class: 'invoice-strip' },
+      put('span', 'invoice-heading', app.w.lineNodes('invoice.heading', { invoiceId: [inv.invoiceId, from.run('invoice.invoiceId')] }, ['invoiceId'])),
+      field('invoice.amount', app.w.line('invoice.amountValue', { amount: [inv.amount, from.run('invoice.amount')], currency: [inv.currency, from.run('invoice.currency')] }), 'num'),
+      field('invoice.payTo', app.w.lineNodes('invoice.payToValue', { account: [inv.payTo?.account, from.run('invoice.payTo.account')] }, ['account']))),
+    inv.hidden ? el('div', { class: 'hidden-line' },
+      put('span', 'hidden-label', app.w.word('hidden.label')),
+      put('mark', 'hidden-text', value(run, 'invoice.hidden.text'))) : null);
 }
 
-// ---- Lane header
+// ---- The lane heads
 
 export function renderLanes(app, host) {
   clear(host);
-  const { cols, origin } = columnsOf(app);
-  // Each lane as the run uses its part: a crossing that ran the supplied
-  // capture check carries no stand-in mark and no note.
-  const parts = Object.fromEntries(cols.map((id) => [id, shownPart(app, id).part]).filter(([, part]) => part));
-  const pathOf = (id) => shownPart(app, id).path;
-  // A run of more than six steps needs the height the notes would take.
-  const showNote = (app.tier === 'wide' || app.tier === 'standard') && !app.many;
-  const showLegend = app.tier === 'wide';
-  // A lane that shows a title and nothing under it.
-  const legend = (id) => app.labels.parts?.[id]?.text;
-  const alone = (id) => Boolean(parts[id]) && !parts[id].standIn && !(showLegend && legend(id));
-  // In the standard tier the window has no room for a stand-in's note inside
-  // its own lane. The note runs on under the lane to its right where that
-  // lane shows a title alone (measureLanes sets how far), and the stand-in's
-  // lane takes no width for it.
-  const runsOn = cols.map((id, i) => app.tier === 'standard' && showNote && Boolean(parts[id]?.standIn) && i + 1 < cols.length && alone(cols[i + 1]));
-  const weights = cols.map((id, i) => {
-    const part = parts[id];
-    return 1.3 + (legend(id) ? 0.4 : 0) + (part?.standIn && !runsOn[i] ? NOTE_ROOM : 0);
-  });
-  // Where the panes stand at their measured widths, the party every line
-  // starts from keeps its name on one line while the lane beside it shows a
-  // title and nothing under it: the room comes from that lane, so the lanes
-  // after the two keep their share of the width.
-  const beside = parts[cols[origin + 1]];
-  const oneLine = app.full && Boolean(beside) && !beside.standIn && !(showLegend && legend(cols[origin + 1]));
-  if (oneLine) {
-    weights[origin] += LANE_ROOM;
-    weights[origin + 1] -= LANE_ROOM;
-  }
-  // Each lane is at least as wide as the longest word of its title; in a
-  // window too narrow for that, the stylesheet takes the tight form.
-  host.style.setProperty('--lanes', weights.map((wt) => `minmax(min-content, ${wt}fr)`).join(' '));
-  host.style.setProperty('--lanes-tight', weights.map((wt) => `minmax(0, ${wt}fr)`).join(' '));
+  const { cols, parts } = columnsOf(app);
+  // The lanes' widths, in the weights the label file gives each column.
+  const weights = app.labels.columnWeights ?? {};
+  host.parentElement.style.gridTemplateColumns = `var(--num) ${cols.map((id) => `minmax(0, ${Number(weights[id]) > 0 ? Number(weights[id]) : 1}fr)`).join(' ')}`;
   for (const [i, id] of cols.entries()) {
-    const part = parts[id];
-    const title = part ? app.w.label(`${pathOf(id)}.label`) : app.w.label(`parties.${id}`);
-    // The titles that are to stay on one line where the panes stand at
-    // their measured widths: the lane beside the party's, and the stand-ins.
-    const wish = app.full && (i === origin + 1 || Boolean(part?.standIn)) ? 'one-line' : 'any';
-    add(host, el('div', { class: 'lane', data: { col: id, standIn: part?.standIn ? 'yes' : 'no', origin: i === origin ? 'yes' : 'no', line: oneLine && i === origin ? 'one' : 'any', note: runsOn[i] ? 'runs-on' : 'in-lane', wish } },
-      put('span', 'lane-title', title),
-      part?.standIn ? [' ', badge(app)] : null,
-      showLegend && part ? put('span', 'lane-legend', app.w.label(`parts.${id}.text`)) : null,
-      showNote && part?.standIn ? put('span', 'lane-note', app.w.label(`${pathOf(id)}.standInNote`)) : null));
+    const shown = shownPart(app, id);
+    const standIn = Boolean(shown.part?.standIn);
+    const note = standIn ? app.w.label(`${shown.path}.standInNote`) : null;
+    // The lane is a pair of slots in the head's grid: its title (with the
+    // stand-in mark, whose note is its tooltip) and the line under it.
+    add(host, el('div', { class: 'lane', data: { col: id, standIn: standIn ? 'yes' : 'no', origin: parts[id] ? 'no' : 'yes' } },
+      el('span', { class: 'lane-line', style: { gridColumn: `${i + 2}` }, title: note?.text },
+        put('span', 'lane-title', columnTitle(app, id))),
+      el('span', { class: 'lane-credit', style: { gridColumn: `${i + 2}` }, title: note?.text },
+        standIn ? badge(app) : put('span', null, creditOf(app, id)))));
   }
-}
-
-// What the header is measured for, after the rows are in place.
-//
-// The lane of the party every line starts from is made as wide as the label
-// of the lane beside it needs on the line between the two, where the rows
-// show that label (--line-room). Then where each lane starts is read from
-// the header cells and kept as custom properties on the flow, so every track
-// reads the same numbers. Last, a stand-in's note that runs on is given its
-// reach: the lanes to its right that show a title alone, each as long as its
-// title ends above the note, up to the next lane that carries something
-// under its title (--note-run). A lane's width does not depend on that
-// reach, so one pass settles it.
-export function measureLanes(flow, head) {
-  const lanes = [...head.children];
-  for (const lane of lanes) {
-    lane.style.removeProperty('--note-run');
-    lane.dataset.keep = lane.dataset.wish === 'one-line' ? 'yes' : 'no';
-  }
-  const origin = lanes.findIndex((lane) => lane.dataset.origin === 'yes');
-  let room = 0;
-  if (origin >= 0) {
-    for (const name of flow.querySelectorAll(`.track[data-to="${origin + 1}"] .track-name`)) {
-      // A name the stylesheet hides (the compact tier, a run of many steps) takes no room.
-      if (name.offsetWidth > 1) room = Math.max(room, Math.ceil(name.firstElementChild.offsetWidth) + MARKER_ROOM);
-    }
-  }
-  if (room > 0) head.style.setProperty('--line-room', `${room}px`); else head.style.removeProperty('--line-room');
-  // The lanes fit the header, whatever the labels: where the titles kept on
-  // one line make the five lanes wider than the header, the mark is taken
-  // off, from the last lane back, and then the room for the label.
-  const fits = () => head.scrollWidth <= head.clientWidth;
-  for (const lane of [...lanes].reverse()) {
-    if (fits()) break;
-    lane.dataset.keep = 'no';
-  }
-  if (!fits()) head.style.removeProperty('--line-room');
-
-  const pad = parseFloat(getComputedStyle(head).paddingLeft) || 0;
-  lanes.forEach((cell, i) => {
-    flow.style.setProperty(`--lane-${i}`, `${Math.round(cell.offsetLeft - pad + 5)}px`);
-  });
-
-  lanes.forEach((lane, i) => {
-    const note = lane.querySelector(':scope > .lane-note');
-    if (!note || lane.dataset.note !== 'runs-on') return;
-    const top = note.getBoundingClientRect().top;
-    const own = lane.getBoundingClientRect().right;
-    let reach = own;
-    for (const next of lanes.slice(i + 1)) {
-      if (next.querySelector('.badge, .lane-legend, .lane-note')) break;
-      const title = next.querySelector('.lane-title');
-      if (title && title.getBoundingClientRect().bottom > top + 0.5) break;
-      reach = next.getBoundingClientRect().right;
-    }
-    const run = Math.floor(reach - own - NOTE_GUTTER);
-    if (run > 0) lane.style.setProperty('--note-run', `${run}px`);
-  });
 }
 
 // ---- Rows
 
 // The one detail line of a step, composed from the copy deck's template for
 // the step with the run's values; null when the run carries no value for it.
-function detailLine(app, i, step) {
+export function detailLine(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
@@ -274,162 +165,168 @@ function detailLine(app, i, step) {
   return null;
 }
 
-function previewSteps(app) {
-  return STEP_ORDER.map((id, i) => ({ id, preview: i }));
+// The offline check's answer for the run on screen, or null.
+export function offlineOf(app) {
+  return app.offline && app.offline.runId === app.runId ? app.offline.result : null;
 }
 
-function buildTrack(app, i, step) {
-  const { origin } = columnsOf(app);
-  const { col, index, part } = partOf(app, step.id);
-  const label = step.preview === undefined
-    ? value(app.run, `steps[${i}].partLabel`)
-    : (part ? app.w.label(`parts.${col}.label`) : null);
-  const track = el('div', { class: 'track', data: { to: String(index) } });
-  if (index >= 0) {
-    track.style.setProperty('--from', `var(--lane-${origin})`);
-    track.style.setProperty('--to', `var(--lane-${index})`);
-    track.append(el('span', { class: 'track-line' }), el('span', { class: 'track-from' }), el('span', { class: 'track-dot' }));
+// The record mark of a step: none when the step did not act; pending while
+// the action waits for its record; signed once the run's record step has
+// signed it; verified or failed once the audit has answered for that file.
+export function recordStateOf(app, step) {
+  if (!step || baseId(step.id) === 'record') return null;
+  if (!step.actionFile && !step.recordFile) return null;
+  if (!step.recordFile) return 'pending';
+  const offline = offlineOf(app);
+  const row = Array.isArray(offline?.records) ? offline.records.find((r) => r.file === step.recordFile) : null;
+  if (!row) return 'signed';
+  return row.verdict === 'pass-1-6' ? 'verified' : 'failed';
+}
+
+const MARK_WORDS = { pending: 'seq.recordPending', signed: 'seq.recordSigned', verified: 'seq.recordVerified', failed: 'seq.recordFailed' };
+
+function markShape(state) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const page = document.createElementNS(SVG_NS, 'path');
+  page.setAttribute('d', 'M3.5 1.5h6l3 3v10h-9z');
+  page.setAttribute('class', 'mark-page');
+  svg.append(page);
+  if (state === 'verified' || state === 'failed') {
+    const sign = document.createElementNS(SVG_NS, 'path');
+    sign.setAttribute('d', state === 'verified' ? 'm5.4 9.2 1.9 1.9 3.4-3.7' : 'm5.6 6.6 4.8 4.8m0-4.8-4.8 4.8');
+    sign.setAttribute('class', 'mark-sign');
+    svg.append(sign);
   }
-  if (label) track.append(el('span', { class: 'track-name' }, put('span', 'track-label', label)));
-  return track;
+  return svg;
 }
 
-function buildRow(app, i, step) {
-  const preview = step.preview !== undefined;
-  const row = el('div', { class: 'row', role: 'listitem', tabindex: '-1', data: { step: step.id, index: String(i) } });
-  const numberSrc = preview ? `${from.constant(`stepOrder[${i}]`)}|ordinal` : from.run(`steps[${i}]`, 'ordinal');
-  const title = preview ? app.w.word(`step.${camel(step.id)}`) : value(app.run, `steps[${i}].title`);
-  const tile = el('div', { class: 'row-tile' },
-    el('span', { class: 'row-num', src: numberSrc, text: String(i + 1) }),
-    put('span', 'row-title', title) ?? el('span', { class: 'row-title' }),
-    chip(stateOf(app, 'pending', from.constant(`stepOrder[${i}]`))),
-    buildTrack(app, i, step));
-  row.append(tile);
+function paintMark(app, node, state) {
+  if (node.dataset.state === (state ?? 'none')) return;
+  node.dataset.state = state ?? 'none';
+  node.replaceChildren();
+  node.removeAttribute('aria-label');
+  node.removeAttribute('title');
+  node.hidden = !state;
+  if (!state) return;
+  const words = app.w.word(MARK_WORDS[state]);
+  node.append(markShape(state));
+  if (words) {
+    node.setAttribute('aria-label', words.text);
+    node.setAttribute('title', words.text);
+    node.dataset.words = words.src;
+  }
+}
+
+function buildRow(app, i, step, cols) {
+  const { index, fromIndex, col } = partOf(app, step.id);
+  const recordCol = cols.indexOf('record');
+  const to = Math.max(0, index);
+  const start = Math.max(0, fromIndex);
+  const arrowEnd = to > start ? to : start + 1;
+  // The state's room ends at the record lifeline, where the record mark
+  // stands, for a step whose arrow ends before it.
+  const stateEnd = recordCol > arrowEnd ? recordCol + 2 : cols.length + 2;
+  const row = el('div', { class: 'row', role: 'listitem', tabindex: '-1', data: { step: step.id, index: String(i), col: col ?? '' } });
+  // One slot per lifeline, behind the row's pieces.
+  for (let c = 0; c < cols.length; c += 1) row.append(el('span', { class: 'lifeline', 'aria-hidden': 'true', style: { gridColumn: `${c + 2}` } }));
+  add(row,
+    el('span', { class: 'row-num', src: from.run(`steps[${i}]`, 'ordinal'), text: String(i + 1) }),
+    el('span', { class: 'row-head', style: { gridColumn: `${start + 2} / -1` } }, put('span', 'row-title', value(app.run, `steps[${i}].title`)) ?? el('span', { class: 'row-title' })),
+    el('span', { class: 'arrow', 'aria-hidden': 'true', style: { gridColumn: `${start + 2} / ${arrowEnd + 2}` } },
+      el('span', { class: 'arrow-from' }), el('span', { class: 'arrow-track' }, el('span', { class: 'arrow-line' }), el('span', { class: 'arrow-pulse' })), el('span', { class: 'arrow-head' })),
+    el('span', { class: 'row-state', style: { gridColumn: `${arrowEnd + 2} / ${stateEnd}` } }, chip(stateOf(app, 'pending', from.run(`steps[${i}].status`)))),
+    recordCol >= 0 && baseId(step.id) !== 'record' ? el('span', { class: 'rec-mark', role: 'img', hidden: true, style: { gridColumn: `${recordCol + 2}` } }) : null);
   return row;
 }
 
-function setLine(tile, cls, before, line) {
-  let node = tile.querySelector(`:scope > .${cls}`);
+function setLine(row, cls, line) {
+  let node = row.querySelector(`:scope > .${cls}`);
   if (!line) {
     node?.remove();
     return null;
   }
   if (node && node.dataset.src === line.src && node.textContent === line.text) return node;
   const fresh = put('p', cls, line);
-  if (node) node.replaceWith(fresh); else tile.insertBefore(fresh, before);
+  if (node) node.replaceWith(fresh); else row.append(fresh);
   return fresh;
 }
 
 function updateRow(app, row, i, step) {
-  const preview = step.preview !== undefined;
-  const tile = row.firstElementChild;
-  const track = tile.querySelector(':scope > .track');
   // A replay shows the steps after the one it stands at as not yet begun:
-  // pending, with no detail.
-  const veiled = !preview && app.replay !== null && i >= app.replay.n;
-  const status = preview || veiled ? 'pending' : step.status;
-  const state = stateOf(app, status, preview ? from.constant(`stepOrder[${i}]`) : veiled ? from.view('replay') : from.run(`steps[${i}].status`));
-  const selected = !preview && app.selection.kind === 'step' && app.selection.index === i;
+  // pending, with no detail and no record.
+  const veiled = app.replay !== null && i >= app.replay.n;
+  const status = veiled ? 'pending' : step.status;
+  const state = stateOf(app, status, veiled ? from.view('replay') : from.run(`steps[${i}].status`));
+  const selected = app.selection.kind === 'step' && app.selection.index === i;
 
   row.dataset.status = status;
   row.dataset.tone = state.tone;
   row.dataset.state = state.icon;
   if (selected) row.setAttribute('aria-current', 'step'); else row.removeAttribute('aria-current');
-  setChip(tile.querySelector(':scope > .chip'), state);
+  setChip(row.querySelector('.row-state > .chip'), state);
+  const title = row.querySelector('.row-title');
+  if (title && title.textContent !== step.title) title.textContent = step.title;
 
-  if (!preview) {
-    const title = tile.querySelector(':scope > .row-title');
-    if (title.textContent !== step.title) title.textContent = step.title;
-  }
+  // The detail line: on the selected step alone.
+  setLine(row, 'row-detail', selected && !veiled ? detailLine(app, i, step) : null);
 
-  // The detail line: every row in Inspect, the selected row in Story.
-  const open = !preview && !veiled && (app.mode === 'inspect' || selected);
-  setLine(tile, 'row-detail', track, open ? detailLine(app, i, step) : null);
-
-  // The grant countdown, once the grant has passed: on the step that issued
-  // the grant in force (the last grant step that passed).
-  const counts = !preview && !veiled && baseId(step.id) === 'grant' && status === 'passed' && Boolean(app.run.grant?.expiresAt)
+  // The grant countdown, while the run goes on, on the step that issued the
+  // grant in force (the last grant step that passed).
+  const counts = !veiled && !app.run.finishedAt && baseId(step.id) === 'grant' && status === 'passed' && Boolean(app.run.grant?.expiresAt)
     && app.run.steps.findLastIndex((s) => baseId(s.id) === 'grant' && s.status === 'passed') === i;
-  let count = track.querySelector(':scope > .countdown');
+  const slot = row.querySelector('.row-state');
+  let count = slot.querySelector(':scope > .countdown');
   if (counts && (!count || count.dataset.expires !== app.run.grant.expiresAt)) {
     const fresh = countdown(app);
-    if (count) count.replaceWith(fresh); else track.append(fresh);
+    if (count) count.replaceWith(fresh); else slot.append(fresh);
     count = fresh;
   } else if (!counts && count) {
     count.remove();
   }
-  // The grant row keeps the countdown's line from the start.
-  row.dataset.counts = baseId(step.id) === 'grant' ? 'yes' : 'no';
 
-  // The stopped step: headline in the tile, the comparison where the pane
-  // has the height, and the run's one sentence under the tile.
-  const stopped = !preview && status === 'blocked';
-  let head = tile.querySelector(':scope > .outcome-head');
-  let table = tile.querySelector(':scope > .row-compare');
-  let sentence = row.querySelector(':scope > .stop-sentence');
-  if (stopped) {
-    row.dataset.outcome = 'blocked';
-    const headline = headlineOf(app, app.run);
-    const words = app.w.chosen(headline.key, headline.source);
-    if (!head && words) {
-      head = put('p', 'outcome-head', words, { 'data-outcome-part': 'headline' });
-      tile.append(head);
-    }
-    // The comparison stands in the row where the pane has the height for
-    // it: Story in the wide tier. The inspector shows it at every size.
-    const wantTable = app.tier === 'wide' && app.mode === 'story' && Array.isArray(step.detail?.calls);
-    if (wantTable && !table) {
-      const built = compare(app, i);
-      if (built) tile.append(el('div', { class: 'row-compare' }, built));
-    } else if (!wantTable && table) {
-      table.remove();
-    }
-    const reason = value(app.run, 'reason');
-    if (reason && (!sentence || sentence.textContent !== reason.text)) {
-      const fresh = put('p', 'stop-sentence', reason, { 'data-outcome-part': 'text' });
-      if (sentence) sentence.replaceWith(fresh); else row.append(fresh);
-    } else if (!reason && sentence) {
-      sentence.remove();
-    }
-  } else {
-    delete row.dataset.outcome;
-    head?.remove();
-    table?.remove();
-    sentence?.remove();
-  }
+  const mark = row.querySelector(':scope > .rec-mark');
+  if (mark) paintMark(app, mark, veiled ? null : recordStateOf(app, step));
+
+  if (status === 'blocked') row.dataset.outcome = 'blocked'; else delete row.dataset.outcome;
 }
 
-// Bring the rows to the run (or, before a run, to the contract's step order).
+// Bring the rows to the run.
 export function syncRows(app, host, flow) {
-  const steps = app.run ? app.run.steps : previewSteps(app);
-  const signature = `${app.run ? app.runId : 'preview'}|${steps.map((s) => s.id).join(',')}|${app.labelsStamp}`;
+  const steps = app.run ? app.run.steps : [];
+  const { cols } = columnsOf(app);
+  const variants = steps.map((s) => s.variant ?? '').join(',');
+  const signature = `${app.run ? app.runId : 'none'}|${steps.map((s) => s.id).join(',')}|${app.labelsStamp}|${variants}`;
   const held = host.contains(document.activeElement);
   const rebuilt = host.dataset.signature !== signature;
   if (rebuilt) {
     clear(host);
-    steps.forEach((step, i) => host.append(buildRow(app, i, step)));
+    steps.forEach((step, i) => host.append(buildRow(app, i, step, cols)));
     host.dataset.signature = signature;
   }
-  flow.dataset.many = app.many ? 'yes' : 'no';
-  // A replay puts its line at the pane's foot. A stopped run has no banner
-  // there, so the stylesheet takes the room for the line from the rows.
-  flow.dataset.replay = !app.run || !(app.replay || app.replayDone) ? 'no' : app.run.outcome === 'blocked' ? 'stopped' : 'yes';
+  flow.hidden = !app.run;
+  flow.dataset.many = steps.length > 6 ? 'yes' : 'no';
   const rows = [...host.children];
   steps.forEach((step, i) => updateRow(app, rows[i], i, step));
 
   // One tab stop for the list: the selected row, or the leading row.
-  const current = app.run && app.selection.kind === 'step' ? app.selection.index : 0;
+  const current = app.selection.kind === 'step' ? app.selection.index : 0;
   rows.forEach((row, i) => row.setAttribute('tabindex', i === current ? '0' : '-1'));
-  // The focus stays in the list when its rows are built again.
   if (held && rebuilt) rows[current]?.focus({ preventScroll: true });
+  const name = app.run ? app.w.line('seq.name', { runId: [app.run.runId, from.run('runId')] }) : null;
+  if (name) host.setAttribute('aria-label', name.text); else host.removeAttribute('aria-label');
 }
 
-// ---- The outcome at the end of the flow (a run that was not stopped)
+// ---- The outcome under the middle pane
+//
+// One line once the run has ended: the outcome's word, one sentence in the
+// words of the lens, and the one action that comes next. During a replay it
+// says which run is replayed and where the replay stands.
 
-export function renderOutcomeEnd(app, host) {
+export function renderOutcome(app, host, nextAction) {
   const run = app.run;
-  // A replay: the banner says which run is replayed and the step the replay
-  // stands at, and, after the last step, that the replay is over.
   if (run && (app.replay || app.replayDone)) {
     const signature = `replay|${app.runId}|${app.replay ? app.replay.n : 'done'}`;
     host.hidden = false;
@@ -440,37 +337,29 @@ export function renderOutcomeEnd(app, host) {
     const words = app.replay
       ? app.w.lineNodes('menu.replaying', { runId: [run.runId, from.run('runId')], n: [String(app.replay.n), from.view('replay')] }, ['runId'])
       : app.w.word('menu.replayDone');
-    add(clear(host), el('p', { class: 'outcome-line' }, put('span', 'outcome-headline', words, { 'data-outcome-part': 'replay' })));
+    add(clear(host), el('div', { class: 'outcome-line' }, put('p', 'outcome-text', words, { 'data-outcome-part': 'replay' })));
     return;
   }
-  if (run?.outcome === 'blocked') {
-    host.hidden = true;
-    clear(host);
-    host.dataset.outcome = 'blocked';
-    delete host.dataset.signature;
-    return;
-  }
-  host.hidden = false;
-  const signature = run ? `${app.runId}|${run.outcome ?? ''}|${app.size}` : 'none';
+  const next = run?.outcome ? nextAction() : null;
+  const signature = run?.outcome ? `${app.runId}|${run.outcome}|${app.lens}|${next?.id ?? ''}|${app.labelsStamp}` : 'none';
   if (host.dataset.signature === signature) return;
   host.dataset.signature = signature;
   clear(host);
-  if (!run) {
+  if (!run?.outcome) {
+    host.hidden = true;
     delete host.dataset.outcome;
     delete host.dataset.tone;
     return;
   }
+  host.hidden = false;
   const headline = headlineOf(app, run);
-  const words = app.w.chosen(headline.key, headline.source);
   const states = app.labels.states ?? {};
-  const icon = iconEl(run.outcome ? states.passed?.icon : states.running?.icon);
-  host.dataset.outcome = run.outcome ?? 'pending';
+  const icon = run.outcome === 'blocked' ? states.blocked?.icon : states.passed?.icon;
+  host.dataset.outcome = run.outcome;
   host.dataset.tone = headline.tone;
-  let text = null;
-  if (run.outcome === 'paid') {
-    const i = run.steps.findIndex((s) => baseId(s.id) === 'pay' && s.detail?.paymentId);
-    const paid = i >= 0 ? app.w.lineNodes('outcome.paidText', { paymentId: [run.steps[i].detail.paymentId, from.run(`steps[${i}].detail.paymentId`)] }, ['paymentId']) : null;
-    text = put('span', 'outcome-text', paid, { 'data-outcome-part': 'text' });
-  }
-  add(host, el('p', { class: 'outcome-line' }, icon, put('span', 'outcome-headline', words, { 'data-outcome-part': 'headline' }), text));
+  add(host, el('div', { class: 'outcome-line' },
+    el('div', { class: 'outcome-words' },
+      el('span', { class: 'outcome-chip', data: { tone: headline.tone } }, iconEl(icon), put('span', 'outcome-headline', app.w.chosen(headline.key, headline.source), { 'data-outcome-part': 'headline' })),
+      put('p', 'outcome-text', lensOutcomeLine(app), { 'data-outcome-part': 'text' })),
+    next ? el('div', { class: 'outcome-actions' }, next.button) : null));
 }

@@ -1,28 +1,24 @@
-// The right pane. It shows the selected step, field by field, from what the
-// contract carries; a field the run does not carry is left out. In Story the
-// fields are the summary set at the large sizes. In Inspect the summary is
-// followed by the artifacts as written: the step as the run state holds it,
-// and the step's files from the run API.
+// The right pane. For a step: a one-line head (the step's number, its part
+// and its state), the step in the words of the lens, then three sections in
+// the order the lens gives: what was checked (one sentence from the run),
+// the artifact (the fields the run carries, set out as a ruled list, and in
+// Inspect the files as written) and the record (this step's Action Evidence
+// Package and, once audited, its verdict). In Story the lens's first section
+// is open; in Inspect every section is. A field the run does not carry is
+// left out.
 
-import { el, put, add, from, value, fieldName, at, timeEl, clear } from './dom.mjs';
-import { stateOf, chip, badge, copyButton, countdown, compare, headlineOf } from './parts.mjs';
-import { invoiceCard, cardInFlow, partOf, shownPart } from './flow.mjs';
+import { el, put, add, from, value, fieldName, at, timeEl, clear, camel } from './dom.mjs';
+import { stateOf, chip, badge, copyButton, countdown, compare, headlineOf, partOf, shownPart, partMark, creditOf, detailOf, lensOf, lensStepLine, baseId, columnsOf } from './parts.mjs';
+import { offlineOf } from './flow.mjs';
 import { fileUrl } from './api.mjs';
 import { iconEl } from './icons.mjs';
 import { OFFLINE_KIND } from './constants.mjs';
 
-const baseId = (id) => String(id).replace(/-again$/, '');
 const dirOf = (rel) => (String(rel).includes('/') ? String(rel).slice(0, String(rel).lastIndexOf('/') + 1) : '');
 
 // ---- Small builders
 
-function section(app, key, ...kids) {
-  const body = kids.flat(3).filter(Boolean);
-  if (!body.length) return null;
-  return el('section', { class: 'insp-section' }, put('h3', 'insp-section-title', key ? app.w.word(key) : null), body);
-}
-
-// One row of a key and value table. The key is a copy word when the deck has
+// One row of a key and value list. The key is a copy word when the deck has
 // one for the field, and the run's own field name otherwise.
 function row(key, ...values) {
   const body = values.flat(3).filter(Boolean);
@@ -35,13 +31,12 @@ function table(...rows) {
   return body.length ? el('dl', { class: 'kv' }, body) : null;
 }
 
-// A plain value of a document, under its own field name.
 function plain(root, path, source, cls) {
   return row(fieldName(root, path, source), put('span', cls ?? null, value(root, path, undefined, source)));
 }
 
 function moment(root, path, source) {
-  return row(fieldName(root, path, source), timeEl(null, value(root, path, undefined, source)));
+  return row(fieldName(root, path, source), timeEl('num', value(root, path, undefined, source)));
 }
 
 // A hash or an id: in Story the leading 16 characters with the full value in
@@ -60,16 +55,18 @@ function hashRow(app, root, path, source) {
   return row(fieldName(root, path, source), token(app, root, path, source));
 }
 
-// A word for true and another for false, from the copy deck.
 function verdictWord(app, flag, source, yesKey, noKey) {
   if (flag === null || flag === undefined) return null;
   return put('span', null, app.w.chosen(flag ? yesKey : noKey, source));
 }
 
-// ---- Artifacts (Inspect)
+// A verdict: its icon and its word, in its tone.
+function verdictEl(tone, icon, words, extra) {
+  return words ? el('span', { class: 'verdict', data: { tone, ...extra } }, iconEl(icon), put('span', null, words)) : null;
+}
 
-// A file of the run, as written: its path as a link to the same route, the
-// note on test identifiers, and the bytes (JSON set out, text as it is).
+// ---- Files of the run, as written (Inspect)
+
 function artifact(app, rel, pathWords) {
   if (app.mode !== 'inspect' || !rel) return null;
   const entry = app.fileOf(rel);
@@ -82,8 +79,7 @@ function artifact(app, rel, pathWords) {
 }
 
 // The step as the run state holds it, under the same note on test
-// identifiers as a file of the run: the issuer of the credential and the two
-// domains of the crossing are shown here as the run wrote them.
+// identifiers as a file of the run.
 function stateExcerpt(app, i) {
   if (app.mode !== 'inspect') return null;
   const detail = app.run.steps[i].detail;
@@ -99,63 +95,105 @@ function actionArtifact(app, i) {
   return rel ? artifact(app, rel, value(app.run, `steps[${i}].actionFile`)) : null;
 }
 
-function artifacts(...panes) {
+function files(...panes) {
   const body = panes.flat(3).filter(Boolean);
-  return body.length ? el('div', { class: 'insp-section', data: { artifacts: 'yes' } }, body) : null;
+  return body.length ? el('div', { class: 'artifacts', data: { artifacts: 'yes' } }, body) : null;
 }
 
-// ---- Heading and part
+// ---- Sections
 
-function heading(app, i, step) {
-  const state = stateOf(app, step.status, from.run(`steps[${i}].status`));
-  return el('div', { class: 'insp-head', data: { tone: state.tone, status: step.status } },
-    el('h2', { class: 'insp-title', id: 'inspector-heading' },
-      el('span', { class: 'row-num', src: from.run(`steps[${i}]`, 'ordinal'), text: String(i + 1) }),
-      put('span', null, value(app.run, `steps[${i}].title`))),
-    chip(state));
+// A section of the inspector: a disclosure with its heading. In Inspect it
+// is open; in Story the lens's first section is open, and a section the
+// reader opened or closed stays so while the selection stays.
+function section(app, id, titleKey, ...kids) {
+  const body = kids.flat(3).filter(Boolean);
+  if (!body.length) return null;
+  const chosen = app.inspectorOpen.get(id);
+  // The limits stay closed until asked for, in either mode.
+  const evidence = id === 'artifact' && app.selection.kind === 'step' && app.run?.steps[app.selection.index]?.status === 'blocked';
+  const open = chosen ?? (id !== 'limits' && (app.sectionFirst === id || evidence || (app.mode === 'inspect' && app.run !== null)));
+  const node = el('details', { class: 'insp-section', data: { section: id }, open: open ? true : null },
+    el('summary', { class: 'insp-section-head', data: { focusKey: `section:${id}` } }, put('span', 'insp-section-title', app.w.word(titleKey))),
+    el('div', { class: 'insp-section-body' }, body));
+  node.addEventListener('toggle', () => app.inspectorOpen.set(id, node.open));
+  return node;
 }
 
-// The part a step belongs to, by the run's own label; for a stand-in part,
-// the badge, its note and its detail line; the part's legend where the lane
-// header has no room for it.
-function partBlock(app, i, step) {
-  const { col } = partOf(app, step.id);
-  // The part as this run used it: the variant a step names, else the part.
-  const { part, path } = shownPart(app, col);
-  const standIn = Boolean(part?.standIn);
-  const note = standIn ? (app.w.label(`${path}.standInNote`) ?? value(app.run, `steps[${i}].detail.standIn`)) : null;
-  return el('div', { class: 'insp-part' },
-    el('div', { class: 'insp-part-line' }, put('span', 'insp-part-label', value(app.run, `steps[${i}].partLabel`)), standIn ? badge(app) : null),
-    part && app.tier !== 'wide' ? put('p', 'insp-note', app.w.label(`parts.${col}.text`)) : null,
-    standIn ? put('p', 'insp-note', note, { 'data-note': 'stand-in' }) : null,
-    standIn ? put('p', 'insp-note', app.w.label(`${path}.fetchNote`), { 'data-note': 'fetch' }) : null,
-    standIn ? put('p', 'insp-note', app.w.label(`parts.${col}.detail`)) : null);
+// The sections in the order the lens gives.
+function ordered(app, byId) {
+  const order = lensOf(app).sections ?? ['checked', 'artifact', 'record'];
+  const ids = [...order, ...Object.keys(byId).filter((id) => !order.includes(id))];
+  return ids.map((id) => byId[id] ?? null);
 }
 
-// ---- The panels, one per step of the contract
+// ---- What was checked: one sentence from the run
 
-function credentialPanel(app, i, step) {
+function checkedSentence(app, i, step) {
+  const run = app.run;
+  const base = `steps[${i}].detail`;
+  const d = step.detail ?? {};
+  const id = baseId(step.id);
+  if (step.status === 'not-reached') return app.w.word('detail.notRun');
+  if (step.status === 'pending' || step.status === 'running') return null;
+  if (id === 'credential') {
+    const version = d.verifier ? [String(d.verifier).slice(String(d.verifier).lastIndexOf(' ') + 1), from.run(`${base}.verifier`, 'afterLastSpace')] : null;
+    if (!version || d.valid === null || d.valid === undefined) return null;
+    return app.w.line(d.valid === true ? 'check.credentialValid' : 'check.credentialInvalid', { version });
+  }
+  if (id === 'grant') {
+    const g = run.grant ?? {};
+    const max = g.maximumIndividualAmount ?? {};
+    return app.w.lineNodes('check.grant', {
+      scope: [g.scope, from.run('grant.scope')],
+      amount: [max.amount, from.run('grant.maximumIndividualAmount.amount')],
+      currency: [max.currency, from.run('grant.maximumIndividualAmount.currency')],
+      ttl: [g.ttlSeconds, from.run('grant.ttlSeconds')],
+    }, ['scope']);
+  }
+  if (id === 'crossing') {
+    if (d.capture?.used === true) return value(run, `${base}.capture.summary`);
+    return app.w.line('check.crossing', {
+      domainA: [app.labels.parties?.domainA, from.labels('parties.domainA')],
+      domainB: [app.labels.parties?.domainB, from.labels('parties.domainB')],
+      hops: [d.hops, from.run(`${base}.hops`)],
+      outcome: [d.outcome, from.run(`${base}.outcome`)],
+    });
+  }
+  if (id === 'intent') return value(run, `${base}.rule`) ?? app.w.word('intent.rule');
+  if (id === 'pay') {
+    return app.w.lineNodes('check.pay', {
+      status: [d.httpStatus, from.run(`${base}.httpStatus`)],
+      paymentId: [d.paymentId, from.run(`${base}.paymentId`)],
+      amount: [d.amount, from.run(`${base}.amount`)],
+      currency: [d.currency, from.run(`${base}.currency`)],
+      account: [d.payeeAccount, from.run(`${base}.payeeAccount`)],
+    }, ['paymentId', 'account']);
+  }
+  if (id === 'record') return app.w.line('check.record', { written: [d.written, from.run(`${base}.written`)] });
+  return null;
+}
+
+// ---- The artifact, one builder per step of the contract
+
+function credentialArtifact(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
   const algorithm = d.algorithm ? app.w.line('inspector.signature', { algorithm: [d.algorithm, from.run(`${base}.algorithm`)] }) : app.w.beforeParen('inspector.signature');
-  const version = d.verifier ? [String(d.verifier).slice(String(d.verifier).lastIndexOf(' ') + 1), from.run(`${base}.verifier`, 'afterLastSpace')] : null;
   return [
-    section(app, 'inspector.credential',
-      put('p', 'insp-text insp-big', app.w.label('parties.agent')),
-      table(
-        plain(run, 'agent.credentialFile', from.run, 'mono'),
-        hashRow(app, run, 'agent.credentialSha256'),
-        plain(run, `${base}.verifier`),
-        d.valid === null || d.valid === undefined ? null : row(algorithm, verdictWord(app, d.valid === true, from.run(`${base}.valid`), 'inspector.signatureValid', 'state.stopped')),
-        moment(run, `${base}.notBefore`),
-        moment(run, `${base}.notAfter`)),
-      version ? put('p', 'insp-sub', app.w.line('limit.pq', { version })) : null),
-    artifacts(stateExcerpt(app, i), actionArtifact(app, i)),
+    table(
+      plain(run, 'agent.credentialFile', from.run, 'mono'),
+      hashRow(app, run, 'agent.credentialSha256'),
+      plain(run, `${base}.verifier`, from.run, 'mono'),
+      d.valid === null || d.valid === undefined ? null : row(algorithm, verdictWord(app, d.valid === true, from.run(`${base}.valid`), 'inspector.signatureValid', 'state.stopped')),
+      moment(run, `${base}.notBefore`),
+      moment(run, `${base}.notAfter`),
+      plain(run, `${base}.postQuantumSignature`)),
+    files(stateExcerpt(app, i), actionArtifact(app, i)),
   ];
 }
 
-function grantPanel(app, i, step) {
+function grantArtifact(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
@@ -163,93 +201,91 @@ function grantPanel(app, i, step) {
   const max = g?.maximumIndividualAmount;
   const accounts = Array.isArray(g?.creditorAccounts) ? g.creditorAccounts : [];
   const checked = Array.isArray(d.scopeChecked) ? d.scopeChecked : [];
-  const grantFile = d.grantFile ? artifact(app, d.grantFile, value(run, `${base}.grantFile`)) : null;
+  const inspect = app.mode === 'inspect';
   return [
-    section(app, 'inspector.grant',
-      table(
-        plain(run, 'grant.scope', from.run, 'mono'),
-        plain(run, 'grant.tokenType'),
-        plain(run, 'grant.ttlSeconds', from.run, 'num'),
-        g && step.status === 'passed' ? row(app.w.word('inspector.lifetime'), countdown(app)) : null,
-        moment(run, 'grant.issuedAt'),
-        moment(run, 'grant.expiresAt'),
-        max ? row(fieldName(run, 'grant.maximumIndividualAmount'), put('span', 'num', app.w.line('invoice.amountValue', { amount: [max.amount, from.run('grant.maximumIndividualAmount.amount')], currency: [max.currency, from.run('grant.maximumIndividualAmount.currency')] }))) : null,
-        accounts.length ? row(fieldName(run, 'grant.creditorAccounts'), el('span', { class: 'kv-list' }, accounts.map((_, n) => put('span', 'mono', value(run, `grant.creditorAccounts[${n}]`))))) : null,
-        d.inScope === null || d.inScope === undefined ? null : row(fieldName(run, `${base}.inScope`), verdictWord(app, d.inScope === true, from.run(`${base}.inScope`), 'state.passed', 'state.stopped')),
-        checked.length ? row(fieldName(run, `${base}.scopeChecked`), el('span', { class: 'kv-list' }, checked.map((_, n) => put('span', 'mono', value(run, `${base}.scopeChecked[${n}]`))))) : null,
-        plain(run, `${base}.expiresInSeconds`, from.run, 'num'))),
-    artifacts(stateExcerpt(app, i), grantFile, actionArtifact(app, i)),
+    table(
+      plain(run, 'grant.scope', from.run, 'mono'),
+      max ? row(fieldName(run, 'grant.maximumIndividualAmount'), put('span', 'num', app.w.line('invoice.amountValue', { amount: [max.amount, from.run('grant.maximumIndividualAmount.amount')], currency: [max.currency, from.run('grant.maximumIndividualAmount.currency')] }))) : null,
+      accounts.length ? row(fieldName(run, 'grant.creditorAccounts'), el('span', { class: 'kv-list' }, accounts.map((_, n) => put('span', 'mono', value(run, `grant.creditorAccounts[${n}]`))))) : null,
+      plain(run, 'grant.ttlSeconds', from.run, 'num'),
+      g && step.status === 'passed' ? row(app.w.word('inspector.lifetime'), countdown(app)) : null,
+      inspect ? moment(run, 'grant.issuedAt') : null,
+      inspect ? moment(run, 'grant.expiresAt') : null,
+      inspect ? plain(run, 'grant.tokenType') : null,
+      inspect && checked.length ? row(fieldName(run, `${base}.scopeChecked`), el('span', { class: 'kv-list' }, checked.map((_, n) => put('span', 'mono', value(run, `${base}.scopeChecked[${n}]`))))) : null),
+    files(stateExcerpt(app, i), d.grantFile ? artifact(app, d.grantFile, value(run, `${base}.grantFile`)) : null, actionArtifact(app, i)),
   ];
 }
 
-// The crossing over the AI2II capture: one line per check (its answer, its
-// name and what it shows), the check's own summary and scope, then the
-// source, the files and the token by SHA-256. Every word is the run's.
-function capturePanel(app, i, step) {
+const ANSWERS = { pass: 'capture.pass', fail: 'capture.fail', 'not-run': 'capture.notRun' };
+
+// The crossing over the AI2II capture: one line per check, with its answer
+// and what it shows, then the check's scope, its source and the files by
+// SHA-256. Every word but the answer's is the run's.
+function captureArtifact(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail.capture`;
   const c = step.detail.capture;
   const states = app.labels.states ?? {};
   const checks = Array.isArray(c.checks) ? c.checks : [];
-  const at = (path) => `${base}.${path}`;
+  const p = (path) => `${base}.${path}`;
   return [
-    section(app, null,
-      put('p', 'insp-text', value(run, at('summary'))),
-      el('ul', { class: 'kv-list checks', data: { capture: 'checks' } }, checks.map((check, n) => {
-        const pass = check.answer === 'pass';
-        return el('li', { class: 'record-line', data: { captureCheck: String(n), answer: String(check.answer) } },
-          el('span', { class: 'verdict', data: { tone: pass ? 'ok' : 'stop' } }, iconEl(pass ? states.passed?.icon : states.blocked?.icon), put('span', null, value(run, at(`checks[${n}].answer`)))),
-          put('span', 'mono', value(run, at(`checks[${n}].name`))),
-          put('span', 'insp-note', value(run, at(`checks[${n}].claim`))),
-          check.reason ? put('span', 'insp-note', value(run, at(`checks[${n}].reason`))) : null);
-      })),
-      (Array.isArray(c.scope) ? c.scope : []).map((_, n) => put('p', 'insp-sub', value(run, at(`scope[${n}]`)), { 'data-note': 'scope' })),
-      table(
-        plain(run, at('source.repo'), from.run, 'mono'),
-        row(fieldName(run, at('source.commit')), token(app, run, at('source.commit'))),
-        (Array.isArray(c.files) ? c.files : []).map((_, n) => row(value(run, at(`files[${n}].name`)), token(app, run, at(`files[${n}].sha256`)))),
-        c.token ? row(fieldName(run, at('token.sha256')), token(app, run, at('token.sha256'))) : null)),
-    artifacts(stateExcerpt(app, i), actionArtifact(app, i)),
+    el('ul', { class: 'checks', data: { capture: 'checks' } }, checks.map((check, n) => {
+      const pass = check.answer === 'pass';
+      const words = app.w.chosen(ANSWERS[check.answer] ?? 'capture.fail', from.run(p(`checks[${n}].answer`))) ?? value(run, p(`checks[${n}].answer`));
+      return el('li', { class: 'check', data: { captureCheck: String(n), answer: String(check.answer) } },
+        verdictEl(pass ? 'ok' : check.answer === 'not-run' ? 'muted' : 'stop', pass ? states.passed?.icon : check.answer === 'not-run' ? states['not-reached']?.icon : states.blocked?.icon, words),
+        put('span', 'mono check-name', value(run, p(`checks[${n}].name`))),
+        put('span', 'check-claim', value(run, p(`checks[${n}].claim`))),
+        check.reason ? put('span', 'check-claim', value(run, p(`checks[${n}].reason`))) : null);
+    })),
+    (Array.isArray(c.scope) ? c.scope : []).map((_, n) => put('p', 'insp-note', value(run, p(`scope[${n}]`)), { 'data-note': 'scope' })),
+    table(
+      plain(run, p('source.repo'), from.run, 'mono'),
+      row(fieldName(run, p('source.commit')), token(app, run, p('source.commit'))),
+      (Array.isArray(c.files) ? c.files : []).map((_, n) => row(value(run, p(`files[${n}].name`)), token(app, run, p(`files[${n}].sha256`)))),
+      c.token ? row(fieldName(run, p('token.sha256')), token(app, run, p('token.sha256'))) : null),
+    files(stateExcerpt(app, i), actionArtifact(app, i)),
   ];
 }
 
-function crossingPanel(app, i, step) {
+function crossingArtifact(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
-  if (d.capture?.used === true) return capturePanel(app, i, step);
+  if (d.capture?.used === true) return captureArtifact(app, i, step);
   const hop = d.hopFile ? app.fileOf(d.hopFile) : null;
   const hopDoc = hop?.state === 'ready' && hop.file.kind === 'json' ? hop.file.value : null;
   const hopSource = (path, shape) => from.file(d.hopFile, path, shape);
+  const { col } = partOf(app, step.id);
+  const shown = shownPart(app, col);
   return [
-    section(app, null,
-      table(
-        d.from ? row(fieldName(run, `${base}.from`), put('span', null, app.w.label('parties.domainA'))) : null,
-        d.to ? row(fieldName(run, `${base}.to`), put('span', null, app.w.label('parties.domainB'))) : null,
-        plain(run, `${base}.hops`, from.run, 'num'),
-        plain(run, `${base}.outcome`),
-        plain(run, `${base}.stepsRun`),
-        plain(run, `${base}.chainFile`, from.run, 'mono'),
-        hopDoc ? hashRow(app, hopDoc, 'chainSha256', hopSource) : null,
-        // An AI2II capture that was there and not used: why.
-        d.capture?.reason ? plain(run, `${base}.capture.reason`) : null)),
-    artifacts(stateExcerpt(app, i), d.hopFile ? artifact(app, d.hopFile, value(run, `${base}.hopFile`)) : null, actionArtifact(app, i)),
+    table(
+      d.from ? row(fieldName(run, `${base}.from`), put('span', null, app.w.label('parties.domainA'))) : null,
+      d.to ? row(fieldName(run, `${base}.to`), put('span', null, app.w.label('parties.domainB'))) : null,
+      plain(run, `${base}.hops`, from.run, 'num'),
+      plain(run, `${base}.outcome`),
+      plain(run, `${base}.stepsRun`),
+      plain(run, `${base}.chainFile`, from.run, 'mono'),
+      hopDoc ? hashRow(app, hopDoc, 'chainSha256', hopSource) : null,
+      // An AI2II capture that was there and not used: why.
+      d.capture?.reason ? plain(run, `${base}.capture.reason`) : null),
+    shown.part?.standIn ? put('p', 'insp-note', app.w.label(`${shown.path}.standInNote`), { 'data-note': 'stand-in' }) : null,
+    shown.part?.standIn ? put('p', 'insp-note', app.w.label(`${shown.path}.fetchNote`), { 'data-note': 'fetch' }) : null,
+    put('p', 'insp-note', detailOf(app, col), { 'data-note': 'detail' }),
+    files(stateExcerpt(app, i), d.hopFile ? artifact(app, d.hopFile, value(run, `${base}.hopFile`)) : null, actionArtifact(app, i)),
   ];
 }
 
-function intentPanel(app, i, step) {
-  const run = app.run;
-  const base = `steps[${i}].detail`;
+function intentArtifact(app, i) {
   return [
-    section(app, 'intent.heading',
-      put('p', 'insp-text', app.w.word('intent.rule')),
-      compare(app, i),
-      table(plain(run, `${base}.result`))),
-    artifacts(stateExcerpt(app, i), actionArtifact(app, i)),
+    compare(app, i),
+    table(plain(app.run, `steps[${i}].detail.result`, from.run, 'mono')),
+    files(stateExcerpt(app, i), actionArtifact(app, i)),
   ];
 }
 
-function payPanel(app, i, step) {
+function payArtifact(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
@@ -260,106 +296,22 @@ function payPanel(app, i, step) {
   const bodyRel = doc?.response?.bodyFile ? `${dirOf(rel)}${doc.response.bodyFile}` : null;
   const bodyWords = bodyRel ? { text: bodyRel, src: from.file(rel, 'response.bodyFile', 'beside') } : null;
   return [
-    section(app, null,
-      table(
-        plain(run, `${base}.endpoint`, from.run, 'mono'),
-        plain(run, `${base}.httpStatus`, from.run, 'num'),
-        d.paymentId ? row(fieldName(run, `${base}.paymentId`), token(app, run, `${base}.paymentId`)) : null,
-        d.amount ? row(fieldName(run, `${base}.amount`), put('span', 'num', app.w.line('invoice.amountValue', { amount: [d.amount, from.run(`${base}.amount`)], currency: [d.currency, from.run(`${base}.currency`)] }))) : null,
-        plain(run, `${base}.payeeAccount`, from.run, 'mono'),
-        d.recordedByBank === null || d.recordedByBank === undefined ? null : row(fieldName(run, `${base}.recordedByBank`), put('span', null, { text: String(d.recordedByBank), src: from.run(`${base}.recordedByBank`) })),
-        doc?.decision ? row(fieldName(doc, 'decision', actionSource), put('span', null, app.w.chosen(`decision.${doc.decision}`, actionSource('decision')) ?? value(doc, 'decision', undefined, actionSource))) : null,
-        doc?.response?.bodySha256 ? row(fieldName(doc, 'response.bodySha256', actionSource),
-          token(app, doc, 'response.bodySha256', actionSource),
-          bodyRel ? el('a', { class: 'record-file mono', href: fileUrl(app.runId, bodyRel), src: bodyWords.src, text: bodyWords.text, data: { focusKey: `link:${bodyRel}` } }) : null) : null)),
-    artifacts(stateExcerpt(app, i), actionArtifact(app, i), bodyRel ? artifact(app, bodyRel, bodyWords) : null),
+    table(
+      plain(run, `${base}.endpoint`, from.run, 'mono'),
+      plain(run, `${base}.httpStatus`, from.run, 'num'),
+      d.paymentId ? row(fieldName(run, `${base}.paymentId`), token(app, run, `${base}.paymentId`)) : null,
+      d.amount ? row(fieldName(run, `${base}.amount`), put('span', 'num', app.w.line('invoice.amountValue', { amount: [d.amount, from.run(`${base}.amount`)], currency: [d.currency, from.run(`${base}.currency`)] }))) : null,
+      plain(run, `${base}.payeeAccount`, from.run, 'mono'),
+      d.recordedByBank === null || d.recordedByBank === undefined ? null : row(fieldName(run, `${base}.recordedByBank`), put('span', null, { text: String(d.recordedByBank), src: from.run(`${base}.recordedByBank`) })),
+      doc?.decision ? row(fieldName(doc, 'decision', actionSource), put('span', null, app.w.chosen(`decision.${doc.decision}`, actionSource('decision')) ?? value(doc, 'decision', undefined, actionSource))) : null,
+      doc?.response?.bodySha256 ? row(fieldName(doc, 'response.bodySha256', actionSource),
+        token(app, doc, 'response.bodySha256', actionSource),
+        bodyRel && app.mode === 'inspect' ? el('a', { class: 'record-file mono', href: fileUrl(app.runId, bodyRel), src: bodyWords.src, text: bodyWords.text, data: { focusKey: `link:${bodyRel}` } }) : null) : null),
+    files(stateExcerpt(app, i), actionArtifact(app, i), bodyRel ? artifact(app, bodyRel, bodyWords) : null),
   ];
 }
 
-// The verdict of the offline check on one package, in the deck's words.
-function verdict(app, rec, source, tampered) {
-  if (!rec) return null;
-  const pass = rec.verdict === 'pass-1-6';
-  const words = pass ? app.w.chosen('offline.pass', source('verdict')) : app.w.line('offline.reject', { n: [rec.firstFailingStep, source('firstFailingStep')] });
-  const states = app.labels.states ?? {};
-  const tone = pass ? (tampered ? 'warn' : 'ok') : (tampered ? 'neutral' : 'stop');
-  const notes = Array.isArray(rec.notes) ? rec.notes : [];
-  return [
-    // A file the verifier gave no answer on has no step to name. It gets no
-    // verdict word, and its notes say what happened.
-    words ? el('span', { class: 'verdict', data: { tone, verdict: String(rec.verdict) } }, iconEl(pass ? states.passed?.icon : states.blocked?.icon), put('span', null, words)) : null,
-    notes.map((_, n) => el('div', { class: 'record-line' }, put('span', 'record-flag', app.w.word('offline.note')), put('span', 'insp-note', { text: String(rec.notes[n]), src: source(`notes[${n}]`) }))),
-    checksOf(rec, source),
-  ];
-}
-
-// The verifier's own steps on one package, once a revision of the contract
-// adds checks to a record row of the offline check: a list with each name and
-// its value, as the check wrote them. A step set out as an object gives one
-// row per field; a row with no checks (contract v1) gives no list.
-function checksOf(rec, source) {
-  const checks = rec.checks;
-  if (!checks || typeof checks !== 'object') return null;
-  const scalar = (v) => ['string', 'number', 'boolean'].includes(typeof v) && v !== '';
-  const named = (key) => /^[A-Za-z0-9_-]+$/.test(key);
-  const pathIn = (node, base, key) => (Array.isArray(node) ? `${base}[${key}]` : `${base}.${key}`);
-  const items = [];
-  for (const key of Object.keys(checks).filter(named)) {
-    const path = pathIn(checks, 'checks', key);
-    const item = checks[key];
-    const fields = scalar(item) ? [path]
-      : item && typeof item === 'object' && !Array.isArray(item) ? Object.keys(item).filter((f) => named(f) && scalar(item[f])).map((f) => `${path}.${f}`)
-        : [];
-    const rows = table(fields.map((p) => plain(rec, p, source)));
-    if (rows) items.push(el('li', null, rows));
-  }
-  return items.length ? el('div', { class: 'record-line' }, el('ul', { class: 'kv-list checks' }, items)) : null;
-}
-
-function offlineFor(app) {
-  return app.offline && app.offline.runId === app.runId ? app.offline.result : null;
-}
-
-// One package of the manifest: its file as a link, its hash, the action it
-// records, its verdict once the offline check has run, and its entries once
-// they are open.
-function recordRow(app, manifest, kind, n, mSource) {
-  const item = manifest[kind][n];
-  const path = `${kind}[${n}]`;
-  const tampered = kind === 'tampered';
-  const offline = offlineFor(app);
-  const checkIndex = offline && Array.isArray(offline[kind]) ? offline[kind].findIndex((r) => r.file === item.file) : -1;
-  const check = checkIndex >= 0 ? offline[kind][checkIndex] : null;
-  const checkSource = (p, shape) => from.doc('offline-check', `${kind}[${checkIndex}].${p}`, shape);
-  const zip = app.zipOf(item.file);
-  const open = app.openRecord === item.file && zip?.state === 'ready';
-  const entriesWord = app.w.word('inspector.entries');
-  return el('div', { class: 'record', data: { file: item.file, kind } },
-    el('div', { class: 'record-line' },
-      el('a', { class: 'record-file mono', href: fileUrl(app.runId, item.file), src: mSource(`${path}.file`), text: String(item.file), data: { focusKey: `link:${item.file}` } }),
-      tampered ? [put('span', 'record-flag', app.w.word('offline.tampered')), put('span', 'record-flag', app.w.word('offline.expected'))] : null),
-    el('div', { class: 'record-line' },
-      put('span', 'mono', value(manifest, `${path}.sha256`, 'hex16', mSource), { title: String(item.sha256) }),
-      copyButton(app, item.sha256, mSource(`${path}.sha256`).replace(/^run:/, ''))),
-    item.action ? el('div', { class: 'record-line' }, put('span', 'mono meta', value(manifest, `${path}.action`, undefined, mSource))) : null,
-    item.changed ? el('div', { class: 'record-line' }, put('span', 'insp-note', value(manifest, `${path}.changed`, undefined, mSource))) : null,
-    check ? el('div', { class: 'record-line', data: { verdictFor: item.file } }, put('span', 'record-flag', app.w.word('inspector.stepsPassed')), verdict(app, check, checkSource, tampered)) : null,
-    zip?.state === 'ready' && entriesWord ? el('button', { class: 'copy-btn record-open', type: 'button', src: entriesWord.src, text: entriesWord.text, 'aria-expanded': open ? 'true' : 'false', 'aria-label': `${entriesWord.text} ${item.file}`, data: { focusKey: `entries:${item.file}` }, on: { click: () => app.toggleRecord(item.file) } }) : null,
-    open ? entriesBlock(app, item.file, zip) : null);
-}
-
-function entriesBlock(app, rel, zip) {
-  const meta = zip.metadata && typeof zip.metadata === 'object' ? zip.metadata : null;
-  const metaSource = (path, shape) => from.file(`${rel}!metadata.json`, path, shape);
-  return el('div', { class: 'insp-section', data: { entriesOf: rel } },
-    el('ul', { class: 'kv-list' }, zip.entries.map((entry, n) => el('li', { class: 'mono', src: from.file(`${rel}!`, `entries[${n}]`), text: entry.name }))),
-    meta ? [
-      put('span', 'meta', app.w.label('parties.rawIdentifiersNote')),
-      table(Object.keys(meta).map((key) => row(fieldName(meta, key, metaSource), put('span', 'mono', value(meta, key, undefined, metaSource))))),
-    ] : null);
-}
-
-function recordPanel(app, i, step) {
+function recordArtifact(app, i, step) {
   const run = app.run;
   const base = `steps[${i}].detail`;
   const d = step.detail ?? {};
@@ -370,60 +322,155 @@ function recordPanel(app, i, step) {
   const stamp = String(d.timestampEntry ?? '');
   const stampNote = stamp === '' ? null : (stamp.startsWith('stand-in') ? app.w.label('timestamp.standInNote') : app.w.label('timestamp.testAuthorityNote'));
   const commit = d.format ? [(/[0-9a-f]{40}/.exec(String(d.format)) ?? [''])[0].slice(0, 8), from.run(`${base}.format`, 'commit8')] : null;
-  const records = manifest && Array.isArray(manifest.records) ? manifest.records : [];
-  const tampered = manifest && Array.isArray(manifest.tampered) ? manifest.tampered : [];
   return [
-    section(app, 'inspector.package',
-      table(
-        plain(run, `${base}.written`, from.run, 'num'),
-        commit ? row(app.w.word('record.format'), put('span', null, app.w.lineNodes('record.formatValue', { formatCommit: commit }, ['formatCommit']))) : null,
-        d.signer ? row(app.w.word('record.signer'), put('span', null, app.w.chosen('record.signerValue', from.run(`${base}.signer`)))) : null,
-        stampNote ? row(app.w.word('record.timestamp'), badge(app), put('span', null, stampNote, { 'data-note': 'timestamp' })) : null),
-      d.credentialCitedBy ? put('p', 'insp-sub', app.w.chosen('record.credentialNote', from.run(`${base}.credentialCitedBy`))) : null),
-    manifest ? section(app, null,
-      table(
-        plain(manifest, 'signerPublicKey', mSource, 'mono'),
-        hashRow(app, manifest, 'signerSha256', mSource),
-        hashRow(app, manifest, 'credentialSha256', mSource)),
-      el('div', { class: 'records' },
-        records.map((_, n) => recordRow(app, manifest, 'records', n, mSource)),
-        tampered.map((_, n) => recordRow(app, manifest, 'tampered', n, mSource)))) : null,
-    artifacts(stateExcerpt(app, i), rel ? artifact(app, rel, value(run, `steps[${i}].recordFile`)) : null),
+    table(
+      plain(run, `${base}.written`, from.run, 'num'),
+      commit ? row(app.w.word('record.format'), put('span', null, app.w.lineNodes('record.formatValue', { formatCommit: commit }, ['formatCommit']))) : null,
+      d.signer ? row(app.w.word('record.signer'), put('span', null, app.w.chosen('record.signerValue', from.run(`${base}.signer`)))) : null,
+      stampNote ? row(app.w.word('record.timestamp'), put('span', null, stampNote, { 'data-note': 'timestamp' })) : null,
+      manifest ? plain(manifest, 'signerPublicKey', mSource, 'mono') : null,
+      manifest ? hashRow(app, manifest, 'signerSha256', mSource) : null,
+      manifest ? hashRow(app, manifest, 'credentialSha256', mSource) : null),
+    d.credentialCitedBy ? put('p', 'insp-note', app.w.chosen('record.credentialNote', from.run(`${base}.credentialCitedBy`))) : null,
+    put('p', 'insp-note', detailOf(app, 'record'), { 'data-note': 'detail' }),
+    files(stateExcerpt(app, i), rel ? artifact(app, rel, value(run, `steps[${i}].recordFile`)) : null),
   ];
 }
 
-function genericPanel(app, i, step) {
+function genericArtifact(app, i, step) {
   const base = `steps[${i}].detail`;
   const d = step.detail && typeof step.detail === 'object' ? step.detail : {};
   const simple = Object.keys(d).filter((k) => ['string', 'number', 'boolean'].includes(typeof d[k]));
   return [
-    section(app, null, table(simple.map((k) => row(fieldName(app.run, `${base}.${k}`), put('span', null, { text: String(d[k]), src: from.run(`${base}.${k}`) }))))),
-    artifacts(stateExcerpt(app, i), actionArtifact(app, i)),
+    table(simple.map((k) => row(fieldName(app.run, `${base}.${k}`), put('span', null, { text: String(d[k]), src: from.run(`${base}.${k}`) })))),
+    files(stateExcerpt(app, i), actionArtifact(app, i)),
   ];
 }
 
-const PANELS = { credential: credentialPanel, grant: grantPanel, crossing: crossingPanel, intent: intentPanel, pay: payPanel, record: recordPanel };
+const ARTIFACTS = { credential: credentialArtifact, grant: grantArtifact, crossing: crossingArtifact, intent: intentArtifact, pay: payArtifact, record: recordArtifact };
+
+// ---- The record of a step
+
+// The records manifest of the run, once the record step has written it.
+export function manifestOf(app) {
+  const run = app.run;
+  const writer = run ? run.steps.findIndex((s) => baseId(s.id) === 'record' && s.recordFile) : -1;
+  if (writer < 0) return null;
+  const rel = run.steps[writer].recordFile;
+  const entry = app.fileOf(rel);
+  const manifest = entry?.state === 'ready' && entry.file.kind === 'json' ? entry.file.value : null;
+  return manifest ? { manifest, rel, source: (path, shape) => from.file(rel, path, shape) } : null;
+}
+
+// The verdict of the offline check on one package, in the deck's words.
+export function auditVerdict(app, rec, source, tampered) {
+  if (!rec) return null;
+  const states = app.labels.states ?? {};
+  const pass = rec.verdict === 'pass-1-6';
+  const words = pass ? app.w.chosen('offline.pass', source('verdict')) : app.w.line('offline.reject', { n: [rec.firstFailingStep, source('firstFailingStep')] });
+  const tone = pass ? (tampered ? 'warn' : 'ok') : (tampered ? 'neutral' : 'stop');
+  return verdictEl(tone, pass ? states.passed?.icon : states.blocked?.icon, words, { verdict: String(rec.verdict) });
+}
+
+function recordOfStep(app, i, step) {
+  const run = app.run;
+  if (baseId(step.id) === 'record') {
+    const found = manifestOf(app);
+    if (!found) return null;
+    const { manifest, source } = found;
+    const offline = offlineOf(app);
+    const list = (kind) => (Array.isArray(manifest[kind]) ? manifest[kind] : []).map((item, n) => {
+      const check = Array.isArray(offline?.[kind]) ? offline[kind].findIndex((r) => r.file === item.file) : -1;
+      const cSource = (p, shape) => from.doc('offline-check', `${kind}[${check}].${p}`, shape);
+      return el('div', { class: 'record', data: { file: String(item.file), kind } },
+        el('a', { class: 'record-file mono', href: fileUrl(app.runId, item.file), src: source(`${kind}[${n}].file`), text: String(item.file), data: { focusKey: `link:${item.file}` } }),
+        kind === 'tampered' ? put('span', 'record-flag', app.w.word('offline.tampered')) : null,
+        check >= 0 ? auditVerdict(app, offline[kind][check], cSource, kind === 'tampered') : null);
+    });
+    return el('div', { class: 'records' }, list('records'), list('tampered'));
+  }
+  if (!step.actionFile && !step.recordFile) return put('p', 'insp-note', app.w.word('insp.noRecord'));
+  if (!step.recordFile) return put('p', 'insp-note', app.w.word('insp.notSigned'));
+  const found = manifestOf(app);
+  const n = found && Array.isArray(found.manifest.records) ? found.manifest.records.findIndex((r) => r.file === step.recordFile) : -1;
+  const writer = run.steps.findIndex((s) => baseId(s.id) === 'record');
+  const signer = writer >= 0 ? run.steps[writer].detail?.signer : null;
+  const offline = offlineOf(app);
+  const check = Array.isArray(offline?.records) ? offline.records.findIndex((r) => r.file === step.recordFile) : -1;
+  const cSource = (p, shape) => from.doc('offline-check', `records[${check}].${p}`, shape);
+  return table(
+    row(app.w.word('insp.file'), el('a', { class: 'record-file mono', href: fileUrl(app.runId, step.recordFile), src: from.run(`steps[${i}].recordFile`), text: String(step.recordFile), data: { focusKey: `link:${step.recordFile}` } })),
+    n >= 0 ? row(app.w.word('insp.sha'), token(app, found.manifest, `records[${n}].sha256`, found.source)) : null,
+    signer ? row(app.w.word('insp.signedBy'), put('span', null, app.w.chosen('record.signerValue', from.run(`steps[${writer}].detail.signer`)))) : null,
+    row(app.w.word('insp.audit'), check >= 0 ? auditVerdict(app, offline.records[check], cSource, false) : put('span', 'muted', app.w.word('insp.notAudited'))));
+}
+
+// ---- The panels
 
 function stepPanel(app, i) {
   const step = app.run.steps[i];
-  const panel = PANELS[baseId(step.id)] ?? genericPanel;
-  return el('div', { class: 'insp', data: { panel: step.id } }, heading(app, i, step), partBlock(app, i, step), panel(app, i, step));
+  const { col } = partOf(app, step.id);
+  const shown = shownPart(app, col);
+  const state = stateOf(app, step.status, from.run(`steps[${i}].status`));
+  const build = ARTIFACTS[baseId(step.id)] ?? genericArtifact;
+  const sentence = checkedSentence(app, i, step);
+  app.sectionFirst = lensOf(app).sections?.[0] ?? 'checked';
+  return el('div', { class: 'insp', data: { panel: step.id } },
+    el('div', { class: 'insp-head', data: { tone: state.tone, status: step.status } },
+      el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' },
+        put('span', 'row-num', app.w.line('sect.step', { n: [String(i + 1), from.run(`steps[${i}]`, 'ordinal')] }))),
+      partMark(app, col, value(app.run, `steps[${i}].partLabel`)),
+      shown.part?.standIn ? badge(app) : null,
+      chip(state)),
+    put('p', 'insp-lens', lensStepLine(app, i)),
+    ordered(app, {
+      checked: section(app, 'checked', 'sect.checked', put('p', 'insp-text', sentence)),
+      artifact: section(app, 'artifact', 'sect.artifact', build(app, i, step)),
+      record: section(app, 'record', 'sect.record', recordOfStep(app, i, step)),
+    }));
 }
 
-// ---- The run as a whole (key 0), the offline check, the start state
-
-// The parts of the demo with their legends and stand-in notes: the key of
-// the lane header, at a size the header has no room for.
-function partsKey(app) {
-  const parts = app.labels.parts ?? {};
-  const cols = (app.labels.columns ?? []).filter((id) => parts[id]);
-  return el('div', { class: 'insp-section', data: { key: 'parts' } }, cols.map((id) => {
-    const { part, path } = shownPart(app, id);
-    return el('div', { class: 'insp-part' },
-      el('div', { class: 'insp-part-line' }, put('span', 'insp-part-label', app.w.label(`${path}.label`)), part.standIn ? badge(app) : null),
-      put('p', 'insp-note', app.w.label(`parts.${id}.text`)),
-      part.standIn ? put('p', 'insp-note', app.w.label(`${path}.standInNote`)) : null);
+// The parts, each with who builds it and, where one applies, its stand-in
+// note and its detail line.
+function partsList(app) {
+  const { cols, parts } = columnsOf(app);
+  return el('div', { class: 'parts-list', data: { key: 'parts' } }, cols.filter((id) => parts[id]).map((id) => {
+    const shown = shownPart(app, id);
+    return el('div', { class: 'insp-part', data: { col: id } },
+      el('div', { class: 'insp-part-line' }, partMark(app, id), shown.part?.standIn ? badge(app) : null),
+      put('p', 'insp-note', creditOf(app, id)),
+      shown.part?.standIn ? put('p', 'insp-note', app.w.label(`${shown.path}.standInNote`), { 'data-note': 'stand-in' }) : null,
+      put('p', 'insp-note', detailOf(app, id), { 'data-note': 'detail' }));
   }));
+}
+
+// The limits of the demo, in one list.
+function limits(app) {
+  const run = app.run;
+  const c = run ? run.steps.findIndex((st) => st.detail?.verifier) : -1;
+  const verifier = c >= 0 ? String(run.steps[c].detail.verifier) : null;
+  return [
+    run ? put('p', 'insp-note', app.w.line('run.paced', { paceSeconds: [run.paceSeconds, from.run('paceSeconds')] })) : null,
+    verifier ? put('p', 'insp-note', app.w.line('limit.pq', { version: [verifier.slice(verifier.lastIndexOf(' ') + 1), from.run(`steps[${c}].detail.verifier`, 'afterLastSpace')] })) : null,
+    put('p', 'insp-note', app.w.word('limit.steps')),
+  ];
+}
+
+function invoiceCard(app) {
+  const run = app.run;
+  if (!run?.invoice) return null;
+  const inv = run.invoice;
+  const lines = Array.isArray(inv.lines) ? inv.lines : [];
+  return el('div', { class: 'invoice-card' },
+    table(
+      row(app.w.word('invoice.from'), put('span', null, app.w.label('parties.supplier'))),
+      row(app.w.word('invoice.amount'), put('span', 'num', app.w.line('invoice.amountValue', { amount: [inv.amount, from.run('invoice.amount')], currency: [inv.currency, from.run('invoice.currency')] }))),
+      row(app.w.word('invoice.payTo'), put('span', null, app.w.lineNodes('invoice.payToValue', { account: [inv.payTo?.account, from.run('invoice.payTo.account')] }, ['account'])))),
+    lines.length ? el('ul', { class: 'invoice-lines' }, lines.map((_, n) => put('li', null, value(run, `invoice.lines[${n}]`)))) : null,
+    inv.hidden ? el('div', { class: 'hidden-box' },
+      put('span', 'hidden-label', app.w.word('hidden.label')),
+      put('p', 'hidden-text', value(run, 'invoice.hidden.text')),
+      put('p', 'hidden-note insp-note', value(run, 'poisonedLine'))) : null);
 }
 
 function sceneIndexOf(app, kind) {
@@ -434,96 +481,84 @@ function overviewPanel(app) {
   const run = app.run;
   const s = sceneIndexOf(app, run.kind);
   const state = headlineOf(app, run);
+  app.sectionFirst = 'run';
   return el('div', { class: 'insp', data: { panel: 'overview' } },
-    el('div', { class: 'insp-head', data: { tone: 'neutral' } },
-      el('h2', { class: 'insp-title', id: 'inspector-heading' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : value(run, 'kind'))),
-      put('p', 'insp-sub', app.w.chosen(state.key, state.source))),
-    section(app, null, table(
+    el('div', { class: 'insp-head', data: { tone: state.tone } },
+      el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : value(run, 'kind'))),
+      el('span', { class: 'chip', data: { tone: state.tone } }, put('span', 'chip-word', app.w.chosen(state.key, state.source)))),
+    put('p', 'insp-lens', run.outcome === 'blocked' ? value(run, 'reason') : null),
+    section(app, 'run', 'sect.run', table(
       row(fieldName(run, 'runId'), token(app, run, 'runId')),
-      plain(run, 'kind'),
       moment(run, 'startedAt'),
-      moment(run, 'finishedAt'))),
-    section(app, null, invoiceCard(app, !cardInFlow(app))),
-    section(app, null,
-      put('p', 'insp-text insp-big', app.w.label('parties.agent')),
-      table(hashRow(app, run, 'agent.credentialSha256'))),
-    partsKey(app));
+      moment(run, 'finishedAt'),
+      hashRow(app, run, 'agent.credentialSha256')),
+    invoiceCard(app)),
+    section(app, 'parts', 'sect.parts', partsList(app)),
+    section(app, 'limits', 'app.limits', limits(app)));
 }
 
-// What the offline check returned when its answer is its own state: each
-// line and each note as the check wrote it, and its exit status under the
-// name the answer gives it. Nothing here reads a line as a verdict on a
-// record. An answer with none of the three gives nothing.
-function returnedState(result, source) {
-  const said = (kind, cls) => (Array.isArray(result[kind]) ? result[kind] : []).map((_, n) => put('li', cls, value(result, `${kind}[${n}]`, undefined, source)));
-  const lines = [said('lines', 'mono'), said('notes', 'insp-note')].flat().filter(Boolean);
-  const status = table(plain(result, 'exitCode', source, 'num'));
-  if (!lines.length && !status) return null;
-  return el('div', { class: 'insp-section', data: { returned: 'offline-check' } },
-    lines.length ? el('ul', { class: 'kv-list returned' }, lines) : null,
-    status);
-}
-
+// The audit as a whole: the verifier, the network while it checked, the
+// signer it trusted, its count, and for each tampered copy what the
+// verifier said of it.
 function offlinePanel(app) {
-  const result = offlineFor(app);
+  const result = offlineOf(app);
   if (!result) return null;
   const s = sceneIndexOf(app, OFFLINE_KIND);
   const source = (path, shape) => from.doc('offline-check', path, shape);
+  const tampered = Array.isArray(result.tampered) ? result.tampered : [];
+  app.sectionFirst = 'checked';
+  return el('div', { class: 'insp', data: { panel: 'offline' } },
+    el('div', { class: 'insp-head', data: { tone: 'neutral' } },
+      el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : null))),
+    section(app, 'checked', 'sect.checked', auditFacts(app, result, source),
+      tampered.map((rec, n) => el('div', { class: 'record', data: { file: String(rec.file), kind: 'tampered' } },
+        put('span', 'mono', value(result, `tampered[${n}].file`, undefined, source)),
+        auditVerdict(app, rec, (p, shape) => source(`tampered[${n}].${p}`, shape), true),
+        (Array.isArray(rec.notes) ? rec.notes : []).map((_, k) => put('p', 'insp-note', value(result, `tampered[${n}].notes[${k}]`, undefined, source)))))),
+    section(app, 'limits', 'app.limits', put('p', 'insp-note', app.w.word('limit.steps')), put('p', 'insp-note', detailOf(app, 'record'), { 'data-note': 'detail' })));
+}
+
+// What the audit names of itself: the verifier by SHA-256, the network while
+// it checked (denied, or not measured, said plainly and never as denied),
+// and the signer it trusted.
+export function auditFacts(app, result, source) {
   const sha = result.verifier?.sha256;
-  // The two sentences that speak of the verifier stand when the answer
-  // names one. A check that ran no verifier shows what it returned instead.
-  const named = Boolean(result.verifier);
-  // The network was shown denied when networkDenied says so, or, in a result
-  // written before that field was added, when its network line says so: such
-  // a result was written only then. Anything else is shown as not measured,
-  // with the network line of the result, and never in the words of a denial.
   const hasField = typeof result.networkDenied === 'string';
   const denied = hasField ? result.networkDenied === 'yes' : String(result.network ?? '').startsWith('denied: ');
   const whyNot = source(hasField ? 'networkDenied' : 'network');
-  const rows = (kind) => (Array.isArray(result[kind]) ? result[kind] : []).map((rec, n) => el('div', { class: 'record', data: { file: String(rec.file), kind } },
-    el('div', { class: 'record-line' },
-      put('span', 'mono', value(result, `${kind}[${n}].file`, undefined, source)),
-      kind === 'tampered' ? [put('span', 'record-flag', app.w.word('offline.tampered')), put('span', 'record-flag', app.w.word('offline.expected'))] : null),
-    el('div', { class: 'record-line', data: { verdictFor: String(rec.file) } }, verdict(app, rec, (p, shape) => source(`${kind}[${n}].${p}`, shape), kind === 'tampered'))));
-  return el('div', { class: 'insp', data: { panel: 'offline' } },
-    el('div', { class: 'insp-head', data: { tone: 'neutral' } },
-      el('h2', { class: 'insp-title', id: 'inspector-heading' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : null)),
-      named ? put('p', 'insp-sub', denied ? app.w.word('offline.sub') : app.w.chosen('offline.subNotMeasured', whyNot)) : null),
-    returnedState(result, source),
-    section(app, null, table(
-      sha ? row(app.w.word('offline.verifier'),
-        put('span', null, app.w.lineNodes('offline.verifierValue', { sha16: [String(sha).slice(0, 16), source('verifier.sha256', 'hex16')] }, ['sha16']), { title: String(sha) }),
-        copyButton(app, sha, source('verifier.sha256').replace(/^run:/, ''))) : null,
-      result.network && denied ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkValue', source('network')))) : null,
-      result.network && !denied ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkNotMeasured', whyNot)), put('span', 'mono', value(result, 'network', undefined, source))) : null,
-      result.pin ? row(app.w.word('offline.signer'), put('span', null, app.w.chosen('offline.signerValue', source('pin'))), put('span', 'mono', value(result, 'pin', undefined, source))) : null)),
-    el('div', { class: 'records' }, rows('records'), rows('tampered')),
-    result.summary ? section(app, null,
-      put('p', 'insp-text insp-big', app.w.line('offline.summaryPass', { pass: [result.summary.pass, source('summary.pass')] })),
-      put('p', 'insp-text insp-big', app.w.line('offline.summaryReject', { reject: [result.summary.reject, source('summary.reject')], expectedRejects: [result.summary.expectedRejects, source('summary.expectedRejects')] }))) : null,
-    named ? put('p', 'insp-sub', app.w.word('limit.steps')) : null);
+  return table(
+    sha ? row(app.w.word('offline.verifier'),
+      put('span', null, app.w.lineNodes('audit.verifierValue', { sha16: [String(sha).slice(0, 16), source('verifier.sha256', 'hex16')] }, ['sha16']), { title: String(sha) }),
+      copyButton(app, sha, source('verifier.sha256').replace(/^run:/, ''))) : null,
+    result.network && denied ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkValue', source('network')), { 'data-network': 'denied' })) : null,
+    result.network && !denied ? row(app.w.word('offline.network'), put('span', null, app.w.chosen('offline.networkNotMeasured', whyNot), { 'data-network': 'not-measured' }), put('span', 'mono', value(result, 'network', undefined, source))) : null,
+    result.pin ? row(app.w.word('offline.signer'), put('span', null, app.w.chosen('offline.signerValue', source('pin'))), put('span', 'mono', value(result, 'pin', undefined, source))) : null);
 }
 
 function startPanel(app) {
   const scene = app.scenes[app.sceneIndex];
   const s = scene ? (app.labels.scenes ?? []).indexOf(scene) : -1;
+  app.sectionFirst = null;
   return el('div', { class: 'insp', data: { panel: 'start' } },
     el('div', { class: 'insp-head', data: { tone: 'neutral' } },
-      el('h2', { class: 'insp-title', id: 'inspector-heading' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : app.w.word('app.title'))),
-      s >= 0 ? put('p', 'insp-sub', app.w.label(`scenes[${s}].text`)) : null),
-    partsKey(app));
+      el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : app.w.word('ui.title')))),
+    put('p', 'insp-lens', s >= 0 ? app.w.label(`scenes[${s}].text`) : null),
+    section(app, 'parts', 'sect.parts', partsList(app)),
+    section(app, 'limits', 'app.limits', limits(app)));
 }
 
 // ---- Render
 
 export function renderInspector(app, host) {
-  const signature = [app.mode, app.size, app.tier, JSON.stringify(app.selection), app.runId, app.runStamp, app.filesStamp, app.offlineStamp, app.openRecord, app.sceneIndex, app.labelsStamp].join('|');
+  const signature = [app.mode, app.size, app.lens, JSON.stringify(app.selection), app.runId, app.runStamp, app.filesStamp, app.offlineStamp, app.openRecord, app.sceneIndex, app.labelsStamp].join('|');
   if (host.dataset.signature === signature) return;
-  const sameView = host.dataset.view === `${app.runId}|${JSON.stringify(app.selection)}`;
+  const view = `${app.runId}|${JSON.stringify(app.selection)}`;
+  const sameView = host.dataset.view === view;
+  if (!sameView) app.inspectorOpen = new Map();
   const scroll = host.scrollTop;
   const active = host.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
   host.dataset.signature = signature;
-  host.dataset.view = `${app.runId}|${JSON.stringify(app.selection)}`;
+  host.dataset.view = view;
 
   let panel = null;
   if (!app.run) panel = startPanel(app);
@@ -534,27 +569,30 @@ export function renderInspector(app, host) {
   add(clear(host), panel);
   host.scrollTop = sameView ? scroll : 0;
   if (active) host.querySelector(`[data-focus-key="${CSS.escape(active)}"]`)?.focus();
-  // A row inside a step of the trace opens its step here with its own item
-  // marked: the tool call in the comparison, the record in the list.
+  // A row inside a step of the trace, or a row of the records, opens its
+  // step here with its own item marked.
   const marked = app.selection.item ? itemOf(host, app.selection) : null;
   if (marked) {
     marked.dataset.highlight = 'yes';
+    const open = marked.closest('details');
+    if (open) open.open = true;
     if (!sameView) marked.scrollIntoView({ block: 'nearest' });
   }
 }
 
-// The element of the pane that shows the item a row of the trace stands for.
+// The element of the pane that shows the item a row stands for.
 function itemOf(host, selection) {
   const { kind, n } = selection.item;
   const nth = (selector) => host.querySelectorAll(selector)[n] ?? null;
   if (kind === 'call') return nth('.compare-call');
   if (kind === 'declared') return host.querySelector('.compare');
-  if (kind === 'record') return nth('.record[data-kind="records"]');
+  if (kind === 'record') return nth('.record[data-kind="records"]') ?? host.querySelector('[data-section="record"] .kv');
   if (kind === 'records' || kind === 'tampered') return selection.kind === 'offline' ? nth(`.record[data-kind="${kind}"]`) : null;
   if (kind === 'check' && selection.kind === 'step') {
     const base = `run:steps[${selection.index}].detail`;
-    return host.querySelector(`[data-src="${base}.scopeChecked[${n}]"]`) ?? host.querySelector(`[data-src="${base}.verifier"]`)
-      ?? host.querySelector(`[data-capture-check="${n}"]`);
+    return host.querySelector(`[data-src="${base}.scopeChecked[${n}]"]`) ?? host.querySelector(`[data-capture-check="${n}"]`) ?? host.querySelector(`[data-src="${base}.verifier"]`);
   }
   return null;
 }
+
+export { camel };

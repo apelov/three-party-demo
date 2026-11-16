@@ -1,15 +1,15 @@
 {
-  "revision": "three-party view label map, revision 2. This file holds the structure of the screen (columns, step columns, states, outcome headlines, countdown, keys, trace) and the screens' own words for the parts and the scenes: the line under a part, the line under the crossing, and the title, the line and the availability of each scene. No part label, party role, stand-in note or button is here: those are in three-party/labels.json, the contract's label map. A listener that serves the screens adds the words of this file to that map in its answer to GET /api/labels, and the page takes parts, parties, timestamp and scenes from that answer.",
+  "revision": "three-party view label map, revision 3. This file holds the structure of the screen (columns, step columns, the column each step's arrow starts from, states, outcome headlines, countdown, keys, trace, the lenses and the order of the inspector's sections for each) and the screens' own words for the parts and the scenes: the line under a part, the detail line of a part, and the title, the line and the availability of each scene. No part label, party role, stand-in note or button is here: those are in three-party/labels.json, the contract's label map. A listener that serves the screens adds the words of this file to that map in its answer to GET /api/labels, and the page takes parts, parties, timestamp and scenes from that answer.",
   "parts": {
-    "checkpoint": { "text": "Checkpoint: the agent's credential, a scoped grant and the intent rule" },
-    "crossing": { "text": "Crossing between the two trust domains", "detail": "Our check covers steps 1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03, on a prepared delegation chain with two hops." },
-    "record": { "text": "Evidence record for each action" },
+    "checkpoint": { "text": "Checks the agent's ATX credential, issues a scoped AAP grant and applies the intent rule to each tool call." },
+    "crossing": { "text": "Checks the request as it crosses from the agent's trust domain into the bank's.", "detail": "The OpenA2A check covers steps 1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03, on a prepared delegation chain with two hops." },
+    "record": { "text": "Leaves one signed Action Evidence Package for each action, which anyone can check offline.", "detail": "Checked by the OpenA2A verifier for steps 1 to 6 of the format; steps 7 to 10 are not run, and the timestamp entry is a placeholder." },
     "bank": { "text": null }
   },
   "scenes": [
-    { "id": 1, "kind": "clean", "title": "Normal payment", "text": "The agent pays an invoice that carries no hidden text.", "available": true },
-    { "id": 2, "kind": "poisoned", "title": "Poisoned invoice", "text": "Hidden text in the invoice asks the agent to read a secret and change the payee.", "available": true },
-    { "id": 6, "kind": "offline-check", "title": "Audit later", "text": "Check every record with network access denied.", "available": true },
+    { "id": 1, "kind": "clean", "title": "Normal payment", "text": "An invoice with no hidden text.", "available": true },
+    { "id": 2, "kind": "poisoned", "title": "Poisoned invoice", "text": "Hidden text asks for a secret and a new payee.", "available": true },
+    { "id": 6, "kind": "offline-check", "title": "Audit the records", "text": "Every record checked offline, with a tampered copy.", "available": true },
     { "id": 3, "kind": "tampered", "title": "Tampered agent", "text": "The running build does not match the agent's ATX credential.", "available": false },
     { "id": 4, "kind": "expired", "title": "Expired grant", "text": "The AAP grant has expired, so the agent must ask for a new one.", "available": false },
     { "id": 5, "kind": "received", "title": "Received by the supplier's bank", "text": "The supplier's bank receives the payment across the two trust domains.", "available": false }
@@ -21,6 +21,8 @@
     "pay": "bank", "pay-again": "bank",
     "record": "record"
   },
+  "stepFrom": { "record": "checkpoint" },
+  "columnWeights": { "agent": 0.85, "checkpoint": 1.3, "crossing": 1, "bank": 1, "record": 0.85 },
   "states": {
     "pending":     { "wordKey": "state.pending",    "icon": "circle-outline",  "tone": "neutral" },
     "running":     { "wordKey": "state.checking",   "icon": "circle-half",     "tone": "checking" },
@@ -38,6 +40,12 @@
     "blocked": "state.stopped"
   },
   "countdown": { "expiringSeconds": 10 },
-  "keys": { "next": "Right arrow", "prev": "Left arrow", "mode": "I", "trace": "T", "replay": "P", "back": "Left arrow", "forward": "Right arrow" },
-  "trace": { "laneSeconds": 120, "nestedInStory": "decided", "nestedInInspect": "all" }
+  "keys": { "next": "Right arrow", "prev": "Left arrow", "mode": "I", "trace": "T", "replay": "P", "back": "Left arrow", "forward": "Right arrow", "run": "R", "audit": "O", "story": "S", "inspect": "I", "overview": "0", "digits": "1 to 6", "home": "Home", "end": "End", "inspector": "Enter", "lens": "V", "help": "?", "close": "Escape" },
+  "trace": { "laneSeconds": 120, "nestedInStory": "decided", "nestedInInspect": "all" },
+  "lenses": [
+    { "id": "security", "sections": ["checked", "artifact", "record"] },
+    { "id": "finance", "sections": ["record", "checked", "artifact"] },
+    { "id": "platform", "sections": ["artifact", "checked", "record"] },
+    { "id": "standards", "sections": ["artifact", "record", "checked"] }
+  ]
 }
