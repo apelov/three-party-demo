@@ -140,6 +140,8 @@ a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; 
 mark { background: none; color: inherit; }
 
 .mono { font-family: var(--mono); font-size: 0.88em; overflow-wrap: anywhere; }
+/* An id inside a sentence stays whole; a hash in a list may break anywhere. */
+.insp-text .mono, .insp-lens .mono, .row-detail .mono, .outcome-text .mono, .invoice .mono { overflow-wrap: normal; white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums lining-nums; }
 .meta, .muted { color: var(--muted); }
 
@@ -382,7 +384,7 @@ mark { background: none; color: inherit; }
 .row[data-status="written"] .arrow-line,
 .row[data-status="expired"] .arrow-line,
 .row[data-status="blocked"] .arrow-line { clip-path: inset(0 0 0 0); }
-.row[data-status="running"] .arrow-pulse { inset-inline-start: 100%; visibility: visible; }
+.row[data-travel="yes"] .arrow-pulse { inset-inline-start: 100%; visibility: visible; }
 .row[data-status="blocked"] .arrow-pulse { inset-inline-start: 100%; visibility: visible; background: var(--red); }
 .row[data-status="blocked"] .arrow { color: var(--red); }
 .row[data-status="blocked"] .arrow-head { width: 3px; height: 16px; border: 0; background: var(--red); }
@@ -514,14 +516,14 @@ mark { background: none; color: inherit; }
 .compare-call { display: flex; flex-direction: column; gap: 4px; }
 .compare-title { display: flex; align-items: baseline; gap: 8px; }
 .compare-title .meta { font-size: var(--t-label); }
-.compare-grid, .compare-args { display: grid; grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
+.compare-grid, .compare-args { display: grid; grid-template-columns: minmax(0, 6.5em) minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
 .compare-grid .mono, .compare-args .mono { font-size: 0.95em; overflow-wrap: normal; white-space: nowrap; }
 .compare-args { grid-template-columns: minmax(0, 8.5em) minmax(0, 1fr); }
 .compare-grid > *, .compare-args > * { padding: 4px 0; border-bottom: 1px solid var(--rule); min-width: 0; }
 .col-head { font-size: var(--t-label); color: var(--muted); }
 .field { display: flex; flex-direction: column; font-size: var(--t-label); color: var(--muted); font-family: var(--mono); }
 .differs-word { font-family: var(--serif); font-weight: 700; color: var(--red); }
-.diff[data-differs="yes"] { background: var(--highlight); color: var(--highlight-ink); padding: 0 3px; }
+.diff[data-differs="yes"] { background: var(--highlight); color: var(--highlight-ink); padding: 0 2px; margin-left: -2px; }
 .compare-verdict { display: flex; gap: 8px; align-items: baseline; }
 .compare-none { font-weight: 700; color: var(--red); }
 .compare-why { font-size: var(--t-label); color: var(--muted); }
@@ -627,7 +629,7 @@ kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px so
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
-  .arrow-pulse { display: none; }
+  .row:not([data-status="blocked"]) .arrow-pulse { display: none; }
 }
 
 /* ---- Narrow windows: the panes stack and the page scrolls */
@@ -644,3 +646,7 @@ kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px so
   .footer { flex-wrap: wrap; }
   .footer-keys { white-space: normal; }
 }
+
+/* The entries of a record package, in Inspect */
+.entries { display: flex; flex-direction: column; gap: 8px; flex-basis: 100%; }
+.entries .kv-list { font-size: var(--t-label); line-height: var(--l-label); }

@@ -19,7 +19,7 @@
 <nav class="pane pane-left" id="pane-left"></nav>
 <main class="pane pane-flow" id="pane-flow" aria-labelledby="app-title">
   <div class="tabs" id="tabs" role="tablist"></div>
-  <section class="tab-panel" id="panel-sequence" role="tabpanel" aria-labelledby="tab-sequence">
+  <section class="tab-panel" id="panel-sequence" role="tabpanel" tabindex="-1" aria-labelledby="tab-sequence">
     <div class="orient" id="orient"></div>
     <div class="invoice" id="invoice"></div>
     <div class="flow" id="flow">
@@ -29,10 +29,10 @@
       </div>
     </div>
   </section>
-  <section class="tab-panel" id="panel-trace" role="tabpanel" aria-labelledby="tab-trace" hidden>
+  <section class="tab-panel" id="panel-trace" role="tabpanel" tabindex="-1" aria-labelledby="tab-trace" hidden>
     <div class="trace" id="trace"></div>
   </section>
-  <section class="tab-panel" id="panel-records" role="tabpanel" aria-labelledby="tab-records" hidden>
+  <section class="tab-panel" id="panel-records" role="tabpanel" tabindex="-1" aria-labelledby="tab-records" hidden>
     <div class="records-tab" id="records-tab"></div>
   </section>
   <section class="outcome" id="outcome-end"></section>

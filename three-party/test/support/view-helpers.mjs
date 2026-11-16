@@ -248,10 +248,10 @@ export async function openView(browser, { width = 1440, height = 900, scheme = '
 
 export const runIs = (page, state, timeout = 20000) => page.waitForFunction((s) => document.body.dataset.run === s, state, { timeout });
 
-// Choose a scene by its kind with a real click, and run it with the R key.
+// Run an item of the menu by its kind with a real click: a click on an item
+// chooses it and runs it.
 export async function runScene(page, kind) {
   await page.click(`.scene[data-kind="${kind}"]`);
-  await page.keyboard.press('r');
 }
 
 // Run a scene and wait for its outcome, then for the files the panes asked
@@ -306,6 +306,7 @@ const SHAPE = {
   time: (v) => String(v).replace('T', ' '),
   clock: (v) => String(v).split('T')[1],
   json: (v) => JSON.stringify(v, null, 2),
+  count: (v) => String(v.length),
 };
 
 // The seconds between two times of a run, as the trace shows them: one
@@ -347,7 +348,7 @@ export function expectedFor(src, docs, { copy = COPY, labels = LABELS } = {}) {
     // rows of the trace, the step a replay stands at), read as digits.
     if (kind === 'clock') return { counted: shape === 'since' ? '\\d+' : '\\d{2,}:\\d{2}' };
     if (kind === 'view') {
-      assert.ok(['rows', 'replay'].includes(rest), `a number of the page this check does not know: ${source}`);
+      assert.ok(['rows', 'replay', 'step', 'act', 'acts', 'position'].includes(rest), `a number of the page this check does not know: ${source}`);
       return { counted: '\\d+' };
     }
     assert.equal(kind, 'run', `a source this check does not know: ${source}`);
@@ -386,28 +387,32 @@ export function expectedFor(src, docs, { copy = COPY, labels = LABELS } = {}) {
     assert.equal(typeof text, 'string', `no copy line ${key}`);
     if (shape === 'beforeParen') text = text.split(' (')[0];
     else assert.equal(shape, undefined, `a copy shaping this check does not know: ${shape}`);
-    let pattern = null;
-    let digits = null;
+    const counted = new Map();
     for (const fill of fills) {
       const eq = fill.indexOf('=');
       const name = fill.slice(0, eq);
       const r = resolve(fill.slice(eq + 1));
       if (name === 'when') continue;
       assert.ok(text.includes(`{${name}}`), `${key} has no {${name}}`);
-      if (r.counted) {
-        pattern = name;
-        digits = r.counted;
-      } else text = text.split(`{${name}}`).join(shapeOf(r));
+      if (r.counted) counted.set(name, r.counted);
+      else text = text.split(`{${name}}`).join(shapeOf(r));
     }
-    if (pattern) {
-      const [before, after] = text.split(`{${pattern}}`);
+    if (counted.size) {
+      // Each number the page counted on itself reads as digits in its place.
       const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return { matches: new RegExp(`^${esc(before)}${digits}${esc(after)}$`) };
+      const parts = text.split(/(\{[A-Za-z0-9]+\})/);
+      const pattern = parts.map((part) => {
+        const m = /^\{([A-Za-z0-9]+)\}$/.exec(part);
+        return m && counted.has(m[1]) ? counted.get(m[1]) : esc(part);
+      }).join('');
+      return { matches: new RegExp(`^${pattern}$`) };
     }
     assert.equal(/\{[A-Za-z0-9]+\}/.test(text), false, `${key} is shown with a placeholder left in: ${text}`);
     return { equals: text };
   }
-  return { equals: shapeOf(resolve(src)) };
+  const r = resolve(src);
+  if (r.counted) return { matches: new RegExp(`^${r.counted}$`) };
+  return { equals: shapeOf(r) };
 }
 
 // Assert the whole census. Returns the number of sourced texts checked.

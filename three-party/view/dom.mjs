@@ -23,7 +23,9 @@
 // time, on the browser clock), clock:<path>|since (whole seconds since a run
 // time, on the browser clock), const:<name> (a constant of this view) or
 // view:<name> (a number the page counted on itself: rows, the rows the trace
-// shows now; replay, the step a replay stands at).
+// shows now; replay, the step a replay stands at; step, the step selected;
+// act and acts, where the walkthrough stands in its menu and how many items
+// the menu has; position, an item's own place in the menu).
 // Nothing here invents a word: a line whose fill has no value is not built.
 
 export function el(tag, props, ...kids) {
@@ -68,6 +70,7 @@ export const SHAPES = Object.freeze({
   ordinal: (v) => String(Number(v) + 1),
   key: (v) => String(v),
   json: (v) => JSON.stringify(v, null, 2),
+  count: (v) => String(Array.isArray(v) ? v.length : 0),
 });
 
 export function shaped(value, shape) {

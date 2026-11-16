@@ -24,7 +24,7 @@ const TYPES = Object.freeze({
 });
 
 // The view's own tools. The page does not load them, so they are not served.
-const NOT_SERVED = Object.freeze(['dev-server.mjs', 'stills.mjs']);
+const NOT_SERVED = Object.freeze(['dev-server.mjs', 'stills.mjs', 'record.mjs']);
 
 // The file of the view a request path names, or null: the page itself for
 // "/", else a path of plain names (no empty segment, no dot segment, no name

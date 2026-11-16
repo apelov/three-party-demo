@@ -426,8 +426,10 @@ async function audit() {
   app.tabNamed = true;
   writeHash();
   select({ kind: 'offline' });
+  // A control that started the audit, or a row the Records tab now hides,
+  // hands the focus to the records, where the step keys still work.
   const active = document.activeElement;
-  if (!active || active === document.body || active.closest('#outcome-end, #pane-left, #records-tab')) $('tab-records')?.focus({ preventScroll: true });
+  if (!active || active === document.body || active.closest('#outcome-end, #pane-left, #records-tab')) $('panel-records')?.focus({ preventScroll: true });
 }
 
 // Back to the start of the walkthrough: no run on screen and no act done.

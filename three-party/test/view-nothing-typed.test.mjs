@@ -41,16 +41,24 @@ const LEFT_OUT = ['tryit.yours', 'tryit.agentReads', 'tryit.inMemory', 'tryit.ba
 // network row.
 const NOT_MEASURED_BLOCK = 'copy-block-d.txt';
 
-test('copy.json holds the 102 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured: each key and value byte for byte, and nothing else', () => {
+// After it, the block for the rebuilt screens: the sequence, the Records
+// tab, the walkthrough's progress, the list of keys, the credits under the
+// lanes, the sentences of what each step checked and the lines of the four
+// lenses.
+const SCREENS_BLOCK = 'copy-block-e.txt';
+
+test('copy.json holds the 102 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 111 of the block for the rebuilt screens: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
   const notMeasured = blockLines(NOT_MEASURED_BLOCK);
+  const screens = blockLines(SCREENS_BLOCK);
   assert.equal(deck.length, 102);
   assert.equal(added.length, 68 - LEFT_OUT.length);
   assert.equal(notMeasured.length, 2);
-  const lines = [...deck, ...added, ...notMeasured];
-  const members = 102 + added.length + notMeasured.length;
-  assert.equal(members, 168);
+  assert.equal(screens.length, 111);
+  const lines = [...deck, ...added, ...notMeasured, ...screens];
+  const members = 102 + added.length + notMeasured.length + screens.length;
+  assert.equal(members, 279);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);
@@ -72,8 +80,15 @@ test('copy.json holds the 102 lines of the staged copy deck and, after them, the
 
 test('the label map the page holds: the members of the contract\'s map from the server, the structure of the screen from the view\'s own file, and no member the brief does not name', () => {
   assert.deepEqual(Object.keys(CONTRACT_LABELS), ['revision', 'parts', 'parties', 'timestamp', 'scenes']);
-  assert.deepEqual(Object.keys(BUNDLED), ['revision', 'parts', 'scenes', 'columns', 'stepColumns', 'states', 'outcomeHeadlines', 'countdown', 'keys', 'trace']);
-  assert.deepEqual(Object.keys(LABELS).sort(), ['revision', 'parts', 'parties', 'timestamp', 'scenes', 'columns', 'stepColumns', 'states', 'outcomeHeadlines', 'countdown', 'keys', 'trace'].sort());
+  assert.deepEqual(Object.keys(BUNDLED), ['revision', 'parts', 'scenes', 'columns', 'stepColumns', 'stepFrom', 'columnWeights', 'states', 'outcomeHeadlines', 'countdown', 'keys', 'trace', 'lenses']);
+  assert.deepEqual(Object.keys(LABELS).sort(), ['revision', 'parts', 'parties', 'timestamp', 'scenes', 'columns', 'stepColumns', 'stepFrom', 'columnWeights', 'states', 'outcomeHeadlines', 'countdown', 'keys', 'trace', 'lenses'].sort());
+  // The structure the rebuilt screens add: the column each step's arrow
+  // starts from where it is not the party's, the lanes' weights, and the
+  // four lenses, each naming the inspector's three sections in its order.
+  assert.deepEqual(BUNDLED.stepFrom, { record: 'checkpoint' });
+  assert.deepEqual(Object.keys(BUNDLED.columnWeights), BUNDLED.columns);
+  assert.deepEqual(BUNDLED.lenses.map((l) => l.id), ['security', 'finance', 'platform', 'standards']);
+  for (const lens of BUNDLED.lenses) assert.deepEqual([...lens.sections].sort(), ['artifact', 'checked', 'record'], lens.id);
   // The members the menu and the trace add are those of the staged fragment,
   // value for value: four key names and the trace's settings. The fragment's
   // scene row and its two step columns belong to the screen where a viewer
@@ -84,7 +99,7 @@ test('the label map the page holds: the members of the contract\'s map from the 
   const addOn = JSON.parse(fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'labels-add-on.json'), 'utf8'));
   assert.deepEqual(Object.keys(addOn.keys), ['trace', 'replay', 'back', 'forward']);
   for (const [name, value] of Object.entries(addOn.keys)) assert.equal(BUNDLED.keys[name], value, `keys.${name}`);
-  assert.deepEqual(Object.keys(BUNDLED.keys), ['next', 'prev', 'mode', 'trace', 'replay', 'back', 'forward']);
+  assert.deepEqual(Object.keys(BUNDLED.keys), ['next', 'prev', 'mode', 'trace', 'replay', 'back', 'forward', 'run', 'audit', 'story', 'inspect', 'overview', 'digits', 'home', 'end', 'inspector', 'lens', 'help', 'close']);
   assert.deepEqual(BUNDLED.trace, addOn.trace);
   assert.deepEqual(BUNDLED.trace, { laneSeconds: 120, nestedInStory: 'decided', nestedInInspect: 'all' });
   assert.equal(BUNDLED.scenes.some((scene) => addOn.scenes.some((s) => s.id === scene.id)), false);
@@ -127,7 +142,7 @@ test('every text node names its source, and each text equals that source: start,
   try {
     const start = await census(view.page);
     let total = assertCensus(start, {});
-    assert.ok(start.items.some((item) => item.src === 'copy:app.sentence'));
+    assert.ok(start.items.some((item) => item.src === 'copy:ui.lead'));
     for (const [kind, outcome] of [['clean', 'paid'], ['poisoned', 'blocked']]) {
       const { checked } = await walk(view, kind, outcome, async (label, docs) => {
         const result = await census(view.page);
@@ -162,7 +177,9 @@ test('every hash, id, DID and amount in an inspector pane is a part of what the 
         }
         return 0;
       });
-      assert.ok(tokens > 50, `${kind}: ${tokens} tokens read`);
+      // Story keeps the sections it does not lead with closed, so their
+      // values are read in Inspect, where every section is open.
+      assert.ok(tokens > 40, `${kind}: ${tokens} tokens read`);
     }
   } finally {
     await view.close();
@@ -214,6 +231,9 @@ test('one source: outside labels.json and copy.json, no file of the view holds a
   // Structure ids of the map (step ids, icon names, tones, copy keys) are
   // not words of the screen and may be named in code.
   for (const part of Object.values(LABELS.parts)) for (const id of part.steps) values.delete(id);
+  // A key named as the browser names it (a digit, Home, End, Enter, Escape,
+  // ?) is also what the page's key handler compares against.
+  for (const name of Object.values(LABELS.keys)) if (/^(?:[0-9?]|Home|End|Enter|Escape)$/.test(name)) values.delete(name);
   const quoted = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
   const found = [];
   for (const file of viewFiles(['.mjs', '.css', '.html'])) {
@@ -243,11 +263,13 @@ test('a label map the server sends replaces the page\'s own key by key: a new ch
     assert.equal(titles[0].title, LABELS.parties.agent);
     assert.equal(titles[2].title, LABELS.parts.crossing.label);
     assert.equal(await view.page.evaluate(() => document.querySelectorAll('.scene').length), 3);
-    assert.equal(await view.page.evaluate(() => document.querySelector('#rows .row .chip-word').textContent), COPY['state.pending'], 'states is not in the served map, so the page\'s own stays');
-    // The row shows the run's own part label, whatever the map says.
     await runAndWait(view, 'clean', 'paid');
-    const row = await view.page.evaluate(() => document.querySelector('#rows .row[data-step="credential"] .track-label').textContent);
-    assert.equal(row, CLEAN_DONE.steps[0].partLabel);
+    assert.equal(await view.page.evaluate(() => document.querySelector('#rows .row .chip-word').textContent), COPY['state.passed'], 'states is not in the served map, so the page\'s own stays');
+    // The inspector shows the run's own part label for a step, whatever the map says.
+    await view.page.keyboard.press('1');
+    await view.settle();
+    const mark = await view.page.evaluate(() => document.querySelector('#pane-inspector .insp-head .part-name').textContent);
+    assert.equal(mark, CLEAN_DONE.steps[0].partLabel);
     assertCensus(await census(view.page), docsFrom(view.served, CLEAN_DONE.runId), { labels: { ...LABELS, parts } });
   } finally {
     await view.close();
@@ -270,8 +292,12 @@ test('a server with no label route: the page holds no part or party label of its
     assert.equal(start.control, COPY['button.runName'].replace('{scene}', BUNDLED.scenes[0].title));
     assertCensus(await census(view.page), {}, { labels: BUNDLED });
     await runAndWait(view, 'clean', 'paid');
-    const rows = await view.page.evaluate(() => [...document.querySelectorAll('#rows .row .track-label')].map((t) => t.textContent));
-    assert.deepEqual(rows, CLEAN_DONE.steps.map((s) => s.partLabel));
+    const marks = [];
+    for (const n of ['1', '2', '3', '4', '5', '6']) {
+      await view.page.keyboard.press(n);
+      marks.push(await view.page.evaluate(() => document.querySelector('#pane-inspector .insp-head .part-name').textContent));
+    }
+    assert.deepEqual(marks, CLEAN_DONE.steps.map((s) => s.partLabel));
     assertCensus(await census(view.page), docsFrom(view.served, CLEAN_DONE.runId), { labels: BUNDLED });
     assert.deepEqual(view.errors, []);
   } finally {
@@ -311,8 +337,12 @@ test('the trace and the step controls: every text node names its source and equa
       await stop('a tool call row');
       await page.click('#trace-body [data-kind="record"]');
       await stop('a record row');
-      // The offline check adds its row and its records.
+      // The offline check opens the Records tab and adds its row and its
+      // records to the trace.
       await page.keyboard.press('o');
+      await page.waitForFunction(() => document.body.dataset.tab === 'records');
+      await stop('offline records');
+      await page.keyboard.press('t');
       await page.waitForFunction(() => document.querySelector('#trace-body [data-span="offline-check"]') !== null);
       await stop('offline inspect');
       await page.keyboard.press('s');
@@ -348,9 +378,16 @@ test('the sources the trace and the step controls name: a copy line for every wo
     const text = (selector) => page.evaluate((s) => document.querySelector(s)?.textContent ?? null, selector);
     // The controls of the menu and the switch, before a run.
     assert.deepEqual([await src('#step-back'), await src('#step-forward'), await src('#step-replay')], ['copy:menu.back', 'copy:menu.forward', 'copy:menu.replay']);
-    assert.deepEqual([await src('#view-switch [data-view="flow"]'), await src('#view-switch [data-view="trace"]')], ['copy:view.flow', 'copy:view.trace']);
-    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.left-foot p')].map((p) => p.dataset.src)[1]), 'copy:keys.hintMore;traceKey=labels:keys.trace;replayKey=labels:keys.replay');
-    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.left-foot p')].map((p) => p.textContent)[1]), COPY['keys.hintMore'].replace('{traceKey}', LABELS.keys.trace).replace('{replayKey}', LABELS.keys.replay));
+    assert.deepEqual([await src('#tab-sequence'), await src('#tab-trace'), await src('#tab-records')], ['copy:ui.tabSequence', 'copy:ui.tabTrace', 'copy:ui.tabRecords']);
+    assert.equal(await src('#footer .footer-keys'), 'copy:ui.keys;next=labels:keys.next;prev=labels:keys.prev;run=labels:keys.run;audit=labels:keys.audit;help=labels:keys.help');
+    assert.equal(await text('#footer .footer-keys'), COPY['ui.keys'].replace('{next}', LABELS.keys.next).replace('{prev}', LABELS.keys.prev).replace('{run}', LABELS.keys.run).replace('{audit}', LABELS.keys.audit).replace('{help}', LABELS.keys.help));
+    // Every key the dialog lists is named by the label map, and said by the deck.
+    const keyRows = await page.evaluate(() => [...document.querySelectorAll('#keys-dialog .kv-row')].map((row) => ({ key: row.querySelector('kbd').dataset.src, what: row.querySelector('dd').dataset.src })));
+    assert.ok(keyRows.length >= 12, `${keyRows.length} keys listed`);
+    for (const row of keyRows) {
+      assert.match(row.key, /^labels:keys\.[a-z]+$/);
+      assert.match(row.what, /^copy:keyhelp\.[a-z]+$/);
+    }
     assert.equal(await src('#trace-body [data-span="grant"] .trace-title'), 'copy:step.grant', 'before a run a step is named by the deck');
     assert.equal(await src('#trace-count'), 'copy:trace.rows;count=view:rows');
 
@@ -385,8 +422,11 @@ test('the sources the trace and the step controls name: a copy line for every wo
     await page.click('#trace-body [data-span="grant"] .trace-toggle');
     assert.equal(await text('#trace-count'), COPY['trace.rows'].replace('{count}', String(rows - 4)), 'with a step closed the count is that of the rows still shown');
 
-    // The offline check's row and a record inside it.
+    // The offline check's row and a record inside it: the check opens the
+    // Records tab, and T brings the trace back.
     await page.keyboard.press('o');
+    await page.waitForFunction(() => document.body.dataset.tab === 'records');
+    await page.keyboard.press('t');
     await page.waitForFunction(() => document.querySelector('#trace-body [data-span="offline-check"]') !== null);
     assert.equal(await src('#trace-body [data-span="offline-check"] .trace-title'), 'copy:trace.offlineRow');
     assert.equal(await src('#trace-body [data-span="offline-check"] > .trace-start'), 'run:offline-check#at|clock');

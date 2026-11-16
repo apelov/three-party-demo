@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 // The stills of the view, taken in a browser with clicks and keys, never a
 // dispatched event. Names: <scene>-<state>-<mode>-<scheme>-<width>.png for
-// a still of the message flow, and <scene>-<state>-<view>-<mode>-<scheme>-
-// <width>.png for a still that names its view (the trace, or the flow
-// during a replay).
+// a still of the sequence, and <scene>-<state>-<tab>-<mode>-<scheme>-
+// <width>.png for a still that names its tab (the trace, or the records).
+// A still of a reader lens other than the default names the lens after the
+// state: s2-stopped-finance-story-light-1440.png.
 //
 //   node three-party/view/stills.mjs [--out <dir>] [--pair] [--trace-pair]
 //                                    [--url <address>] [--grayscale <file>]
 //
 // With no --url the view's development server answers from the example
 // files, and the browser's clock is set to a moment of the example's own
-// timeline, so the grant countdown reads what a presenter sees at that moment
-// of the run. The run in progress is the finished example as it stood while
-// the payment was being checked. With --url (the 127.0.0.1 address of a
-// server that is already up) the runs are that server's own, in its own time.
-// --pair takes the two stills of the stopped step in the flow and ends
-// there. --trace-pair takes the two stills of the stopped step in the trace
-// and ends there. With neither, the trace pair is taken ahead of every other
-// still.
+// timeline, so the grant countdown reads what a presenter sees at that
+// moment of the run. With --url (the 127.0.0.1 address of a server that is
+// already up, such as `node three-party/bin/start.mjs --serve --pace 2`)
+// the runs are that server's own, in its own time, with the values a real
+// run writes: the stills kept in three-party/stills/ are taken that way.
+// --pair takes the two stills of the stopped step in the sequence and ends
+// there. --trace-pair takes the stopped step in the trace and ends there.
 // --grayscale writes one more capture of the stopped step with the colour
 // taken out, to the file named; it is kept out of the stills directory.
 //
@@ -45,7 +45,7 @@ const WAIT_MS = 180000;
 // after the record of the stopped run is written, while the payment of the
 // clean run is being checked, after the clean run's record is written, and
 // after the clean run has finished (the offline check follows a finished run).
-const MOMENTS = { stopped: 45, running: 40.5, paid: 53, afterFinish: 5, granting: 11.5 };
+const MOMENTS = { stopped: 45, running: 40.5, paid: 53, afterFinish: 5 };
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const stateOfKind = (kind, finished) => fs.readdirSync(EXAMPLES)
@@ -63,8 +63,6 @@ function option(argv, name) {
 function examplesInProgress(moment) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'three-party-stills-'));
   const done = stateOfKind('clean', true);
-  // The files of the examples directory; the directory of an earlier
-  // revision's examples beside them is not a run of this build.
   for (const f of fs.readdirSync(EXAMPLES).filter((name) => fs.statSync(path.join(EXAMPLES, name)).isFile())) {
     const state = /^state-.*\.json$/.test(f) ? readJson(path.join(EXAMPLES, f)) : null;
     if (state && state.runId === done.runId) continue;
@@ -107,7 +105,7 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
 
   // One window on one server: the development server with the browser's
   // clock at the given moment, or the server named by --url as it is.
-  async function open({ width, scheme, at = null, examples = EXAMPLES }) {
+  async function open({ width, scheme, at = null, examples = EXAMPLES, hash = '' }) {
     const server = url ? null : await startDevServer({ examples });
     const context = await browser.newContext({ viewport: { width, height: HEIGHTS[width] }, deviceScaleFactor: 1, colorScheme: scheme, reducedMotion: 'reduce' });
     await context.route('**/*', (route) => (LOOPBACK.has(new URL(route.request().url()).hostname) ? route.continue() : route.abort()));
@@ -125,7 +123,8 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
       await page.evaluate(() => document.fonts.ready);
     };
     if (!url && at) await page.clock.install({ time: new Date(at) });
-    await page.goto(url ?? server.url);
+    const base = (url ?? server.url).replace(/\/$/, '');
+    await page.goto(`${base}/${hash}`);
     await page.waitForFunction(() => document.body.dataset.ready === 'yes', null, { timeout: 30000 });
     await settle();
     // A still of the stills directory, or (with a file named) a capture
@@ -150,48 +149,58 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     return { page, settle, shot, close };
   }
 
-  const runScene = async (page, kind) => {
-    await page.click(`.scene[data-kind="${kind}"]`);
-    await page.keyboard.press('r');
-  };
+  // A click on an item of the menu chooses it and runs it.
+  const runScene = (page, kind) => page.click(`.scene[data-kind="${kind}"]`);
   const outcomeIs = (page, outcome) => page.waitForFunction((o) => document.body.dataset.run === o, outcome, { timeout: WAIT_MS });
   const rowsSettled = (page) => page.waitForFunction(() => {
     const rows = [...document.querySelectorAll('#rows .row')];
     return rows.length > 0 && rows.every((row) => row.dataset.status !== 'pending' && row.dataset.status !== 'running');
   }, null, { timeout: WAIT_MS });
-  const mode = (page, key) => page.keyboard.press(key);
+  const key = (page, name) => page.keyboard.press(name);
+  const stoppedNumber = (page) => page.evaluate(() => {
+    const row = document.querySelector('#rows .row[data-status="blocked"]');
+    return row ? Number(row.dataset.index) + 1 : 0;
+  });
 
-  // Scene 2 at the stopped step, that step selected: Story, then Inspect.
-  async function stoppedPair(width, scheme, { story = true, withGrayscale = false } = {}) {
-    const view = await open({ width, scheme, at: momentOf(poisoned, MOMENTS.stopped) });
+  // The walkthrough's opening: the parts, and the two runs to start.
+  async function start(width, scheme, name, mode = null) {
+    const view = await open({ width, scheme });
     try {
-      await runScene(view.page, 'poisoned');
-      await outcomeIs(view.page, 'blocked');
-      await rowsSettled(view.page);
-      const number = await view.page.evaluate(() => {
-        const row = document.querySelector('#rows .row[data-status="blocked"]');
-        return row ? Number(row.dataset.index) + 1 : 0;
-      });
-      if (!number) throw new Error('the stopped run shows no stopped step');
-      await view.page.keyboard.press(String(number));
-      if (story) await view.shot('s2-stopped-story');
-      if (withGrayscale && grayscale) {
-        await view.page.evaluate(() => { document.documentElement.style.filter = 'grayscale(1)'; });
-        await view.shot(null, path.resolve(grayscale));
-        await view.page.evaluate(() => { document.documentElement.style.filter = ''; });
-      }
-      await mode(view.page, 'i');
-      await view.shot('s2-stopped-inspect');
+      if (mode) await key(view.page, mode);
+      await view.shot(name);
     } finally {
       await view.close();
     }
   }
 
-  // Scene 2 at the stopped step with the trace showing: in Story with the
-  // stopped step selected, its rows open and the mark on the call that
-  // decided; then in Inspect with every row open and that call's row opened
-  // in the inspector.
-  async function stoppedTrace(width, scheme, { inspect = true } = {}) {
+  // Scene 2 at the stopped step, that step selected: Story, then Inspect.
+  async function stoppedPair(width, scheme, { story = true, inspect = true, lens = null, withGrayscale = false } = {}) {
+    const view = await open({ width, scheme, at: momentOf(poisoned, MOMENTS.stopped), hash: lens ? `#story-sequence-${lens}` : '' });
+    try {
+      await runScene(view.page, 'poisoned');
+      await outcomeIs(view.page, 'blocked');
+      await rowsSettled(view.page);
+      const number = await stoppedNumber(view.page);
+      if (!number) throw new Error('the stopped run shows no stopped step');
+      await key(view.page, String(number));
+      if (story) await view.shot(lens ? `s2-stopped-${lens}-story` : 's2-stopped-story');
+      if (withGrayscale && grayscale) {
+        await view.page.evaluate(() => { document.documentElement.style.filter = 'grayscale(1)'; });
+        await view.shot(null, path.resolve(grayscale));
+        await view.page.evaluate(() => { document.documentElement.style.filter = ''; });
+      }
+      if (inspect) {
+        await key(view.page, 'i');
+        await view.shot('s2-stopped-inspect');
+      }
+    } finally {
+      await view.close();
+    }
+  }
+
+  // Scene 2 at the stopped step with the trace showing: the stopped step's
+  // rows open and the mark on the call that decided.
+  async function stoppedTrace(width, scheme) {
     const dir = url ? null : examplesForStopped();
     if (dir) temp.push(dir);
     const view = await open({ width, scheme, at: momentOf(poisoned, MOMENTS.stopped), examples: dir ?? EXAMPLES });
@@ -199,83 +208,38 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
       await runScene(view.page, 'poisoned');
       await outcomeIs(view.page, 'blocked');
       await rowsSettled(view.page);
-      const number = await view.page.evaluate(() => {
-        const row = document.querySelector('#rows .row[data-status="blocked"]');
-        return row ? Number(row.dataset.index) + 1 : 0;
-      });
+      const number = await stoppedNumber(view.page);
       if (!number) throw new Error('the stopped run shows no stopped step');
-      await view.page.keyboard.press(String(number));
-      await view.page.keyboard.press('t');
+      await key(view.page, String(number));
+      await key(view.page, 't');
       await view.page.waitForSelector('#trace-body [data-decided="yes"]', { timeout: WAIT_MS });
       await view.shot('s2-stopped-trace-story');
-      if (!inspect) return;
-      await mode(view.page, 'i');
-      await view.page.waitForFunction(() => document.querySelectorAll('#trace-body [data-kind="record"]').length > 0, null, { timeout: WAIT_MS });
-      await view.page.click('#trace-body [data-decided="yes"]');
-      await view.page.waitForSelector('#pane-inspector [data-highlight="yes"]', { timeout: WAIT_MS });
-      await view.shot('s2-stopped-trace-inspect');
     } finally {
       await view.close();
     }
   }
 
-  // Scene 1 on the trace while its grant is being checked: that row reads
-  // how long the check has taken so far, and its bar is growing.
-  async function runningTrace(width, scheme) {
-    const dir = url ? null : examplesInProgress(MOMENTS.granting);
-    if (dir) temp.push(dir);
-    const view = await open({ width, scheme, at: momentOf(clean, MOMENTS.granting), examples: dir ?? EXAMPLES });
-    try {
-      await view.page.keyboard.press('t');
-      await runScene(view.page, 'clean');
-      await view.page.waitForFunction(() => document.querySelector('#trace-body [data-span="grant"]')?.dataset.status === 'running', null, { timeout: WAIT_MS });
-      await view.shot('s1-running-trace-story');
-    } finally {
-      await view.close();
-    }
-  }
-
-  // Scene 2 replayed in the flow, standing at step 3: by the step controls.
-  async function replayFlow(width, scheme) {
-    const view = await open({ width, scheme, at: momentOf(poisoned, MOMENTS.stopped) });
-    try {
-      await runScene(view.page, 'poisoned');
-      await outcomeIs(view.page, 'blocked');
-      await rowsSettled(view.page);
-      await view.page.click('#step-replay');
-      for (let i = 0; i < 3; i += 1) await view.page.click('#step-forward');
-      await view.shot('s2-replay-step3-flow-story');
-    } finally {
-      await view.close();
-    }
-  }
-
-  // Scene 1 while it runs, the grant countdown about half way.
+  // Scene 1 while it runs: a step being checked, the grant counting down.
   async function running(width, scheme) {
     const dir = url ? null : examplesInProgress(MOMENTS.running);
     if (dir) temp.push(dir);
-    const view = await open({ width, scheme, at: momentOf(clean, MOMENTS.running), examples: dir ?? EXAMPLES });
+    const view = await open({ width, scheme, at: url ? null : momentOf(clean, MOMENTS.running), examples: dir ?? EXAMPLES });
     try {
       await runScene(view.page, 'clean');
-      await view.page.waitForFunction(() => {
-        const count = document.querySelector('#pane-flow .countdown');
-        if (!count || document.body.dataset.run !== 'running') return false;
-        const left = (Date.parse(count.dataset.expires) - Date.now()) / 1000;
-        const ttl = Number(count.dataset.ttl);
-        const checking = document.querySelector('#rows .row[data-status="running"]') !== null;
-        return left > 0 && ((checking && left <= ttl * 0.6) || left <= ttl * 0.5);
-      }, null, { timeout: WAIT_MS });
+      await view.page.waitForFunction(() => document.body.dataset.run === 'running'
+        && document.querySelector('#rows .row[data-status="running"]') !== null
+        && document.querySelector('#rows .countdown[data-done="no"]') !== null, null, { timeout: WAIT_MS });
       await view.shot('s1-running-story');
     } finally {
       await view.close();
     }
   }
 
-  // Scene 1 paid, then (in Inspect) the offline check of that finished run.
-  async function paid(width, scheme, name, key) {
+  // Scene 1 paid: the outcome, and the next run it offers.
+  async function paid(width, scheme, name, mode = null) {
     const view = await open({ width, scheme, at: momentOf(clean, MOMENTS.paid) });
     try {
-      if (key) await mode(view.page, key);
+      if (mode) await key(view.page, mode);
       await runScene(view.page, 'clean');
       await outcomeIs(view.page, 'paid');
       await rowsSettled(view.page);
@@ -285,34 +249,27 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     }
   }
 
-  async function offline(width, scheme) {
-    const view = await open({ width, scheme, at: new Date(Date.parse(clean.finishedAt) + MOMENTS.afterFinish * 1000).toISOString() });
+  // The audit of a finished run: the Records tab, every record checked.
+  async function audit(width, scheme, name, mode, kind = 'clean', outcome = 'paid') {
+    const finished = kind === 'clean' ? clean : poisoned;
+    const view = await open({ width, scheme, at: new Date(Date.parse(finished.finishedAt) + MOMENTS.afterFinish * 1000).toISOString() });
     try {
-      await mode(view.page, 'i');
-      await runScene(view.page, 'clean');
-      await outcomeIs(view.page, 'paid');
+      if (mode) await key(view.page, mode);
+      await runScene(view.page, kind);
+      await outcomeIs(view.page, outcome);
       await rowsSettled(view.page);
-      // The check needs a finished run; on a server of its own time that
+      // The audit needs a finished run; on a server of its own time that
       // comes after the last step.
       const answered = view.page.waitForResponse((res) => /\/offline-check$/.test(new URL(res.url()).pathname), { timeout: WAIT_MS });
       const deadline = Date.now() + WAIT_MS;
       let asked = false;
       view.page.on('request', (req) => { if (/\/offline-check$/.test(new URL(req.url()).pathname)) asked = true; });
       while (!asked && Date.now() < deadline) {
-        await view.page.keyboard.press('o');
+        await key(view.page, 'o');
         await new Promise((resolve) => { setTimeout(resolve, 500); });
       }
       await answered;
-      await view.shot('s6-offline-inspect');
-    } finally {
-      await view.close();
-    }
-  }
-
-  async function start(width, scheme, name, key) {
-    const view = await open({ width, scheme });
-    try {
-      if (key) await mode(view.page, key);
+      await view.page.waitForFunction(() => document.body.dataset.tab === 'records', null, { timeout: WAIT_MS });
       await view.shot(name);
     } finally {
       await view.close();
@@ -331,30 +288,24 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
     }
     log(`browser start: sandbox ${started.sandbox}; ${started.outside.url} refused with ${started.outside.refusedWith}; ${started.control.url} loaded with status ${started.control.status}`);
     if (pair) {
-      // The pair of the flow, and nothing else.
       await stoppedPair(1440, 'light', { withGrayscale: true });
-    } else {
-      // The pair of the trace, ahead of every other still.
+    } else if (tracePair) {
       await stoppedTrace(1440, 'light');
-    }
-    if (!pair && !tracePair) {
-      await start(1440, 'light', 'start-menu-story', null);
-      await runningTrace(1440, 'light');
-      await stoppedTrace(1440, 'dark');
-      await stoppedTrace(1920, 'light', { inspect: false });
-      await replayFlow(1440, 'light');
-      // The stills of the message flow.
-      await stoppedPair(1440, 'light', { withGrayscale: true });
-      await stoppedPair(1440, 'dark');
+    } else {
+      await start(1440, 'light', 'start-story');
       await running(1440, 'light');
-      await paid(1440, 'light', 's1-paid-story', null);
-      await offline(1440, 'light');
-      await start(1440, 'light', 'start-story', null);
-      await stoppedPair(1920, 'light');
+      await paid(1440, 'light', 's1-paid-story');
+      await stoppedPair(1440, 'light', { withGrayscale: true });
+      await stoppedPair(1440, 'light', { inspect: false, lens: 'finance' });
+      await stoppedPair(1440, 'dark');
+      await stoppedTrace(1440, 'light');
+      await audit(1440, 'light', 's6-offline-inspect', 'i', 'poisoned', 'blocked');
+      await audit(1440, 'dark', 's6-offline-records-story', null, 'poisoned', 'blocked');
+      await stoppedPair(1920, 'light', { inspect: false });
+      await start(1920, 'light', 'start-story');
+      await paid(1920, 'dark', 's1-paid-story');
       await start(1280, 'light', 'start-inspect', 'i');
-      await paid(1280, 'light', 's1-paid-inspect', 'i');
       await stoppedPair(1280, 'light', { story: false });
-      await offline(1280, 'light');
     }
   } finally {
     await chrome.close();

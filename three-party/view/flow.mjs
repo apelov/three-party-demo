@@ -19,6 +19,9 @@ import { stateOf, chip, setChip, badge, countdown, headlineOf, columnsOf, partOf
 import { iconEl } from './icons.mjs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+// How long a request's marker is shown travelling: the length of its
+// transition in the stylesheet (--m3), and a little after it.
+const TRAVEL_MS = 700;
 
 export { partOf, shownPart };
 
@@ -262,6 +265,15 @@ function updateRow(app, row, i, step) {
   const state = stateOf(app, status, veiled ? from.view('replay') : from.run(`steps[${i}].status`));
   const selected = app.selection.kind === 'step' && app.selection.index === i;
 
+  // A step that leaves pending while the page watches sends its request
+  // along the arrow once: the marker travels from the lifeline that acts to
+  // the one that checks, and the state settles where it arrives.
+  const before = row.dataset.status;
+  if (before === 'pending' && status !== 'pending' && !app.reducedMotion) {
+    row.dataset.travel = 'yes';
+    clearTimeout(row.travelTimer);
+    row.travelTimer = setTimeout(() => { delete row.dataset.travel; }, TRAVEL_MS);
+  }
   row.dataset.status = status;
   row.dataset.tone = state.tone;
   row.dataset.state = state.icon;
@@ -275,7 +287,7 @@ function updateRow(app, row, i, step) {
 
   // The grant countdown, while the run goes on, on the step that issued the
   // grant in force (the last grant step that passed).
-  const counts = !veiled && !app.run.finishedAt && baseId(step.id) === 'grant' && status === 'passed' && Boolean(app.run.grant?.expiresAt)
+  const counts = !veiled && !app.run.outcome && baseId(step.id) === 'grant' && status === 'passed' && Boolean(app.run.grant?.expiresAt)
     && app.run.steps.findLastIndex((s) => baseId(s.id) === 'grant' && s.status === 'passed') === i;
   const slot = row.querySelector('.row-state');
   let count = slot.querySelector(':scope > .countdown');

@@ -368,7 +368,9 @@ export function auditVerdict(app, rec, source, tampered) {
   const states = app.labels.states ?? {};
   const pass = rec.verdict === 'pass-1-6';
   const words = pass ? app.w.chosen('offline.pass', source('verdict')) : app.w.line('offline.reject', { n: [rec.firstFailingStep, source('firstFailingStep')] });
-  const tone = pass ? (tampered ? 'warn' : 'ok') : (tampered ? 'neutral' : 'stop');
+  // A tampered copy the verifier rejected is shown rejected, in the stop's
+  // ink; the line beside it says that this was expected.
+  const tone = pass ? (tampered ? 'warn' : 'ok') : 'stop';
   return verdictEl(tone, pass ? states.passed?.icon : states.blocked?.icon, words, { verdict: String(rec.verdict) });
 }
 
@@ -389,6 +391,8 @@ function recordOfStep(app, i, step) {
     });
     return el('div', { class: 'records' }, list('records'), list('tampered'));
   }
+  // A step not yet decided has its record to come; a step that did not run has none.
+  if (step.status === 'pending' || step.status === 'running') return put('p', 'insp-note', app.w.word('insp.notSigned'));
   if (!step.actionFile && !step.recordFile) return put('p', 'insp-note', app.w.word('insp.noRecord'));
   if (!step.recordFile) return put('p', 'insp-note', app.w.word('insp.notSigned'));
   const found = manifestOf(app);
@@ -398,11 +402,34 @@ function recordOfStep(app, i, step) {
   const offline = offlineOf(app);
   const check = Array.isArray(offline?.records) ? offline.records.findIndex((r) => r.file === step.recordFile) : -1;
   const cSource = (p, shape) => from.doc('offline-check', `records[${check}].${p}`, shape);
-  return table(
-    row(app.w.word('insp.file'), el('a', { class: 'record-file mono', href: fileUrl(app.runId, step.recordFile), src: from.run(`steps[${i}].recordFile`), text: String(step.recordFile), data: { focusKey: `link:${step.recordFile}` } })),
-    n >= 0 ? row(app.w.word('insp.sha'), token(app, found.manifest, `records[${n}].sha256`, found.source)) : null,
-    signer ? row(app.w.word('insp.signedBy'), put('span', null, app.w.chosen('record.signerValue', from.run(`steps[${writer}].detail.signer`)))) : null,
-    row(app.w.word('insp.audit'), check >= 0 ? auditVerdict(app, offline.records[check], cSource, false) : put('span', 'muted', app.w.word('insp.notAudited'))));
+  return [
+    table(
+      row(app.w.word('insp.file'), el('a', { class: 'record-file mono', href: fileUrl(app.runId, step.recordFile), src: from.run(`steps[${i}].recordFile`), text: String(step.recordFile), data: { focusKey: `link:${step.recordFile}` } })),
+      n >= 0 ? row(app.w.word('insp.sha'), token(app, found.manifest, `records[${n}].sha256`, found.source)) : null,
+      signer ? row(app.w.word('insp.signedBy'), put('span', null, app.w.chosen('record.signerValue', from.run(`steps[${writer}].detail.signer`)))) : null,
+      row(app.w.word('insp.audit'), check >= 0 ? auditVerdict(app, offline.records[check], cSource, false) : put('span', 'muted', app.w.word('insp.notAudited')))),
+    entries(app, step.recordFile),
+  ];
+}
+
+// In Inspect, the package itself: a control that lists the names of its
+// entries and sets out its metadata.json, read from the zip on this page.
+function entries(app, rel) {
+  if (app.mode !== 'inspect') return null;
+  const zip = app.zipOf(rel);
+  const word = app.w.word('inspector.entries');
+  if (zip?.state !== 'ready' || !word) return null;
+  const open = app.openRecord === rel;
+  const meta = zip.metadata && typeof zip.metadata === 'object' ? zip.metadata : null;
+  const metaSource = (path, shape) => from.file(`${rel}!metadata.json`, path, shape);
+  return el('div', { class: 'record', data: { file: rel, kind: 'records' } },
+    el('button', { class: 'copy-btn record-open', type: 'button', src: word.src, text: word.text, 'aria-expanded': open ? 'true' : 'false', 'aria-label': `${word.text} ${rel}`, data: { focusKey: `entries:${rel}` }, on: { click: () => app.toggleRecord(rel) } }),
+    open ? el('div', { class: 'entries', data: { entriesOf: rel } },
+      el('ul', { class: 'kv-list' }, zip.entries.map((entry, n) => el('li', { class: 'mono', src: from.file(`${rel}!`, `entries[${n}]`), text: entry.name }))),
+      meta ? [
+        put('span', 'meta', app.w.label('parties.rawIdentifiersNote')),
+        table(Object.keys(meta).map((key) => row(fieldName(meta, key, metaSource), put('span', 'mono', value(meta, key, undefined, metaSource))))),
+      ] : null) : null);
 }
 
 // ---- The panels

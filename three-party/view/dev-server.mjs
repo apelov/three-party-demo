@@ -46,7 +46,7 @@ const TYPES = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
 };
-const NOT_SERVED = new Set(['dev-server.mjs', 'stills.mjs']);
+const NOT_SERVED = new Set(['dev-server.mjs', 'stills.mjs', 'record.mjs']);
 const POLICY = "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
