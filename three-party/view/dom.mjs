@@ -37,7 +37,7 @@ export function el(tag, props, ...kids) {
       else if (key === 'src') node.dataset.src = value;
       else if (key === 'text') node.textContent = value;
       else if (key === 'data') Object.assign(node.dataset, value);
-      // Styles go through the object model: the page's policy refuses a style attribute.
+      // Styles are set as properties: the page's policy refuses a style attribute.
       else if (key === 'style') Object.assign(node.style, value);
       else if (key === 'on') for (const [name, fn] of Object.entries(value)) node.addEventListener(name, fn);
       else node.setAttribute(key, value === true ? '' : String(value));

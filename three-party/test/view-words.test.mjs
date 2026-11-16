@@ -25,81 +25,51 @@ const lanes = (page) => page.evaluate(() => [...document.querySelectorAll('#lane
   shown: [...lane.querySelectorAll('.badge, .lane-note')].every((n) => n.getBoundingClientRect().height > 0),
 })));
 
-test('stand-ins: at 1440 and at 1920 the crossing and record column headers carry the Stand-in badge with their note under it; no other column does', async () => {
-  for (const [width, height] of [[1440, 900], [1920, 1080]]) {
-    for (const hash of ['#story', '#inspect']) {
-      const view = await openView(browser, { width, height, hash });
-      try {
-        const heads = await lanes(view.page);
-        assert.deepEqual(heads.map((h) => h.col), LABELS.columns);
-        assert.deepEqual(heads.map((h) => h.title), [LABELS.parties.agent, LABELS.parts.checkpoint.label, LABELS.parts.crossing.label, LABELS.parts.bank.label, LABELS.parts.record.label]);
-        for (const head of heads) {
-          const part = LABELS.parts[head.col];
-          if (part?.standIn) {
-            assert.equal(head.badge, COPY['marker.standIn'], `${width} ${hash} ${head.col}`);
-            assert.equal(head.note, part.standInNote, `${width} ${hash} ${head.col}`);
-            assert.equal(head.noteUnderBadge, true, `${width} ${hash} ${head.col}: the note stands under the badge`);
-            assert.equal(head.shown, true);
-          } else {
-            assert.equal(head.badge, null, head.col);
-            assert.equal(head.note, null, head.col);
-          }
-          // The legend line of each part: in the header from 1680 by 1000.
-          if (width >= 1680) assert.equal(head.legend, part?.text ?? null, `${head.col}: the legend line`);
-        }
-      } finally {
-        await view.close();
-      }
+test('stand-ins in the lane heads, at 1280, 1440 and 1920, in Story and in Inspect: the crossing\'s head alone carries the Stand-in mark, under its title in place of a credit, with its note as the mark\'s tooltip; the record part is no stand-in', async () => {
+  for (const [width, height, hash] of [[1280, 800, '#inspect'], [1440, 900, '#story'], [1440, 900, '#inspect'], [1920, 1080, '#story']]) {
+    const view = await openView(browser, { width, height, hash });
+    try {
+      await runAndWait(view, 'clean', 'paid');
+      const lanes = await view.page.evaluate(() => [...document.querySelectorAll('#lanes-head .lane')].map((lane) => ({ col: lane.dataset.col, badge: lane.querySelector('.lane-credit .badge')?.textContent ?? null, tip: lane.querySelector('.lane-credit').getAttribute('title'), credit: lane.querySelector('.lane-credit').textContent })));
+      const at = `${width} ${hash}`;
+      assert.deepEqual(lanes.filter((l) => l.badge).map((l) => l.col), ['crossing'], at);
+      const crossing = lanes.find((l) => l.col === 'crossing');
+      assert.deepEqual([crossing.badge, crossing.tip], [COPY['marker.standIn'], LABELS.parts.crossing.standInNote], at);
+      const record = lanes.find((l) => l.col === 'record');
+      assert.deepEqual([record.badge, record.tip, record.credit], [null, null, COPY['credit.record']], at);
+      assert.equal(LABELS.parts.record.standIn, false);
+    } finally {
+      await view.close();
     }
   }
 });
 
-test('stand-ins: at 1280 the headers keep the badge, and the note stands in the inspector of each stand-in step and in the run overview', async () => {
+test('stand-ins in the inspector: the crossing step carries the mark in its head, and its note in full with its detail line in the artifact; the run overview\'s parts carry the note too', async () => {
   const view = await openView(browser, { width: 1280, height: 800, hash: '#inspect' });
-  try {
-    const heads = await lanes(view.page);
-    for (const head of heads) assert.equal(head.badge, LABELS.parts[head.col]?.standIn ? COPY['marker.standIn'] : null, head.col);
-    await runAndWait(view, 'clean', 'paid');
-    for (const [key, col] of [['3', 'crossing'], ['6', 'record']]) {
-      await view.page.keyboard.press(key);
-      const part = await view.page.evaluate(() => ({ badge: document.querySelector('#pane-inspector .insp-part .badge')?.textContent, note: document.querySelector('#pane-inspector .insp-part [data-note="stand-in"]')?.textContent }));
-      assert.deepEqual(part, { badge: COPY['marker.standIn'], note: LABELS.parts[col].standInNote }, col);
-    }
-    await view.page.keyboard.press('0');
-    const key = await view.page.evaluate(() => document.querySelector('#pane-inspector [data-key="parts"]').textContent);
-    for (const col of ['crossing', 'record']) assert.ok(key.includes(LABELS.parts[col].standInNote), col);
-    for (const col of ['checkpoint', 'crossing', 'record']) assert.ok(key.includes(LABELS.parts[col].text), `${col}: the legend line`);
-  } finally {
-    await view.close();
-  }
-});
-
-test('stand-ins in the inspector: the crossing step carries its note and its detail line; the record step carries the timestamp note under the badge and the raw entry in the artifact pane', async () => {
-  const view = await openView(browser, { hash: '#inspect' });
   try {
     await runAndWait(view, 'clean', 'paid');
     await view.page.keyboard.press('3');
     await view.settle();
-    const crossing = await view.page.evaluate(() => document.querySelector('#pane-inspector .insp-part').textContent);
-    assert.ok(crossing.includes(COPY['marker.standIn']));
-    assert.ok(crossing.includes(LABELS.parts.crossing.standInNote));
-    assert.ok(crossing.includes(LABELS.parts.crossing.detail));
-    assert.ok(crossing.includes(CLEAN_DONE.steps[2].partLabel));
-
+    const crossing = await view.page.evaluate(() => {
+      const host = document.getElementById('pane-inspector');
+      return { badge: host.querySelector('.insp-head .badge')?.textContent ?? null, note: host.querySelector('[data-note="stand-in"]')?.textContent ?? null, detail: host.querySelector('[data-section="artifact"] [data-note="detail"]')?.textContent ?? null };
+    });
+    assert.deepEqual(crossing, { badge: COPY['marker.standIn'], note: LABELS.parts.crossing.standInNote, detail: LABELS.parts.crossing.detail });
+    await view.page.keyboard.press('0');
+    await view.settle();
+    const parts = await view.page.evaluate(() => [...document.querySelectorAll('#pane-inspector [data-key="parts"] [data-note="stand-in"]')].map((n) => n.textContent));
+    assert.deepEqual(parts, [LABELS.parts.crossing.standInNote]);
+    // The record step: no mark; its timestamp line carries the map's note, and
+    // the run's own entry stands in the step as the run state holds it.
     await view.page.keyboard.press('6');
     await view.settle();
     const record = await view.page.evaluate(() => {
-      const note = document.querySelector('#pane-inspector [data-note="timestamp"]');
-      const rowOf = note.closest('.kv-row');
-      return { key: rowOf.querySelector('.kv-key').textContent, badge: rowOf.querySelector('.badge').textContent, note: note.textContent, badgeBefore: Boolean(rowOf.querySelector('.badge').compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING), summary: [...document.querySelectorAll('#pane-inspector .kv')].map((n) => n.textContent).join(' '), artifacts: [...document.querySelectorAll('#pane-inspector .artifact-body')].map((n) => n.textContent).join('\n') };
+      const host = document.getElementById('pane-inspector');
+      const stamp = host.querySelector('[data-note="timestamp"]');
+      return { badge: host.querySelector('.insp-head .badge')?.textContent ?? null, key: stamp.closest('.kv-row').querySelector('.kv-key').textContent, note: stamp.textContent, raw: host.querySelector('.artifact[data-file="state"] .artifact-body').textContent };
     });
-    const raw = CLEAN_DONE.steps[5].detail.timestampEntry;
-    assert.equal(record.key, COPY['record.timestamp']);
-    assert.equal(record.badge, COPY['marker.standIn']);
-    assert.equal(record.note, LABELS.timestamp.standInNote);
-    assert.equal(record.badgeBefore, true, 'the note follows the badge');
-    assert.equal(record.summary.includes(raw), false, 'the summary shows the note, not the raw entry');
-    assert.ok(record.artifacts.includes(`"timestampEntry": "${raw}"`), 'the raw entry is in the artifact pane');
+    assert.deepEqual({ badge: record.badge, key: record.key, note: record.note }, { badge: null, key: COPY['record.timestamp'], note: LABELS.timestamp.standInNote });
+    assert.ok(record.raw.includes(`"timestampEntry": "${CLEAN_DONE.steps[5].detail.timestampEntry}"`));
   } finally {
     await view.close();
   }
@@ -119,16 +89,21 @@ test('a record whose timestamp entry names a test authority takes the test autho
   }
 });
 
-test('the intent check is a rule: the row and the inspector name it so, in the deck\'s words', async () => {
+test('the intent check is a rule: the row, the inspector and the outcome name it so, in the deck\'s words', async () => {
   const view = await openView(browser, { hash: '#inspect' });
   try {
     await runAndWait(view, 'poisoned', 'blocked');
     await view.page.keyboard.press('4');
     await view.settle();
-    const seen = await view.page.evaluate(() => ({ row: document.querySelector('#rows .row[data-step="intent"]').textContent, heading: document.querySelector('#pane-inspector .insp-section-title').textContent, rule: document.querySelector('#pane-inspector .insp-section .insp-text').textContent, body: document.body.innerText }));
-    assert.equal(seen.heading, COPY['intent.heading']);
-    assert.equal(seen.rule, COPY['intent.rule']);
+    const seen = await view.page.evaluate(() => ({ row: document.querySelector('#rows .row[data-step="intent"]').textContent, heading: document.querySelector('#pane-inspector [data-section="checked"] .insp-section-title').textContent, rule: document.querySelector('#pane-inspector [data-section="checked"] .insp-text').textContent, outcome: document.querySelector('#outcome-end [data-outcome-part="headline"]').textContent }));
+    assert.equal(seen.heading, COPY['sect.checked']);
+    assert.equal(seen.rule, POISONED.steps[3].detail.rule);
+    assert.equal(seen.rule, COPY['intent.rule'], 'the run\'s own sentence of the rule is the deck\'s');
     assert.ok(seen.row.includes(POISONED.steps[3].title) && /intent rule/.test(seen.row));
+    assert.equal(seen.outcome, COPY['outcome.stoppedIntent']);
+    // No lens line calls the check anything but a rule.
+    const banned = new RegExp(j('mod', 'el|detec', 'tor|classi', 'fier|\\bA', 'I\\b|sm', 'art|intelli', 'gent'), 'i');
+    for (const [key, value] of Object.entries(COPY).filter(([k]) => /^lens\./.test(k))) assert.equal(banned.test(value), false, key);
     // Outside the bytes the run wrote, no word on the screen names the
     // check as anything but a rule.
     const outside = await view.page.evaluate(() => {
@@ -154,7 +129,8 @@ test('no file of the view calls the check anything but a rule', () => {
   assert.equal(COPY['hidden.poisoned'], POISONED.poisonedLine);
 });
 
-test('the footer: the mock bank line once, in the footer, on every state; the poisoned line once, in the invoice box', async () => {
+test('the footer: the mock bank line once, in the footer, on every state, beside the line of keys; the poisoned line once, in the run overview\'s invoice box, and the hidden text highlighted in the sequence', async () => {
+  const keysLine = COPY['ui.keys'].replace('{next}', LABELS.keys.next).replace('{prev}', LABELS.keys.prev).replace('{run}', LABELS.keys.run).replace('{audit}', LABELS.keys.audit).replace('{help}', LABELS.keys.help);
   const view = await openView(browser);
   const { page } = view;
   try {
@@ -168,7 +144,7 @@ test('the footer: the mock bank line once, in the footer, on every state; the po
       const seen = await read();
       assert.deepEqual(seen.mock, [true], `${label}: the mock bank line, once, in the footer`);
       assert.equal(seen.inBody, 1, `${label}: no second copy inside a longer text`);
-      assert.deepEqual(seen.footer, [COPY['footer.mock']], label);
+      assert.deepEqual(seen.footer, [COPY['footer.mock'], keysLine], label);
       assert.deepEqual(seen.poisoned, withPoisoned ? [true] : [], `${label}: the poisoned line`);
     };
     await check('start', false);
@@ -177,11 +153,12 @@ test('the footer: the mock bank line once, in the footer, on every state; the po
     assert.equal(Object.hasOwn(CLEAN_DONE, 'fictionalLine'), false, 'the run carries no fictional line');
     await page.keyboard.press('o');
     await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
-    await check('offline check', false);
+    await check('audit', false);
     await runAndWait(view, 'poisoned', 'blocked');
     assert.equal(Object.hasOwn(POISONED, 'fictionalLine'), false);
-    // The invoice box with the hidden text is in the run overview at this size.
     await check('poisoned, stopped, step selected', false);
+    const hidden = await page.evaluate(() => ({ label: document.querySelector('#invoice .hidden-label').textContent, text: document.querySelector('#invoice mark.hidden-text').textContent }));
+    assert.deepEqual(hidden, { label: COPY['hidden.label'], text: POISONED.invoice.hidden.text }, 'the sequence shows the hidden text, highlighted');
     await page.keyboard.press('0');
     await check('poisoned, run overview', true);
     await page.keyboard.press('i');
@@ -190,17 +167,6 @@ test('the footer: the mock bank line once, in the footer, on every state; the po
     assert.deepEqual(box, { label: COPY['hidden.label'], text: POISONED.invoice.hidden.text });
   } finally {
     await view.close();
-  }
-
-  // From 1680 by 1000, Inspect shows the full card with the hidden text in the middle pane, and the overview shows it without.
-  const wide = await openView(browser, { width: 1920, height: 1080, hash: '#inspect' });
-  try {
-    await runAndWait(wide, 'poisoned', 'blocked');
-    await wide.page.keyboard.press('0');
-    const where = await wide.page.evaluate((poisoned) => [...document.querySelectorAll('.hidden-note')].filter((n) => n.textContent === poisoned).map((n) => n.closest('#invoice') !== null), POISONED.poisonedLine);
-    assert.deepEqual(where, [true], 'once, in the invoice card of the middle pane');
-  } finally {
-    await wide.close();
   }
 });
 
