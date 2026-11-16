@@ -487,7 +487,8 @@ const ACTS = ['clean', 'poisoned', OFFLINE_KIND];
 
 // The one action the outcome offers next: the first act of the walkthrough
 // not yet done, whatever order the acts were taken in; once all three are
-// done, both runs among them, the start again.
+// done, the audit of a finished run whose records are not checked yet, and
+// then the start again.
 function nextAction() {
   const run = app.run;
   if (!run?.outcome) return null;
@@ -497,7 +498,7 @@ function nextAction() {
   const quiet = app.tab === 'records' && !audited && auditReady();
   const tone = quiet ? 'btn-quiet' : 'btn-primary';
   const cls = `btn ${tone}`;
-  const act = ACTS.find((kind) => !app.done.has(kind));
+  const act = ACTS.find((kind) => !app.done.has(kind)) ?? (!audited && auditReady() ? OFFLINE_KIND : undefined);
   if (act === OFFLINE_KIND) {
     if (!auditReady()) return null;
     const words = app.w.word('ui.audit');

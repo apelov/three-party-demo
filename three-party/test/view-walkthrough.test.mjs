@@ -115,7 +115,7 @@ test('the outcome offers the first act not yet done: after the poisoned invoice 
   }
 });
 
-test('after the normal payment and its audit the outcome offers the poisoned invoice, not the start again', async () => {
+test('after the normal payment and its audit the outcome offers the poisoned invoice, not the start again; after the poisoned invoice, the audit of its records comes before the start again', async () => {
   const view = await openView(browser);
   const { page } = view;
   try {
@@ -129,6 +129,17 @@ test('after the normal payment and its audit the outcome offers the poisoned inv
     const seen = await now(page);
     assert.equal(seen.next, 'poisoned', 'one run not yet done');
     assert.equal(seen.primaries.length, 1);
+    // The poisoned invoice next. Its records are not checked yet, so the
+    // audit comes before the start again, although an audit was done before.
+    await page.click('#next-action');
+    await runIs(page, 'blocked');
+    await view.settle();
+    assert.equal((await now(page)).next, 'audit', 'a finished run whose records are not checked yet: the audit');
+    await page.click('#next-action');
+    await audited(page);
+    await view.settle();
+    assert.equal((await now(page)).next, 'start-again', 'both runs done and this run audited: the start again');
+    assert.deepEqual(view.errors, []);
   } finally {
     await view.close();
   }
