@@ -1,4 +1,4 @@
-# Three-party demo
+# Three-party demo (WIP) 
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
@@ -125,10 +125,12 @@ Ready. Open http://127.0.0.1:7390/ in a browser.
 Press Ctrl+C to stop.
 ```
 
-Open the address. On the left, choose scene 1 (Normal payment) or scene 2
-(Poisoned invoice) and press the control under the list. A run takes a little
-over one minute. Once a run has finished, scene 6 (Audit later) runs the
-offline check on its records.
+Open the address and press **Run the normal payment**. A run takes a little
+over one minute; when it is paid, press **Run the poisoned invoice**. Once a
+run has finished, **Audit the records** checks its records offline. **View
+as** chooses what each step's panel leads with (for a security lead, finance,
+a platform engineer or a standards engineer), and **Inspect** opens every
+field.
 
 The same two runs in a terminal, with no browser:
 
@@ -150,8 +152,9 @@ example), Linux reports "not measured" in the same way.
 
 ## The screens
 
-The pictures are taken from the example files in `three-party/examples/`, not
-from a live run.
+The pictures are taken from runs of the demo itself, with AI2II's files
+fetched: `node three-party/view/stills.mjs --url <address>` against a demo
+started with `node three-party/bin/start.mjs --serve --pace 2`.
 
 The normal payment, paid:
 
@@ -185,8 +188,11 @@ npm run test:three-party
 npm test
 ```
 
-TESTS_LINE The first suite drives the screens in a browser and takes several
-minutes.
+`npm run test:three-party` checks the engine, the records, the verifier, the
+crossing and the screens. It drives the screens in the installed Google
+Chrome, which it needs, and takes several minutes. `npm test` checks the
+vendored secretless-ai build, and that nothing in the installed tree runs at
+install time.
 
 ## License
 
