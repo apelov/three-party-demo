@@ -1,0 +1,29 @@
+{
+  "revision": "three-party contract revision 2",
+  "parts": {
+    "checkpoint": { "label": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "steps": ["credential", "grant", "intent", "grant-again"] },
+    "crossing": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "steps": ["crossing", "received"] },
+    "record": { "label": "AEP", "standIn": true, "standInNote": "Our writer, in the AEP format. Stand-in label until the format is confirmed.", "steps": ["record"] },
+    "bank": { "label": "Supplier's bank", "standIn": false, "standInNote": null, "steps": ["pay", "pay-again"] }
+  },
+  "parties": {
+    "agent": "Payments agent",
+    "bank": "Supplier's bank",
+    "supplier": "Supplier",
+    "domainA": "Payments agent's domain",
+    "domainB": "Supplier's bank's domain",
+    "rawIdentifiersNote": "Fictional test identifiers."
+  },
+  "timestamp": {
+    "standInNote": "Stand-in: no timestamp authority.",
+    "testAuthorityNote": "Test timestamp authority made for this demo; not a key in use anywhere."
+  },
+  "scenes": [
+    { "id": 1, "kind": "clean", "button": "Run the clean invoice", "priority": "must" },
+    { "id": 2, "kind": "poisoned", "button": "Run the poisoned invoice", "priority": "must" },
+    { "id": 6, "kind": "offline-check", "button": "Offline check", "priority": "must" },
+    { "id": 3, "kind": "tampered", "button": "Run the tampered agent", "priority": "should" },
+    { "id": 4, "kind": "expired", "button": "Run the expired grant", "priority": "should" },
+    { "id": 5, "kind": "received", "button": "What the bank received", "priority": "stand-in", "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied." }
+  ]
+}

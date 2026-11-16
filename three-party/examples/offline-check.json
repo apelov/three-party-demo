@@ -1,0 +1,76 @@
+{
+  "runId": "clean-20261115T135409Z",
+  "at": "2026-11-15T13:54:10Z",
+  "verifier": {
+    "entry": "three-party/src/verifier/aep-verify.mjs",
+    "sha256": "a1c794b82323bc908059786f9913b4072aa56150fc2ad4d999db3b8e0642af6c",
+    "source": "written for this demo from the format text, steps 1 to 6"
+  },
+  "pin": "../runs.pins/clean-20261115T135409Z.pub.pem",
+  "pinSha256": "84e543995bd48f0b7a2ffadb79fe410273cd0c19dcd157bf6e03e659b3fb0cbc",
+  "network": "denied: sandbox-exec profile (version 1) (allow default) (deny network*); control: CONNECTED outside, EPERM inside",
+  "records": [
+    {
+      "file": "records/01-credential.aep",
+      "sha256": "8dee5f17be6a1d5f1a29d0236fbe6e3b29cb7f98029d8515b7cd61b74ce6c3ee",
+      "verdict": "pass-1-6",
+      "firstFailingStep": null,
+      "notes": [
+        "steps 7 to 10 not run by this verifier"
+      ]
+    },
+    {
+      "file": "records/02-grant.aep",
+      "sha256": "139f48d51cad1570f0b437ab397ee2df69a10de1d8d0a2a64fd48fce6f16dff8",
+      "verdict": "pass-1-6",
+      "firstFailingStep": null,
+      "notes": [
+        "steps 7 to 10 not run by this verifier"
+      ]
+    },
+    {
+      "file": "records/03-crossing.aep",
+      "sha256": "90e0360b89ca1f88b58dffdb7d8cca9a1ff1c7f958e32b290a62352940d8cca2",
+      "verdict": "pass-1-6",
+      "firstFailingStep": null,
+      "notes": [
+        "steps 7 to 10 not run by this verifier"
+      ]
+    },
+    {
+      "file": "records/04-intent.aep",
+      "sha256": "4957771ed69fdbfb09bbe229fa38a873c3b10bee9f87382c53c49ae4656c930a",
+      "verdict": "pass-1-6",
+      "firstFailingStep": null,
+      "notes": [
+        "steps 7 to 10 not run by this verifier"
+      ]
+    },
+    {
+      "file": "records/05-pay.aep",
+      "sha256": "a09dbacdd397e5b8315daed1322228d3dc546205df38d4d520ed208afe21027d",
+      "verdict": "pass-1-6",
+      "firstFailingStep": null,
+      "notes": [
+        "steps 7 to 10 not run by this verifier"
+      ]
+    }
+  ],
+  "tampered": [
+    {
+      "file": "records/tampered/05-pay.aep",
+      "sha256": "866d8d5e80c0c11f03d9d009da6bf2c9b355d23cf55e119544fcd9f03aa6b21e",
+      "verdict": "reject",
+      "firstFailingStep": 3,
+      "notes": [
+        "step 3: canonical.bin is neither response.txt, LF, JCS(metadata.json) nor response.txt alone",
+        "steps 7 to 10 not run by this verifier"
+      ]
+    }
+  ],
+  "summary": {
+    "pass": 5,
+    "reject": 1,
+    "expectedRejects": 1
+  }
+}

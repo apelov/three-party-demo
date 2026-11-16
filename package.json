@@ -1,0 +1,24 @@
+{
+  "name": "three-party-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local demo in which a scripted payments agent pays one supplier invoice at a mock bank, with a signed record of each action that is verified offline.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "three-party": "node three-party/bin/start.mjs",
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 --test-force-exit 'test/*.test.mjs'",
+    "test:three-party": "node --test --test-concurrency=1 --test-force-exit 'three-party/test/*.test.mjs'"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "0.6.1",
+    "@opena2a/atx-verify": "0.3.0",
+    "secretless-ai": "file:vendor/secretless-ai-0.23.1-unreleased.g0b25f7451f41.tgz"
+  },
+  "devDependencies": {
+    "playwright-core": "1.57.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "_doc": "Fragments the two add-on builds merge into three-party/labels.json, the served label map, key by key. Build V (menu and trace) adds the four keys under keys and the trace block. Build E (try your own invoice) appends the scene row under scenes and the two stepColumns entries. Every other visible word of the add-ons is a key of view/copy.json converted from copy-block-c.txt. Nothing here is a displayed value except the scene strings and the key names.",
+  "keys": {
+    "trace": "T",
+    "replay": "P",
+    "back": "Left arrow",
+    "forward": "Right arrow"
+  },
+  "trace": {
+    "laneSeconds": 120,
+    "nestedInStory": "decided",
+    "nestedInInspect": "all"
+  },
+  "scenes": [
+    { "id": 7, "kind": "try", "title": "Try your own invoice", "text": "Edit the invoice, add a hidden instruction, and see which check decides.", "button": "Run the rule", "priority": "should", "available": true, "requires": "tryout" }
+  ],
+  "stepColumns": {
+    "tryit-declared": "checkpoint",
+    "tryit-intent": "checkpoint"
+  }
+}

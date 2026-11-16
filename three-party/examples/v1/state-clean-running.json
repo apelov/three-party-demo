@@ -1,0 +1,39 @@
+{
+  "runId": "clean-20261115T120000Z",
+  "kind": "clean",
+  "startedAt": "2026-11-15T12:00:00Z",
+  "finishedAt": null,
+  "fictionalLine": "Every customer, account, payee and payment in this demo is fictional.",
+  "poisonedLine": null,
+  "invoice": {
+    "invoiceId": "DEMO-INV-2201",
+    "from": "Northwind Office Supply",
+    "amount": "148.20",
+    "currency": "USD",
+    "payTo": { "name": "Northwind Office Supply", "account": "DEMO-0000-2201" },
+    "lines": ["Printer paper, 20 cases", "Amount due: $148.20"],
+    "hidden": null
+  },
+  "agent": {
+    "did": "did:web:payments.acme-demo.test:agents:billpay",
+    "role": "payments-agent",
+    "credentialFile": "fixtures/agents/billpay-agent.atx.json",
+    "credentialSha256": "8e66c6db3c168f273235414b475bb8c6a5f630c97882f8882a8c99d6605fbfa6",
+    "domain": "payments.acme-demo.test"
+  },
+  "grant": null,
+  "steps": [
+    { "id": "credential", "part": "ours", "partLabel": "Ours", "title": "Verify the agent's ATX credential locally", "status": "passed", "startedAt": "2026-11-15T12:00:01Z", "endedAt": "2026-11-15T12:00:02Z",
+      "detail": { "verifier": "@opena2a/atx-verify 0.3.0", "valid": true, "issuer": "did:web:issuer.example.test", "notBefore": "2026-10-01T00:00:00Z", "notAfter": "2027-10-01T00:00:00Z", "postQuantumSignature": "not verified in this demo" },
+      "actionFile": "actions/01-credential.action.json", "recordFile": null },
+    { "id": "grant", "part": "ours", "partLabel": "Ours", "title": "Issue a scoped AAP grant", "status": "running", "startedAt": "2026-11-15T12:00:10Z", "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "crossing", "part": "crossing", "partLabel": "Crossing (stand-in for AI2II)", "title": "Cross into the supplier's bank's trust domain", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "intent", "part": "ours", "partLabel": "Ours", "title": "Apply the intent rule to each tool call", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "pay", "part": "ours", "partLabel": "Ours", "title": "Pay the invoice under the grant", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "record", "part": "record", "partLabel": "Record (our writer, his format)", "title": "Write one signed Action Evidence Package per action", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null }
+  ],
+  "outcome": null,
+  "blockedAt": null,
+  "reason": null,
+  "paceSeconds": 8
+}

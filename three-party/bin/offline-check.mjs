@@ -1,0 +1,66 @@
+// node three-party/bin/offline-check.mjs <runDir> [--out <file>] [--pin <file>]
+//
+// The offline check of one run directory (src/record/check.mjs). It prints
+// what it found on standard output, one line per fact, and what explains an
+// ending on standard error. This file reads its arguments and nothing else:
+// no environment variable, and no file of its own.
+
+import { EXIT, offlineCheck } from '../src/record/check.mjs';
+
+const USAGE = `usage: node three-party/bin/offline-check.mjs <runDir> [--out <file>] [--pin <file>]
+
+  <runDir>       a run directory whose records are written (it has records/manifest.json)
+  --out <file>   where the result is written (default: <runDir>/offline-check.json)
+  --pin <file>   the public key captured when the run started (default: beside the
+                 run directory, in .pins/<runId>.pub.pem); never a file inside <runDir>
+
+The check looks for a private key in the run directory, shows that the sandbox
+profile denies the network, and runs the verifier under that profile on each
+record file: the files under records/ and records/tampered/, and the files
+records/manifest.json names.
+
+exit 0  every record passed steps 1 to 6, every tampered copy was rejected, and the
+        disk and the manifest agree; the result is written
+exit 4  the verifier ran and the result is not that; the result is written
+exit 1  an error: a wrong argument, a directory that is not a run, a private key in
+        the run directory, no pin; nothing is written
+exit 3  the network denial was not shown: nothing was checked, nothing was written
+`;
+
+function readArguments(argv) {
+  const options = { runDir: null, out: null, pinFile: null };
+  for (let i = 0; i < argv.length; i += 1) {
+    const word = argv[i];
+    if (word === '--out' || word === '--pin') {
+      const value = argv[i + 1];
+      if (value === undefined || value === '' || value.startsWith('--')) return null;
+      options[word === '--out' ? 'out' : 'pinFile'] = value;
+      i += 1;
+    } else if (word.startsWith('-') || options.runDir !== null) {
+      return null;
+    } else {
+      options.runDir = word;
+    }
+  }
+  return options.runDir === null || options.runDir === '' ? null : options;
+}
+
+const tell = (line) => process.stderr.write(`offline-check: ${line}\n`);
+const options = readArguments(process.argv.slice(2));
+if (options === null) {
+  process.stderr.write(USAGE);
+  process.exitCode = EXIT.ERROR;
+} else {
+  try {
+    const { exitCode } = await offlineCheck(options.runDir, {
+      out: options.out,
+      pinFile: options.pinFile,
+      print: (line) => process.stdout.write(`${line}\n`),
+      note: tell,
+    });
+    process.exitCode = exitCode;
+  } catch (error) {
+    tell(`the check ended on an error and reports nothing: ${error.message}`);
+    process.exitCode = EXIT.ERROR;
+  }
+}

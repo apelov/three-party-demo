@@ -1,0 +1,13 @@
+{
+  "runId": "clean-20261115T120000Z",
+  "seq": 3,
+  "at": "2026-11-15T12:00:21Z",
+  "from": "payments.acme-demo.test",
+  "to": "bank.example.test",
+  "chainFile": "fixtures/delegation-chain/dc-compact-valid-two-hop.json",
+  "chainSha256": "fa86bbbc5079cdd7382e2b91b53246121482c5235bd66bc7be85bf927a8f1e65",
+  "hops": 2,
+  "outcome": "valid",
+  "stepsRun": "1 to 5 and 7 of draft-asor-wimse-agent-delegation-chain-03 section 6",
+  "standIn": "AI2II interop: stand-in; the real piece replaces the hop file, not code"
+}
