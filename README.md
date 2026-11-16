@@ -132,6 +132,7 @@ This is a demo, so some parts are simplified:
 - The receipts follow the AEP format and pass an OpenA2A verifier for the format's first six checks. The AEP reference verifier hasn't been run on them yet, and the timestamp in each receipt is a placeholder.
 - Each run signs its receipts with a throwaway test key.
 - Step 3 checks a recording AI2II made of a separate exchange, not a crossing made for this payment.
+- In that recording, step 3 checks the sender's identity token and the request's signature, not a delegation chain; a two-hop chain is checked only by the stand-in that runs when a file of the recording is missing or changed.
 
 What does run for real, every time: the ID check, the permission, the intent rule, the bank's decision, and the signature on every receipt.
 
