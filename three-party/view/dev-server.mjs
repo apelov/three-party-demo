@@ -10,6 +10,9 @@
 // Routes:
 //   GET  /                              the view (and its static files)
 //   GET  /api/health                    { ok, build }
+//   GET  /api/variants                  { crossing }: "supplied" when the finished
+//                                       clean example's crossing ran the AI2II
+//                                       capture, else "fallback"
 //   GET  /api/labels                    the contract's label map, three-party/labels.json,
 //                                       with the words of the view's own
 //                                       labels.json added, as the engine
@@ -195,6 +198,13 @@ export async function startDevServer({ port = 0, examples = EXAMPLES, labels = n
 
     if (parts[0] === 'api') {
       if (req.method === 'GET' && url.pathname === '/api/health') return sendJson(res, 200, { ok: true, build });
+      // The crossing a run would use, as the examples have it: supplied when
+      // the finished clean example's crossing ran the AI2II capture.
+      if (req.method === 'GET' && url.pathname === '/api/variants') {
+        const done = runs.get(idOfKind('clean'))?.final?.state ?? null;
+        const crossing = done?.steps?.find((st) => st.id === 'crossing');
+        return sendJson(res, 200, { crossing: crossing?.variant === 'supplied' ? 'supplied' : 'fallback' });
+      }
       if (req.method === 'GET' && url.pathname === '/api/labels') {
         try {
           // With no file named: the contract's label map and the view's own

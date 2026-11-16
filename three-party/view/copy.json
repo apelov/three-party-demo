@@ -81,9 +81,7 @@
   "record.timestamp": "Timestamp",
   "record.format": "Format",
   "record.formatValue": "AEP format text, SHA-256 {formatCommit}",
-  "offline.sub": "Each record is checked by our verifier with network access denied.",
   "offline.verifier": "Verifier",
-  "offline.verifierValue": "aep-verify, our build, SHA-256 {sha16}",
   "offline.network": "Network",
   "offline.networkValue": "Access denied while checking",
   "offline.signer": "Trusted signer",
@@ -278,5 +276,9 @@
   "lens.standards.record": "Action Evidence Packages in the AEP format: steps 1 to 6 are checked here, steps 7 to 10 are not run.",
   "lens.standards.paid": "ATX and AAP checks passed, the WIMSE crossing passed, and one AEP record was written per action.",
   "lens.standards.blockedIntent": "ATX and AAP checks passed, then the intent rule rejected the calls; AEP records cover every step that ran.",
-  "audit.subDenied": "Each record is checked by the verifier with network access denied."
+  "audit.subDenied": "Each record is checked by the verifier with network access denied.",
+  "insp.runId": "Run",
+  "insp.started": "Started",
+  "insp.finished": "Finished",
+  "insp.credentialSha": "Credential SHA-256"
 }

@@ -14,6 +14,10 @@
 //                                          its notes); 501 when the caller
 //                                          wired none
 //   GET  /api/health                       {"ok":true,"build":<short sha>}
+//   GET  /api/variants                     {"crossing":"supplied"|"fallback"}: the form of
+//                                          each part with variants that a run
+//                                          started now would use, by the same
+//                                          check of the AI2II files a run makes
 //   GET  /api/labels                       the contract's label map, three-party/labels.json;
 //                                          with the screens, the screens' own
 //                                          words are added to it and no value
@@ -35,6 +39,7 @@ import { close, hostAndOriginAllowed, listen, readJson, sendJson } from '../../.
 import { labelMapBytes } from './label-map.mjs';
 import { LABELS } from './labels.mjs';
 import { DEFAULT_PACE_SECONDS, DEFAULT_RUNS_DIR, startRun } from './run.mjs';
+import { AI2II_SOURCE, DEFAULT_AI2II_DIR, loadCapture } from './ai2ii-source.mjs';
 import { LABELS_FILE, SCREEN_POLICY, screenFile } from './screens.mjs';
 import { RUN_ID, RUN_KINDS } from './store.mjs';
 
@@ -152,6 +157,14 @@ export async function startApi({ port = null, runsDir = DEFAULT_RUNS_DIR, paceSe
     if (p === '/api/health') {
       if (!get) return sendJson(res, 405, { error: 'method not allowed' });
       return sendJson(res, 200, { ok: true, build });
+    }
+    if (p === '/api/variants') {
+      if (!get) return sendJson(res, 405, { error: 'method not allowed' });
+      // The crossing a run started now would use: the AI2II capture when its
+      // three files are there and match their pins, else the fallback. The
+      // same check a run makes, with the same options, at each request.
+      const capture = loadCapture({ dir: runOptions.ai2iiDir ?? DEFAULT_AI2II_DIR, source: runOptions.ai2iiSource ?? AI2II_SOURCE });
+      return sendJson(res, 200, { crossing: capture.use ? 'supplied' : 'fallback' });
     }
     if (p === '/api/runs') {
       if (!post) return sendJson(res, 405, { error: 'method not allowed' });

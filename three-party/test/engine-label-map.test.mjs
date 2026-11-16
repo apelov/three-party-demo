@@ -219,10 +219,10 @@ test('GET /api/labels: with no screens the listener answers the bytes of three-p
     assert.ok(assertLabelMapAnswer(answer, { withWords: true }) > 60);
     // The words the screens add, by hand: the line under each part, the line
     // under the crossing, and each scene's title, line and availability.
-    assert.equal(answer.parts.crossing.text, 'Crossing between the two trust domains');
-    assert.match(answer.parts.crossing.detail, /^Our check covers steps 1 to 5 and 7 of /);
+    assert.equal(answer.parts.crossing.text, "Checks the request as it crosses from the agent's trust domain into the bank's.");
+    assert.match(answer.parts.crossing.detail, /^The OpenA2A check covers steps 1 to 5 and 7 of /);
     assert.deepEqual(answer.scenes.map((s) => [s.id, s.kind, s.title, s.available]), [
-      [1, 'clean', 'Normal payment', true], [2, 'poisoned', 'Poisoned invoice', true], [6, 'offline-check', 'Audit later', true],
+      [1, 'clean', 'Normal payment', true], [2, 'poisoned', 'Poisoned invoice', true], [6, 'offline-check', 'Audit the records', true],
       [3, 'tampered', 'Tampered agent', false], [4, 'expired', 'Expired grant', false], [5, 'received', "Received by the supplier's bank", false],
     ]);
     // A scene the engine does not run yet is marked so: the kinds marked

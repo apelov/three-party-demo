@@ -63,6 +63,17 @@ export async function getLabels() {
   }
 }
 
+// The form of each part with variants that a run started now would use, or
+// null when the server does not say.
+export async function getVariants() {
+  try {
+    const res = await fetch('/api/variants', { cache: 'no-store' });
+    return res.ok ? await readJson(res) : release(res);
+  } catch {
+    return null;
+  }
+}
+
 // Run the offline check. Resolves to its result, or null when the server
 // does not offer it.
 export async function runOfflineCheck(id) {

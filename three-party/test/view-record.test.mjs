@@ -296,9 +296,10 @@ test('the network row follows the result: denied in the deck\'s words where the 
         const row = [...host.querySelectorAll('.kv-row')][1];
         return { sub: host.querySelector('[data-section="checked"] .insp-text').textContent, network: [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()], text: host.textContent };
       });
-      // The deck's older line for a denial names the verifier with a word the
-      // screens no longer use; its line without that word stands in its place.
-      assert.equal(panel.text.includes(COPY['offline.sub']), false, `${name}: offline.sub`);
+      // The deck's older line for a denial named the verifier as "our"; it
+      // is gone from the deck, and its line without that word stands in its place.
+      assert.equal(Object.hasOwn(COPY, 'offline.sub'), false, 'the older line is not in the deck');
+      assert.equal(panel.text.includes('checked by our verifier'), false, `${name}: the older line`);
       if (denied) {
         assert.equal(panel.sub, COPY['audit.subDenied'], name);
         assert.deepEqual(panel.network, [COPY['offline.network'], COPY['offline.networkValue']], name);

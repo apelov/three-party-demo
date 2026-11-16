@@ -56,11 +56,18 @@ test('the start screen: the orientation and the inspector name the parts by spec
     assert.deepEqual(parts[1].lines, [CONTRACT_LABELS.parts.crossing.standInNote, LABELS.parts.crossing.detail], 'the stand-in: its note in full and the line on what it covers, and no credit');
     assert.deepEqual(parts[2].lines, [COPY['credit.bank']]);
     assert.deepEqual(parts[3].lines, [COPY['credit.record'], LABELS.parts.record.detail], 'the record part: who made the format, and what the verifier checks of it');
-    // Each label and note is the contract map's, by the source the element names.
+    // Each label and note is the contract map's, by the source the element
+    // names. Before a run, a part with variants is shown as the variant the
+    // server says a run started now would use.
     const sources = await view.page.evaluate(() => [...document.querySelectorAll('#pane-inspector [data-key="parts"] [data-src]')].map((n) => [n.dataset.src, n.textContent]));
-    for (const [name, part] of Object.entries(CONTRACT_LABELS.parts)) {
-      assert.ok(sources.some(([src, text]) => src === `labels:parts.${name}.label` && text === part.label), `${name}: the label`);
-      if (part.standIn) assert.ok(sources.some(([src, text]) => src === `labels:parts.${name}.standInNote` && text === part.standInNote), `${name}: the note`);
+    const variants = await view.page.evaluate(() => fetch('/api/variants').then((res) => res.json()));
+    assert.deepEqual(variants, { crossing: 'fallback' }, 'the examples ran the fallback crossing');
+    for (const [name, base] of Object.entries(CONTRACT_LABELS.parts)) {
+      const v = base.variants && Object.hasOwn(base.variants, variants[name] ?? '') ? variants[name] : null;
+      const at = v ? `labels:parts.${name}.variants.${v}` : `labels:parts.${name}`;
+      const part = v ? base.variants[v] : base;
+      assert.ok(sources.some(([src, text]) => src === `${at}.label` && text === part.label), `${name}: the label`);
+      if (part.standIn) assert.ok(sources.some(([src, text]) => src === `${at}.standInNote` && text === part.standInNote), `${name}: the note`);
     }
     const lanes = await view.page.evaluate(() => [...document.querySelectorAll('#lanes-head .lane')].map((lane) => lane.querySelector('.lane-title').textContent));
     assert.deepEqual(lanes, [CONTRACT_LABELS.parties.agent, label('checkpoint'), label('crossing'), label('bank'), label('record')]);

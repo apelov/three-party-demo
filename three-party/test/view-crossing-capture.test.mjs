@@ -18,6 +18,8 @@ import { launchChrome, openView, runAndWait, census, assertCensus, docsFrom, exa
 let browser;
 let examples;
 let capture;
+let captureDir;
+let captureSource;
 const runsDir = tempRunsDir();
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'three-party-ai2ii-view-')));
 
@@ -25,7 +27,9 @@ before(async () => {
   browser = await launchChrome();
   const made = captureFiles();
   const source = sourceFor(made.bytes);
-  const { state } = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, recordWriter: null, ai2iiDir: writeCapture(path.join(scratch, 'capture'), made.bytes, source), ai2iiSource: source });
+  captureDir = writeCapture(path.join(scratch, 'capture'), made.bytes, source);
+  captureSource = source;
+  const { state } = await runToEnd({ kind: 'clean', paceSeconds: 0, runsDir, recordWriter: null, ai2iiDir: captureDir, ai2iiSource: source });
   const crossing = state.steps.find((s) => s.id === 'crossing');
   capture = crossing.detail.capture;
   // The example runs with each step's variant, and the crossing as the engine ran it.
@@ -100,5 +104,45 @@ test('a crossing that ran the capture check: no stand-in mark on its lane or in 
     assert.deepEqual(view.errors, []);
   } finally {
     await view.close();
+  }
+});
+
+test('before any run, the crossing shows as a run started now would use it: the server answers that at /api/variants by the check of the AI2II files a run makes, and the start screen follows it', async () => {
+  const { startApi } = await import('../src/engine/api.mjs');
+  const variantOf = async (runOptions) => {
+    const api = await startApi({ port: 0, runsDir, paceSeconds: 0, runOptions });
+    try {
+      const res = await fetch(`http://127.0.0.1:${api.port}/api/variants`);
+      assert.equal(res.status, 200);
+      return (await res.json()).crossing;
+    } finally {
+      await api.stop();
+    }
+  };
+  assert.equal(await variantOf({ ai2iiDir: captureDir, ai2iiSource: captureSource }), 'supplied', 'the three files there, each as pinned');
+  assert.equal(await variantOf({ ai2iiDir: path.join(scratch, 'no-such-folder'), ai2iiSource: captureSource }), 'fallback', 'no files');
+  // A file that differs from its pin falls back, as a run does.
+  const changed = path.join(scratch, 'changed');
+  fs.cpSync(captureDir, changed, { recursive: true });
+  const first = fs.readdirSync(changed)[0];
+  fs.appendFileSync(path.join(changed, first), 'x');
+  assert.equal(await variantOf({ ai2iiDir: changed, ai2iiSource: captureSource }), 'fallback', 'a file that differs from its pin');
+
+  // The start screen, before any run: the supplied crossing carries no
+  // stand-in mark and is credited to its maker; the fallback carries the mark.
+  for (const [server, standIn] of [[{ examples }, false], [{}, true]]) {
+    const view = await openView(browser, { server });
+    try {
+      const shown = await view.page.evaluate(() => ({
+        lane: document.querySelector('#lanes-head .lane[data-col="crossing"] .lane-credit').textContent,
+        laneBadge: document.querySelector('#lanes-head .lane[data-col="crossing"] .badge') !== null,
+        orientBadge: document.querySelector('#orient .orient-part[data-col="crossing"] .badge') !== null,
+        legendBadge: document.querySelector('#pane-inspector [data-key="parts"] .insp-part[data-col="crossing"] .badge') !== null,
+      }));
+      assert.deepEqual([shown.laneBadge, shown.orientBadge, shown.legendBadge], [standIn, standIn, standIn], standIn ? 'the fallback is marked' : 'the supplied crossing is not');
+      if (!standIn) assert.equal(shown.lane, COPY['credit.crossing']);
+    } finally {
+      await view.close();
+    }
   }
 });

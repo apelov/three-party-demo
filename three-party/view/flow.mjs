@@ -44,7 +44,7 @@ export function sceneButton(app, kind, cls, press) {
 }
 
 export function renderOrientation(app, host, press) {
-  const signature = `${app.run ? 'run' : 'none'}|${app.labelsStamp}`;
+  const signature = `${app.run ? 'run' : 'none'}|${app.labelsStamp}|${JSON.stringify(app.variants ?? null)}`;
   if (host.dataset.signature === signature) return;
   host.dataset.signature = signature;
   clear(host);
@@ -353,7 +353,7 @@ export function renderOutcome(app, host, nextAction) {
     return;
   }
   const next = run?.outcome ? nextAction() : null;
-  const signature = run?.outcome ? `${app.runId}|${run.outcome}|${app.lens}|${next?.id ?? ''}|${app.labelsStamp}` : 'none';
+  const signature = run?.outcome ? `${app.runId}|${run.outcome}|${app.lens}|${next?.id ?? ''}|${app.labelsStamp}|${app.tab}` : 'none';
   if (host.dataset.signature === signature) return;
   host.dataset.signature = signature;
   clear(host);

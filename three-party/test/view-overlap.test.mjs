@@ -1,7 +1,7 @@
 // No piece of the screen lies on another, and none spills out of its pane:
 // at each moment of the walkthrough (the start, a run in progress, a payment
 // that went through, a stopped run, the audit), in Story and in Inspect, at
-// 1440x900 and 1920x1080. A piece is an element that holds text of its own,
+// 1024x768, 1280x720, 1440x900 and 1920x1080. A piece is an element that holds text of its own,
 // an icon, a control, a record mark or an arrow; its box is cut to the panes
 // and lists that scroll around it, so a row scrolled out of sight is not
 // counted. Two pieces overlap when they share more than one pixel each way
@@ -113,7 +113,7 @@ test('the audit finds a collision planted on the page, and only that one', async
   }
 });
 
-for (const [width, height] of [[1440, 900], [1920, 1080]]) {
+for (const [width, height] of [[1024, 768], [1280, 720], [1440, 900], [1920, 1080]]) {
   test(`${width}x${height}: nothing lies on anything at the start, during a run, when paid, when stopped and at the audit, in Story and in Inspect`, async () => {
     const view = await openView(browser, { width, height });
     const { page } = view;

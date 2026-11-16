@@ -152,7 +152,10 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
   }
 
   // A click on an item of the menu chooses it and runs it.
-  const runScene = (page, kind) => page.click(`.scene[data-kind="${kind}"]`);
+  const runScene = async (page, kind) => {
+    await page.click(`.scene[data-kind="${kind}"]`);
+    await page.keyboard.press('r');
+  };
   const outcomeIs = (page, outcome) => page.waitForFunction((o) => document.body.dataset.run === o, outcome, { timeout: WAIT_MS });
   const rowsSettled = (page) => page.waitForFunction(() => {
     const rows = [...document.querySelectorAll('#rows .row')];

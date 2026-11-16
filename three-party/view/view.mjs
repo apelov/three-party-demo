@@ -14,7 +14,7 @@
 
 import { el, put, add, from, value, words, clear } from './dom.mjs';
 import { installSprite, iconEl } from './icons.mjs';
-import { startRun, getRun, getLabels, getFile, runOfflineCheck } from './api.mjs';
+import { startRun, getRun, getLabels, getFile, runOfflineCheck, getVariants } from './api.mjs';
 import { listZip, readEntry, entryText } from './zip.mjs';
 import { copyButton, tickCountdowns, stateOf, headlineOf, lensesOf } from './parts.mjs';
 import { renderOrientation, renderInvoice, renderLanes, syncRows, renderOutcome, sceneButton } from './flow.mjs';
@@ -253,6 +253,16 @@ function focusSelectedRowIfInList() {
 // brought into sight once for each selection, so a reader who scrolls is
 // not pulled back.
 function revealSelected() {
+  if (app.tab === 'sequence') {
+    // A window too short for every step: the sequence scrolls inside its
+    // tab, and the selected step is brought into sight once per selection.
+    const panel = $('panel-sequence');
+    const key = `seq|${app.runId}|${JSON.stringify(app.selection)}`;
+    if (app.shown === key) return;
+    app.shown = key;
+    if (panel.scrollHeight > panel.clientHeight + 1) $('rows').querySelector('[aria-current="step"]')?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   if (app.tab !== 'trace') {
     app.shown = null;
     return;
@@ -457,28 +467,49 @@ function startAgain() {
   app.offlineStamp += 1;
   writeHash();
   update();
+  // The crossing a run started now would use, asked again: the AI2II files
+  // may have come or gone since the page opened. The focus stays where it is.
+  getVariants().then((variants) => {
+    const now = variants && typeof variants === 'object' ? variants : null;
+    if (app.run || JSON.stringify(now) === JSON.stringify(app.variants ?? null)) return;
+    const inOrient = Boolean(document.activeElement?.closest?.('#orient'));
+    app.variants = now;
+    update();
+    if (inOrient && !document.activeElement?.closest?.('#orient')) $('orient').querySelector('button')?.focus({ preventScroll: true });
+  });
   const first = $('orient').querySelector('button');
   if (first && first.offsetParent) first.focus({ preventScroll: true }); else $('scenes').querySelector('[tabindex="0"]')?.focus({ preventScroll: true });
 }
 
-// The one action the outcome offers next: after a payment that went
-// through, the poisoned invoice; after a stop, the audit; after the audit,
-// the start again.
+// The acts of the walkthrough, in its order: the normal payment, the
+// poisoned invoice, the audit.
+const ACTS = ['clean', 'poisoned', OFFLINE_KIND];
+
+// The one action the outcome offers next: the first act of the walkthrough
+// not yet done, whatever order the acts were taken in; once all three are
+// done, both runs among them, the start again.
 function nextAction() {
   const run = app.run;
   if (!run?.outcome) return null;
-  if (app.offline && app.offline.runId === app.runId) {
-    const words = app.w.word('ui.startAgain');
-    return words ? { id: 'start-again', button: put('button', 'btn btn-primary', words, { type: 'button', id: 'next-action', 'data-next': 'start-again', on: null }) } : null;
+  const audited = Boolean(app.offline && app.offline.runId === app.runId);
+  // On the Records tab before the audit, the tab's own button is the one
+  // primary action; the outcome's action steps back to the quiet style.
+  const quiet = app.tab === 'records' && !audited && auditReady();
+  const tone = quiet ? 'btn-quiet' : 'btn-primary';
+  const cls = `btn ${tone}`;
+  const act = ACTS.find((kind) => !app.done.has(kind));
+  if (act === OFFLINE_KIND) {
+    if (!auditReady()) return null;
+    const words = app.w.word('ui.audit');
+    return words ? { id: `audit|${quiet}`, button: put('button', cls, words, { type: 'button', id: 'next-action', 'data-next': 'audit' }) } : null;
   }
-  if (run.outcome === 'paid' && !app.done.has('poisoned')) {
-    const button = sceneButton(app, 'poisoned', 'btn-primary', () => runKind('poisoned'));
-    if (button) { button.id = 'next-action'; button.dataset.next = 'poisoned'; }
-    return button ? { id: 'poisoned', button } : null;
+  if (act) {
+    const button = sceneButton(app, act, tone, () => runKind(act));
+    if (button) { button.id = 'next-action'; button.dataset.next = act; }
+    return button ? { id: `${act}|${quiet}`, button } : null;
   }
-  if (!auditReady()) return null;
-  const words = app.w.word('ui.audit');
-  return words ? { id: 'audit', button: put('button', 'btn btn-primary', words, { type: 'button', id: 'next-action', 'data-next': 'audit' }) } : null;
+  const words = app.w.word('ui.startAgain');
+  return words ? { id: `start-again|${quiet}`, button: put('button', cls, words, { type: 'button', id: 'next-action', 'data-next': 'start-again' }) } : null;
 }
 
 function onNextAction(event) {
@@ -577,7 +608,7 @@ function buildLeft() {
   const all = app.labels.scenes ?? [];
   app.scenes.forEach((scene, n) => {
     const s = all.indexOf(scene);
-    list.append(el('button', { class: 'scene', type: 'button', data: { scene: String(n), kind: scene.kind }, on: { click: () => chooseAndRun(n) } },
+    list.append(el('button', { class: 'scene', type: 'button', data: { scene: String(n), kind: scene.kind }, on: { click: () => chooseScene(n) } },
       el('span', { class: 'scene-num num', src: from.view('position'), text: String(n + 1) }),
       el('span', { class: 'scene-words' },
         put('span', 'scene-title', app.w.label(`scenes[${s}].title`)),
@@ -636,6 +667,9 @@ function updateLeft() {
     const button = $(id);
     if (button) button.disabled = off;
   }
+  // The steps' controls stand where there are steps to move through: not
+  // before a run, and not while the audit is shown.
+  $('step-controls').hidden = !app.run || app.selection.kind === 'offline';
   const blocked = scene?.kind === OFFLINE_KIND && !auditReady();
   control.setAttribute('aria-disabled', blocked ? 'true' : 'false');
   $('run-help').hidden = !blocked;
@@ -753,7 +787,7 @@ function update() {
   renderInvoice(app, $('invoice'));
   const head = $('lanes-head');
   const variants = (app.run?.steps ?? []).map((s) => s.variant ?? '').join(',');
-  const laneSignature = `${app.labelsStamp}|${variants}`;
+  const laneSignature = `${app.labelsStamp}|${variants}|${app.run ? '' : JSON.stringify(app.variants ?? null)}`;
   if (head.dataset.signature !== laneSignature) {
     head.dataset.signature = laneSignature;
     renderLanes(app, head);
@@ -775,12 +809,6 @@ function chooseScene(n) {
   app.sceneIndex = n;
   app.runError = null;
   update();
-}
-
-// A click on an item of the menu chooses it and runs it: one click per act.
-function chooseAndRun(n) {
-  chooseScene(n);
-  onRunControl();
 }
 
 function onRunControl() {
@@ -875,7 +903,8 @@ async function loadJson(url) {
 
 async function start() {
   installSprite();
-  const [copy, bundled, served] = await Promise.all([loadJson('./copy.json'), loadJson('./labels.json'), getLabels()]);
+  const [copy, bundled, served, variants] = await Promise.all([loadJson('./copy.json'), loadJson('./labels.json'), getLabels(), getVariants()]);
+  app.variants = variants && typeof variants === 'object' ? variants : null;
   app.copy = copy;
   // A key the server returns replaces the bundled key whole; a key it lacks stays.
   app.labels = served && typeof served === 'object' ? { ...bundled, ...served } : bundled;

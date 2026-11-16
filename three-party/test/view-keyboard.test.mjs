@@ -198,6 +198,7 @@ test('follow: in Story the selection moves with the run; Left turns it off and E
   const { page } = view;
   try {
     await page.click('.scene[data-kind="clean"]');
+    await page.keyboard.press('r');
     const seen = new Set();
     const end = Date.now() + 15000;
     while (Date.now() < end) {
@@ -215,6 +216,7 @@ test('follow: in Story the selection moves with the run; Left turns it off and E
   const again = await openView(browser, { server: { replay: true, speed: 6 } });
   try {
     await again.page.click('.scene[data-kind="clean"]');
+    await again.page.keyboard.press('r');
     await again.page.waitForFunction(() => document.querySelector('#rows .row[data-step="grant"]')?.dataset.status === 'passed', null, { timeout: 30000 });
     await again.page.keyboard.press('ArrowLeft');
     const held = await selectedStep(again.page);

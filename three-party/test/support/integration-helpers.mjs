@@ -114,6 +114,7 @@ export async function startFromScreens(view, kind, limitMs = 30000) {
   const { page } = view;
   const previous = await shownRunId(page);
   await page.click(`.scene[data-kind="${kind}"]`);
+  await page.click('#run-control');
   await page.waitForFunction(([wanted, earlier]) => {
     const id = document.querySelector('#run-line .run-id .mono')?.textContent ?? null;
     return id !== null && id !== earlier && id.startsWith(`${wanted}-`);
@@ -143,6 +144,7 @@ export async function runFromScreens(view, kind, limitMs = 30000) {
 export async function offlineCheckFromScreens(view, limitMs = 30000) {
   const { page } = view;
   await page.click('.scene[data-kind="offline-check"]');
+  await page.click('#run-control');
   await page.waitForSelector('#pane-inspector [data-panel="offline"]', { timeout: limitMs });
   await page.waitForFunction(() => document.body.dataset.tab === 'records', null, { timeout: limitMs });
   await view.settle();

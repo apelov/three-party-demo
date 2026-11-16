@@ -58,6 +58,15 @@ test('the listener is bound to 127.0.0.1', () => {
   assert.ok(Number.isInteger(port) && port > 0);
 });
 
+test('GET /api/variants answers the crossing a run started now would use: here, with no AI2II files, the fallback; any other method is refused', async () => {
+  const res = await get('/api/variants');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['content-type'], JSON_TYPE);
+  assert.equal(res.headers['cache-control'], 'no-store');
+  assert.deepEqual(res.json(), { crossing: 'fallback' });
+  assert.equal((await post('/api/variants')).status, 405);
+});
+
 test('GET /api/health answers ok and the short sha of the build', async () => {
   const res = await get('/api/health');
   assert.equal(res.status, 200);

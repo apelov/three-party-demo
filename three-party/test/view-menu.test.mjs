@@ -56,10 +56,14 @@ const hex = (rgb) => {
   return m ? `#${m.slice(1, 4).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}` : rgb;
 };
 
-test('with no run the three step controls are not available and the run control is; each is a button under the run control with its word, its name and the key that does the same; with a run Back and Forward are available, and Replay once the outcome is decided', async () => {
+test('with no run the step controls stand out of sight and the run control is available; with a run each is a button under the run control with its word, its name and the key that does the same, Back and Forward available, and Replay once the outcome is decided; while the audit is shown they stand out of sight again', async () => {
   const view = await openView(browser);
   const { page } = view;
   try {
+    const hidden = () => page.evaluate(() => document.getElementById('step-controls').hidden);
+    assert.equal(await hidden(), true, 'no step to move through before a run');
+    // Shown for the measure below, as a run shows them.
+    await page.evaluate(() => { document.getElementById('step-controls').hidden = false; });
     const start = await controls(page);
     assert.equal(start.role, 'group');
     assert.equal(start.name, COPY['menu.controlsName']);
@@ -88,10 +92,14 @@ test('with no run the three step controls are not available and the run control 
     }
 
     await runAndWait(view, 'poisoned', 'blocked');
+    assert.equal(await hidden(), false, 'a run has steps to move through');
     const after = await controls(page);
     assert.deepEqual(after.buttons.map((b) => b.disabled), [false, false, false]);
     for (const b of after.buttons) assert.equal(hex(b.color), colour['--ink'], `${b.id}: available`);
     assert.equal(after.of.text, COPY['ui.stepOf'].replace('{n}', '4').replace('{total}', String(6)), 'the group says the step selected and how many there are');
+    await page.keyboard.press('o');
+    await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
+    assert.equal(await hidden(), true, 'the audit has no step to move through');
     assert.deepEqual(view.errors, []);
   } finally {
     await view.close();
@@ -115,12 +123,12 @@ for (const [width, height, mode] of [[1280, 800, 'inspect'], [1440, 900, 'story'
         }
         assert.ok(m.pane[0] <= m.pane[1], `${what}: the left pane does not scroll (${m.pane})`);
       };
-      const start = await controls(page);
-      check(start, 'start');
-      t.diagnostic(`step controls: ${width}x${height} | pane content ${start.paneContent} px | ${start.buttons.map((b) => `${b.text} ${Math.round(b.width)} by ${Math.round(b.height)}`).join(', ')}`);
+      assert.equal(await page.evaluate(() => document.getElementById('step-controls').hidden), true, 'before a run the controls stand out of sight');
       for (const [kind, outcome] of [['poisoned', 'blocked'], ['clean', 'paid']]) {
         await runAndWait(view, kind, outcome);
-        check(await controls(page), kind);
+        const m2 = await controls(page);
+        check(m2, kind);
+        t.diagnostic(`step controls: ${width}x${height} ${kind} | pane content ${m2.paneContent} px | ${m2.buttons.map((b) => `${b.text} ${Math.round(b.width)} by ${Math.round(b.height)}`).join(', ')}`);
       }
       assert.deepEqual(view.errors, []);
     } finally {

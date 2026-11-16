@@ -47,18 +47,18 @@ const NOT_MEASURED_BLOCK = 'copy-block-d.txt';
 // lenses.
 const SCREENS_BLOCK = 'copy-block-e.txt';
 
-test('copy.json holds the 102 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 112 of the block for the rebuilt screens: each key and value byte for byte, and nothing else', () => {
+test('copy.json holds the 100 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 116 of the block for the rebuilt screens: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
   const notMeasured = blockLines(NOT_MEASURED_BLOCK);
   const screens = blockLines(SCREENS_BLOCK);
-  assert.equal(deck.length, 102);
+  assert.equal(deck.length, 100);
   assert.equal(added.length, 68 - LEFT_OUT.length);
   assert.equal(notMeasured.length, 2);
-  assert.equal(screens.length, 112);
+  assert.equal(screens.length, 116);
   const lines = [...deck, ...added, ...notMeasured, ...screens];
-  const members = 102 + added.length + notMeasured.length + screens.length;
-  assert.equal(members, 280);
+  const members = 100 + added.length + notMeasured.length + screens.length;
+  assert.equal(members, 282);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);
@@ -75,7 +75,7 @@ test('copy.json holds the 102 lines of the staged copy deck and, after them, the
   for (const value of Object.values(COPY)) assert.equal(typeof value, 'string');
   // No key of the added block was in the deck before it.
   assert.equal(new Set(keys).size, members);
-  assert.deepEqual(keys.slice(0, 102), deck.map((line) => line.slice(0, line.indexOf(' = '))));
+  assert.deepEqual(keys.slice(0, 100), deck.map((line) => line.slice(0, line.indexOf(' = '))));
 });
 
 test('the label map the page holds: the members of the contract\'s map from the server, the structure of the screen from the view\'s own file, and no member the brief does not name', () => {

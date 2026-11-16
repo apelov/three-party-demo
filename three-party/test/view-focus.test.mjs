@@ -74,8 +74,13 @@ function assertInSight(s, where) {
 async function startPoisoned(page) {
   // From the orientation: Tab to the poisoned invoice and Enter. From the
   // menu (the page opened on another tab): Down to the poisoned invoice and Enter.
-  if ((await stop(page))?.kind === 'scene') await page.keyboard.press('ArrowDown'); else await page.keyboard.press('Tab');
-  await page.keyboard.press('Enter');
+  if ((await stop(page))?.kind === 'scene') {
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('r');
+  } else {
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+  }
 }
 
 async function walk(view) {
@@ -100,8 +105,9 @@ async function walk(view) {
 // The path of the page: the top bar (the run's copy control, the lens, the
 // mode switch), the menu (one stop), the run control, the three step
 // controls, the tab list (one stop, on the tab shown), then the selected
-// step (one stop for the list of steps), the outcome's next action, the
-// controls of the inspector, and the control that lists the keys.
+// step (one stop for the list of steps), the outcome's next action (after
+// the poisoned invoice run first, the first act not yet done: the normal
+// payment), the controls of the inspector, and the control that lists the keys.
 const PATH = ['copy', 'lens', 'mode:story', 'mode:inspect', 'scene', 'run', 'step-back', 'step-forward', 'step-replay'];
 
 for (const [width, height] of [[1280, 800], [1440, 900], [1920, 1080]]) {
@@ -110,7 +116,7 @@ for (const [width, height] of [[1280, 800], [1440, 900], [1920, 1080]]) {
     try {
       const stops = await walk(view);
       const kinds = stops.map((s) => s.kind);
-      assert.deepEqual(kinds.slice(0, PATH.length + 3), [...PATH, 'tab:trace', 'trace:intent', 'next:audit']);
+      assert.deepEqual(kinds.slice(0, PATH.length + 3), [...PATH, 'tab:trace', 'trace:intent', 'next:clean']);
       const rest = kinds.slice(PATH.length + 3);
       assert.ok(rest.length >= 3, `the inspector's controls follow (${rest.length} stops)`);
       assert.deepEqual([...new Set(rest)], ['inspector', 'help']);
@@ -128,7 +134,7 @@ test('1440x900, the flow in Story: the same path, with the flow\'s selected row 
   try {
     const stops = await walk(view);
     const kinds = stops.map((s) => s.kind);
-    assert.deepEqual(kinds.slice(0, PATH.length + 3), [...PATH, 'tab:sequence', 'flow:intent', 'next:audit']);
+    assert.deepEqual(kinds.slice(0, PATH.length + 3), [...PATH, 'tab:sequence', 'flow:intent', 'next:clean']);
     assert.equal(kinds[kinds.length - 1], 'help');
     stops.forEach((s, i) => assertInSight(s, `stop ${i + 1}`));
   } finally {

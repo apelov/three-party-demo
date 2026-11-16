@@ -84,7 +84,11 @@ function assertWrittenResultShown(panel, answer) {
   for (const line of denied ? [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured']] : [COPY['audit.subDenied'], COPY['offline.networkValue']]) {
     assert.equal(panel.all.includes(line), false, `the page does not show: ${line}`);
   }
-  assert.equal(panel.all.includes(COPY['offline.sub']), false, 'the deck\'s older line with the word the screens no longer use is not shown');
+  // The deck's older lines named the verifier and its build as "our"; they
+  // are gone from the deck, and nothing on the page says it.
+  assert.equal(Object.hasOwn(COPY, 'offline.sub') || Object.hasOwn(COPY, 'offline.verifierValue'), false, 'the older lines are not in the deck');
+  for (const old of ['checked by our verifier', 'our build']) assert.equal(panel.all.includes(old), false, `the page does not show: ${old}`);
+  assert.doesNotMatch(panel.all, /\b(our|ours|we)\b/i);
   // The steps the verifier does not run are said, in the closed Limits.
   assert.ok(panel.all.includes(COPY['limit.steps']), 'the limits name the steps not run');
 }

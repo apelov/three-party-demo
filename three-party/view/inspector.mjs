@@ -51,6 +51,11 @@ function token(app, root, path, source = from.run, short = true) {
   ];
 }
 
+// The key of a row: the deck's plain word in Story, the run's own field name in Inspect.
+function keyOf(app, wordKey, root, path) {
+  return (app.mode === 'story' ? app.w.word(wordKey) : null) ?? fieldName(root, path);
+}
+
 function hashRow(app, root, path, source) {
   return row(fieldName(root, path, source), token(app, root, path, source));
 }
@@ -431,7 +436,11 @@ function recordOfStep(app, i, step) {
       row(app.w.word('insp.file'), el('a', { class: 'record-file mono', href: fileUrl(app.runId, step.recordFile), src: from.run(`steps[${i}].recordFile`), text: String(step.recordFile), data: { focusKey: `link:${step.recordFile}` } })),
       n >= 0 ? row(app.w.word('insp.sha'), token(app, found.manifest, `records[${n}].sha256`, found.source)) : null,
       signer ? row(app.w.word('insp.signedBy'), put('span', null, app.w.chosen('record.signerValue', from.run(`steps[${writer}].detail.signer`)))) : null,
-      row(app.w.word('insp.audit'), check >= 0 ? auditVerdict(app, offline.records[check], cSource, false) : put('span', 'muted', app.w.word('insp.notAudited')))),
+      row(app.w.word('insp.audit'), check >= 0 ? auditVerdict(app, offline.records[check], cSource, false) : put('span', 'muted', app.w.word('insp.notAudited'))),
+      // What the verifier wrote of this record beside its verdict.
+      check >= 0 && Array.isArray(offline.records[check].notes)
+        ? offline.records[check].notes.map((_, k) => row(app.w.word('offline.note'), put('span', 'insp-note', value(offline.records[check], `notes[${k}]`, undefined, cSource))))
+        : null),
     entries(app, step.recordFile),
   ];
 }
@@ -538,22 +547,38 @@ function overviewPanel(app) {
       el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : value(run, 'kind'))),
       el('span', { class: 'chip', data: { tone: state.tone } }, put('span', 'chip-word', app.w.chosen(state.key, state.source)))),
     put('p', 'insp-lens', run.outcome === 'blocked' ? value(run, 'reason') : null),
+    // The run's own facts: plain words in Story, the run's field names in Inspect.
     section(app, 'run', 'sect.run', table(
-      row(fieldName(run, 'runId'), token(app, run, 'runId')),
-      moment(run, 'startedAt'),
-      moment(run, 'finishedAt'),
-      hashRow(app, run, 'agent.credentialSha256')),
+      row(keyOf(app, 'insp.runId', run, 'runId'), token(app, run, 'runId')),
+      row(keyOf(app, 'insp.started', run, 'startedAt'), timeEl('num', value(run, 'startedAt'))),
+      row(keyOf(app, 'insp.finished', run, 'finishedAt'), timeEl('num', value(run, 'finishedAt'))),
+      row(keyOf(app, 'insp.credentialSha', run, 'agent.credentialSha256'), token(app, run, 'agent.credentialSha256'))),
     invoiceCard(app)),
     section(app, 'parts', 'sect.parts', partsList(app)),
     section(app, 'limits', 'app.limits', limits(app)));
 }
 
+// What the offline check returned when it wrote no result: each line and
+// each note as the check wrote them, and its exit status under the name the
+// answer gives it. Nothing here reads a line as a verdict on a record.
+function returnedState(result, source) {
+  const said = (kind, cls) => (Array.isArray(result[kind]) ? result[kind] : []).map((_, n) => put('li', cls, value(result, `${kind}[${n}]`, undefined, source)));
+  const lines = [said('lines', 'mono'), said('notes', 'insp-note')].flat().filter(Boolean);
+  const status = table(plain(result, 'exitCode', source, 'num'));
+  if (!lines.length && !status) return null;
+  return el('div', { class: 'returned', data: { returned: 'offline-check' } },
+    lines.length ? el('ul', { class: 'kv-list returned-lines' }, lines) : null,
+    status);
+}
+
 // The audit as a whole: the verifier, the network while it checked, the
-// signer it trusted, its count, and for each tampered copy what the
-// verifier said of it.
+// signer it trusted, and for each tampered copy what the verifier said of
+// it; or, when the check wrote no result, what it returned.
 function offlinePanel(app) {
   const result = offlineOf(app);
   if (!result) return null;
+  // A check that names no verifier wrote no result: it shows what it returned.
+  const named = Boolean(result.verifier);
   const s = sceneIndexOf(app, OFFLINE_KIND);
   const source = (path, shape) => from.doc('offline-check', path, shape);
   const tampered = Array.isArray(result.tampered) ? result.tampered : [];
@@ -561,14 +586,15 @@ function offlinePanel(app) {
   return el('div', { class: 'insp', data: { panel: 'offline' } },
     el('div', { class: 'insp-head', data: { tone: 'neutral' } },
       el('h2', { class: 'insp-title', id: 'inspector-heading', tabindex: '-1' }, put('span', null, s >= 0 ? app.w.label(`scenes[${s}].title`) : null))),
-    section(app, 'checked', 'sect.checked',
-      result.verifier ? put('p', 'insp-text', networkOf(result, source).denied ? app.w.chosen('audit.subDenied', networkOf(result, source).whyNot) : app.w.chosen('offline.subNotMeasured', networkOf(result, source).whyNot)) : null,
+    returnedState(result, source),
+    named ? section(app, 'checked', 'sect.checked',
+      put('p', 'insp-text', networkOf(result, source).denied ? app.w.chosen('audit.subDenied', networkOf(result, source).whyNot) : app.w.chosen('offline.subNotMeasured', networkOf(result, source).whyNot)),
       auditFacts(app, result, source),
       tampered.map((rec, n) => el('div', { class: 'record', data: { file: String(rec.file), kind: 'tampered' } },
         put('span', 'mono', value(result, `tampered[${n}].file`, undefined, source)),
         auditVerdict(app, rec, (p, shape) => source(`tampered[${n}].${p}`, shape), true),
-        (Array.isArray(rec.notes) ? rec.notes : []).map((_, k) => put('p', 'insp-note', value(result, `tampered[${n}].notes[${k}]`, undefined, source)))))),
-    section(app, 'limits', 'app.limits', put('p', 'insp-note', app.w.word('limit.steps')), put('p', 'insp-note', detailOf(app, 'record'), { 'data-note': 'detail' })));
+        (Array.isArray(rec.notes) ? rec.notes : []).map((_, k) => put('p', 'insp-note', value(result, `tampered[${n}].notes[${k}]`, undefined, source)))))) : null,
+    named ? section(app, 'limits', 'app.limits', put('p', 'insp-note', app.w.word('limit.steps')), put('p', 'insp-note', detailOf(app, 'record'), { 'data-note': 'detail' })) : null);
 }
 
 // What the audit names of itself: the verifier by SHA-256, the network while
@@ -607,7 +633,7 @@ function startPanel(app) {
 // ---- Render
 
 export function renderInspector(app, host) {
-  const signature = [app.mode, app.size, app.lens, JSON.stringify(app.selection), app.runId, app.runStamp, app.filesStamp, app.offlineStamp, app.openRecord, app.sceneIndex, app.labelsStamp].join('|');
+  const signature = [app.mode, app.size, app.lens, JSON.stringify(app.selection), app.runId, app.runStamp, app.filesStamp, app.offlineStamp, app.openRecord, app.sceneIndex, app.labelsStamp, JSON.stringify(app.variants ?? null)].join('|');
   if (host.dataset.signature === signature) return;
   const view = `${app.runId}|${JSON.stringify(app.selection)}`;
   const sameView = host.dataset.view === view;

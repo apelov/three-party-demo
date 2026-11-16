@@ -201,6 +201,7 @@ test('the stop arrives by M1 and its request by M3: its colours pass through the
   try {
     await watch(page);
     await page.click('.scene[data-kind="poisoned"]');
+    await page.keyboard.press('r');
     await runIs(page, 'blocked', 30000);
     const mid = await page.evaluate(() => {
       const chip = document.querySelector('#rows .row[data-status="blocked"] .row-state .chip');

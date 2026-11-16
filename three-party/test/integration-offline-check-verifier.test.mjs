@@ -135,34 +135,46 @@ test('through the API, a check that wrote no result returns its exit status, its
   assert.deepEqual(walkFiles(runDir), filesBefore, 'nothing was written');
 });
 
-// The offline panel as the page shows it.
+// The audit as the page shows it: the inspector's panel for it (what the
+// check names of itself, the tampered copy with its notes, or what a check
+// that wrote no result returned) and the ledger of the Records tab (one row
+// per record with its verdict, and the counts above it).
 const offlinePanel = (page) => page.evaluate(() => {
   const host = document.querySelector('#pane-inspector [data-panel="offline"]');
   if (!host) return null;
+  const tab = document.getElementById('records-tab');
   const returned = host.querySelector('[data-returned="offline-check"]');
-  const pairs = [...host.querySelectorAll('.insp-section > .kv > .kv-row')].filter((row) => !row.closest('[data-returned]')).map((row) => [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()]);
+  const checked = host.querySelector('[data-section="checked"]');
+  const pairs = checked ? [...checked.querySelectorAll('.kv > .kv-row')].map((row) => [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()]) : [];
   return {
     text: host.innerText,
-    sub: host.querySelector('.insp-head .insp-sub')?.textContent ?? null,
+    sub: checked?.querySelector('.insp-text')?.textContent ?? null,
     pairs,
-    rows: [...host.querySelectorAll('.record')].map((record) => ({
+    tampered: [...host.querySelectorAll('.record[data-kind="tampered"]')].map((record) => ({
+      file: record.dataset.file,
+      verdict: record.querySelector('.verdict span')?.textContent ?? null,
+      notes: [...record.querySelectorAll('.insp-note')].map((note) => note.textContent),
+    })),
+    limit: host.querySelector('[data-section="limits"] .insp-note')?.textContent ?? null,
+    rows: [...tab.querySelectorAll('.ledger-row.record')].map((record) => ({
       file: record.dataset.file,
       kind: record.dataset.kind,
-      flags: [...record.querySelectorAll('.record-line')[0].querySelectorAll('.record-flag')].map((flag) => flag.textContent),
-      verdict: record.querySelector('.verdict span')?.textContent ?? null,
-      notes: [...record.querySelectorAll('.record-line .record-line')].map((line) => [line.querySelector('.record-flag').textContent, line.querySelector('.insp-note').textContent]),
+      flags: [...record.querySelectorAll('.record-flag')].map((flag) => flag.textContent),
+      verdict: record.querySelector('[data-verdict-for] .verdict span')?.textContent ?? record.querySelector('[data-verdict-for]').textContent,
     })),
-    summary: [...host.querySelectorAll('.insp-big')].map((node) => node.textContent),
-    limit: host.querySelector('.insp > .insp-sub')?.textContent ?? null,
+    summary: [...tab.querySelectorAll('.records-head .records-count')].map((node) => node.textContent),
     returnedLines: returned ? [...returned.querySelectorAll('ul li')].map((li) => li.textContent) : null,
     returnedStatus: returned ? [...returned.querySelectorAll('.kv-row')].map((row) => [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').textContent]) : null,
-    verdicts: host.querySelectorAll('.verdict, [data-verdict]').length,
+    verdicts: host.querySelectorAll('.verdict').length + tab.querySelectorAll('.verdict').length,
   };
 });
 
+// The pairs of the record section of the inspector, for the step selected.
+const recordPairs = (page) => page.evaluate(() => [...document.querySelectorAll('#pane-inspector [data-section="record"] .kv > .kv-row')].map((row) => [row.querySelector('.kv-key').textContent, row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()]));
+
 const VERDICT_WORDS = /Passed steps 1 to 6|Rejected at step|passed steps 1 to 6|rejected \(/;
 
-test('the served screens show a written result in the deck\'s words: Passed steps 1 to 6 on each record, Rejected at step 3 on the tampered copy, the counts, and the line on steps 7 to 10; they show none of those words before a check and for a check that wrote no result', { ...LIMIT }, async () => {
+test('the served screens show a written result in the deck\'s words: Passed steps 1 to 6 on each record of the ledger, Rejected at step 3 on the tampered copy with the verifier\'s notes, the counts, and the line on steps 7 to 10; they show none of those words before a check and for a check that wrote no result', { ...LIMIT }, async () => {
   chrome = await launchBrowser();
   await browserStartChecks(chrome.browser, demo.url);
   const view = await openScreens(chrome.browser, demo.url, { hash: '#inspect' });
@@ -188,28 +200,36 @@ test('the served screens show a written result in the deck\'s words: Passed step
   // network line, and never the words of a denial.
   const denied = result.networkDenied === 'yes';
   assert.equal(result.networkDenied, here.networkDenied);
-  assert.equal(panel.sub, denied ? 'Each record is checked by our verifier with network access denied.' : 'Each record is checked by the verifier. Network denial was not measured on this computer.');
+  assert.equal(panel.sub, denied ? 'Each record is checked by the verifier with network access denied.' : 'Each record is checked by the verifier. Network denial was not measured on this computer.');
   assert.deepEqual(panel.pairs, [
-    ['Verifier', `aep-verify, our build, SHA-256 ${result.verifier.sha256.slice(0, 16)} ${COPY['inspector.copy']}`],
+    ['Verifier', `aep-verify, OpenA2A build, SHA-256 ${result.verifier.sha256.slice(0, 16)} ${COPY['inspector.copy']}`],
     ['Network', denied ? 'Access denied while checking' : `Not measured on this computer ${result.network}`],
     ['Trusted signer', `Test key generated for this run ${result.pin}`],
   ]);
   if (!denied) assert.doesNotMatch(panel.text, /Access denied while checking|with network access denied/);
   assert.equal(result.verifier.sha256, sha256(fs.readFileSync(VERIFIER_FILE)));
-  assert.deepEqual(panel.rows.slice(0, 5), result.records.map((record) => ({ file: record.file, kind: 'records', flags: [], verdict: 'Passed steps 1 to 6', notes: [['Verifier note', NOT_RUN]] })));
-  assert.deepEqual(panel.rows.slice(5), [{ file: result.tampered[0].file, kind: 'tampered', flags: ['Tampered copy', 'Expected: rejected'], verdict: 'Rejected at step 3', notes: [['Verifier note', STEP_3], ['Verifier note', NOT_RUN]] }]);
+  assert.deepEqual(panel.rows.slice(0, 5), result.records.map((record) => ({ file: record.file, kind: 'records', flags: [], verdict: 'Passed steps 1 to 6' })));
+  assert.deepEqual(panel.rows.slice(5), [{ file: result.tampered[0].file, kind: 'tampered', flags: ['Tampered copy', 'Expected: rejected'], verdict: 'Rejected at step 3' }]);
+  assert.deepEqual(panel.tampered, [{ file: result.tampered[0].file, verdict: 'Rejected at step 3', notes: [STEP_3, NOT_RUN] }], 'the inspector: the tampered copy with what the verifier wrote of it');
   assert.deepEqual(panel.summary, ['5 passed steps 1 to 6', '1 rejected (1 expected)']);
   assert.equal(panel.limit, 'Steps 7 to 10 of the format are not run by this verifier, so the timestamp is not checked.');
   assert.equal(panel.returnedLines, null, 'a written result is not shown as returned lines');
-  assert.equal(panel.verdicts, 6);
+  assert.equal(panel.verdicts, 7, 'six in the ledger, and the tampered copy\'s in the inspector');
   // The strings above are the deck's.
   assert.deepEqual(
-    [COPY['offline.sub'], COPY['offline.verifier'], COPY['offline.verifierValue'], COPY['offline.network'], COPY['offline.networkValue'], COPY['offline.signer'], COPY['offline.signerValue'], COPY['offline.pass'], COPY['offline.reject'], COPY['offline.tampered'], COPY['offline.expected'], COPY['offline.note'], COPY['offline.summaryPass'], COPY['offline.summaryReject'], COPY['limit.steps']],
-    ['Each record is checked by our verifier with network access denied.', 'Verifier', 'aep-verify, our build, SHA-256 {sha16}', 'Network', 'Access denied while checking', 'Trusted signer', 'Test key generated for this run', 'Passed steps 1 to 6', 'Rejected at step {n}', 'Tampered copy', 'Expected: rejected', 'Verifier note', '{pass} passed steps 1 to 6', '{reject} rejected ({expectedRejects} expected)', 'Steps 7 to 10 of the format are not run by this verifier, so the timestamp is not checked.'],
+    [COPY['audit.subDenied'], COPY['offline.verifier'], COPY['audit.verifierValue'], COPY['offline.network'], COPY['offline.networkValue'], COPY['offline.signer'], COPY['offline.signerValue'], COPY['offline.pass'], COPY['offline.reject'], COPY['offline.tampered'], COPY['offline.expected'], COPY['offline.note'], COPY['offline.summaryPass'], COPY['offline.summaryReject'], COPY['limit.steps']],
+    ['Each record is checked by the verifier with network access denied.', 'Verifier', 'aep-verify, OpenA2A build, SHA-256 {sha16}', 'Network', 'Access denied while checking', 'Trusted signer', 'Test key generated for this run', 'Passed steps 1 to 6', 'Rejected at step {n}', 'Tampered copy', 'Expected: rejected', 'Verifier note', '{pass} passed steps 1 to 6', '{reject} rejected ({expectedRejects} expected)', 'Steps 7 to 10 of the format are not run by this verifier, so the timestamp is not checked.'],
   );
   // Every text of the page names its source and equals it, the result included.
   const checked = assertCensus(await census(page), docsFrom(view.served, runId));
   assert.ok(checked > 40, `the census read the page (${checked} sourced texts)`);
+  // A record's own notes stand with its step: chosen from the ledger, the
+  // step's record section reads the verdict and what the verifier wrote.
+  await page.click(`.ledger-row.record[data-file="${result.records[0].file}"] .ledger-step`);
+  await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel !== 'offline');
+  const pairs = await recordPairs(page);
+  assert.deepEqual(pairs.filter(([key]) => ['Audit', 'Verifier note'].includes(key)), [['Audit', 'Passed steps 1 to 6'], ['Verifier note', NOT_RUN]]);
+  assert.ok(assertCensus(await census(page), docsFrom(view.served, runId)) > 40, 'the step with its record notes names its sources');
 
   // A poisoned run: four passed, the tampered copy rejected.
   const poisonedId = await runFromScreens(view, 'poisoned');
@@ -232,7 +252,12 @@ test('the served screens show a written result in the deck\'s words: Passed step
   const none = await offlinePanel(page);
   assert.deepEqual(none.returnedLines, [...answer.lines, ...answer.notes]);
   assert.deepEqual(none.returnedStatus, [['exitCode', '1']]);
-  assert.deepEqual({ verdicts: none.verdicts, rows: none.rows, summary: none.summary, sub: none.sub, limit: none.limit, pairs: none.pairs }, { verdicts: 0, rows: [], summary: [], sub: null, limit: null, pairs: [] });
+  assert.deepEqual({ verdicts: none.verdicts, tampered: none.tampered, sub: none.sub, limit: none.limit, pairs: none.pairs }, { verdicts: 0, tampered: [], sub: null, limit: null, pairs: [] });
+  // The ledger lists the run's records, each one not audited, under the
+  // line that says so: no verdict and no count.
+  assert.ok(none.rows.length > 0);
+  assert.deepEqual(new Set(none.rows.map((row) => row.verdict)), new Set([COPY['insp.notAudited']]));
+  assert.deepEqual(none.summary, [COPY['insp.notAudited']]);
   assert.doesNotMatch(none.text, VERDICT_WORDS);
   assert.doesNotMatch(none.text, /Each record is checked|Access denied while checking|Not measured on this computer|Steps 7 to 10/);
 

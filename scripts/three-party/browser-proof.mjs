@@ -54,13 +54,12 @@ if (!url || !out || !/^http:\/\/127\.0\.0\.1:[0-9]+\/$/.test(url) || Number.isNa
 
 // The words the screen shows for a written result.
 const WORDS = Object.freeze({
-  sub: 'Each record is checked by our verifier with network access denied.',
+  sub: 'Each record is checked by the verifier with network access denied.',
   network: 'Network: Access denied while checking',
   signer: 'Trusted signer: Test key generated for this run',
   pass: 'Passed steps 1 to 6',
   reject: (step) => `Rejected at step ${step}`,
   tampered: ['Tampered copy', 'Expected: rejected'],
-  note: 'Verifier note',
   summaryPass: (pass) => `${pass} passed steps 1 to 6`,
   summaryReject: (reject, expected) => `${reject} rejected (${expected} expected)`,
   limit: 'Steps 7 to 10 of the format are not run by this verifier, so the timestamp is not checked.',
@@ -109,30 +108,34 @@ async function runOnce(view, kind) {
   const finishedMs = Date.now() - clickedAt;
   await view.settle();
   const rows = await page.evaluate(() => [...document.querySelectorAll('#rows .row')].map((row) => ({ step: row.dataset.step, status: row.dataset.status, word: row.querySelector('.chip-word').textContent })));
-  const headline = await page.locator('#run-line .run-outcome').innerText();
+  const headline = await page.locator('#outcome-end .outcome-words').innerText();
   await page.screenshot({ path: path.join(out, `${kind}-finished.png`) });
 
   await offlineCheckFromScreens(view, 60000);
   const answer = JSON.parse(view.served.get(`POST /api/runs/${runId}/offline-check`));
+  // The audit as the screens show it: the inspector's panel for it, and the
+  // ledger of the Records tab with the counts above it.
   const panel = await page.evaluate(() => {
     const host = document.querySelector('#pane-inspector [data-panel="offline"]');
+    const tab = document.getElementById('records-tab');
     const returned = host.querySelector('[data-returned="offline-check"]');
-    const facts = [...host.querySelectorAll('.insp-section > .kv > .kv-row')].filter((row) => !row.closest('[data-returned]'));
+    const checked = host.querySelector('[data-section="checked"]');
+    const facts = checked ? [...checked.querySelectorAll('.kv > .kv-row')] : [];
     return {
-      text: host.innerText,
+      text: `${host.innerText}\n${tab.innerText}`,
       lines: returned ? [...returned.querySelectorAll('ul li')].map((li) => li.textContent) : [],
       exit: returned ? [...returned.querySelectorAll('.kv-row')].map((row) => `${row.querySelector('.kv-key').textContent} ${row.querySelector('.kv-value').textContent}`) : [],
-      verdicts: host.querySelectorAll('.verdict, [data-verdict]').length,
-      sub: host.querySelector('.insp-head .insp-sub')?.textContent ?? null,
+      verdicts: tab.querySelectorAll('.ledger .verdict').length,
+      sub: checked?.querySelector('.insp-text')?.textContent ?? null,
       facts: facts.map((row) => `${row.querySelector('.kv-key').textContent}: ${row.querySelector('.kv-value').innerText.replace(/\s+/g, ' ').trim()}`),
-      rows: [...host.querySelectorAll('.record')].map((record) => ({
+      rows: [...tab.querySelectorAll('.ledger-row.record')].map((record) => ({
         file: record.dataset.file,
-        flags: [...record.querySelectorAll('.record-line')[0].querySelectorAll('.record-flag')].map((flag) => flag.textContent),
-        verdict: record.querySelector('.verdict span')?.textContent ?? null,
-        notes: [...record.querySelectorAll('.record-line .record-line')].map((line) => `${line.querySelector('.record-flag').textContent}: ${line.querySelector('.insp-note').textContent}`),
+        flags: [...record.querySelectorAll('.record-flag')].map((flag) => flag.textContent),
+        verdict: record.querySelector('[data-verdict-for] .verdict span')?.textContent ?? null,
       })),
-      summary: [...host.querySelectorAll('.insp-big')].map((node) => node.textContent),
-      limit: host.querySelector('.insp > .insp-sub')?.textContent ?? null,
+      tamperedNotes: [...host.querySelectorAll('.record[data-kind="tampered"]')].map((record) => [...record.querySelectorAll('.insp-note')].map((note) => note.textContent)),
+      summary: [...tab.querySelectorAll('.records-head .records-count')].map((node) => node.textContent),
+      limit: host.querySelector('[data-section="limits"] .insp-note')?.textContent ?? null,
     };
   });
   await page.screenshot({ path: path.join(out, `${kind}-offline-check.png`) });
@@ -149,14 +152,14 @@ async function runOnce(view, kind) {
     const copies = Array.isArray(answer.tampered) ? answer.tampered : [];
     const wordOf = (item) => (item.verdict === 'pass-1-6' ? WORDS.pass : WORDS.reject(item.firstFailingStep));
     need(panel.lines.length === 0 && panel.exit.length === 0, `${screen} shows returned lines beside a written result`);
-    need(panel.sub === WORDS.sub, `${screen} does not say the records are checked by our verifier with network access denied`);
-    need(panel.facts.some((fact) => fact.startsWith(`Verifier: aep-verify, our build, SHA-256 ${String(answer.verifier?.sha256).slice(0, 16)}`)), `${screen} does not name the verifier by its hash`);
+    need(panel.sub === WORDS.sub, `${screen} does not say the records are checked by the verifier with network access denied`);
+    need(panel.facts.some((fact) => fact.startsWith(`Verifier: aep-verify, OpenA2A build, SHA-256 ${String(answer.verifier?.sha256).slice(0, 16)}`)), `${screen} does not name the verifier by its hash`);
     need(panel.facts.includes(WORDS.network), `${screen} does not show that network access was denied while checking`);
     need(panel.facts.some((fact) => fact.startsWith(WORDS.signer)), `${screen} does not name the trusted signer`);
     need(same(panel.rows.map((row) => row.file), [...records, ...copies].map((item) => item.file)), `${screen} does not list the records of the result`);
     need(same(panel.rows.map((row) => row.verdict), [...records, ...copies].map(wordOf)), `${screen} does not show the verdict of each record in the deck's words`);
     need(same(panel.rows.slice(records.length).map((row) => row.flags), copies.map(() => WORDS.tampered)), `${screen} does not mark the tampered copy and what is expected of it`);
-    need(panel.rows.every((row) => row.notes.every((note) => note.startsWith(`${WORDS.note}: `))), `${screen} shows a note without its label`);
+    need(same(panel.tamperedNotes, copies.map((item) => (Array.isArray(item.notes) ? item.notes : []))), `${screen} does not show what the verifier wrote of the tampered copy`);
     need(panel.verdicts === records.length + copies.length, `${screen} shows ${panel.verdicts} verdicts for ${records.length + copies.length} records`);
     need(same(panel.summary, [WORDS.summaryPass(answer.summary.pass), WORDS.summaryReject(answer.summary.reject, answer.summary.expectedRejects)]), `${screen} does not show the counts of the result`);
     need(panel.limit === WORDS.limit, `${screen} does not say that steps 7 to 10 are not run`);
@@ -165,7 +168,7 @@ async function runOnce(view, kind) {
   } else {
     need(same(panel.lines, [...answer.lines, ...answer.notes]), `${screen} does not show the lines the check returned`);
     need(panel.exit.length === 1 && panel.exit[0] === `exitCode ${answer.exitCode}`, `${screen} does not show the exit status the check returned`);
-    need(panel.verdicts === 0 && panel.rows.length === 0 && panel.summary.length === 0 && !/passed|rejected/i.test(panel.text), `${screen} shows a verdict, and the check wrote no result`);
+    need(panel.verdicts === 0 && panel.rows.every((row) => row.verdict === null) && !panel.summary.some((line) => /passed|rejected/i.test(line)) && !/passed|rejected/i.test(panel.text), `${screen} shows a verdict, and the check wrote no result`);
   }
   if (expectOffline !== null) need(written === (expectOffline === 'written'), `the offline check of the ${kind} run ${written ? 'wrote a result' : 'wrote no result'}, and this proof expects ${expectOffline === 'written' ? 'a written result' : 'the returned state'}`);
   if (minSeconds !== null) need(finishedMs / 1000 >= minSeconds, `the ${kind} run took ${seconds(finishedMs)} s, under ${minSeconds} s`);
@@ -188,7 +191,7 @@ async function runOnce(view, kind) {
       ? {
         written: true,
         result: answer,
-        shown: { sub: panel.sub, facts: panel.facts, records: panel.rows, summary: panel.summary, limit: panel.limit },
+        shown: { sub: panel.sub, facts: panel.facts, records: panel.rows, tamperedNotes: panel.tamperedNotes, summary: panel.summary, limit: panel.limit },
         verdictsShown: panel.verdicts,
       }
       : { written: false, exitCode: answer.exitCode, lines: answer.lines, notes: answer.notes, shownLines: panel.lines, shownExit: panel.exit, verdictsShown: panel.verdicts },

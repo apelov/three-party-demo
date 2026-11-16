@@ -248,10 +248,11 @@ export async function openView(browser, { width = 1440, height = 900, scheme = '
 
 export const runIs = (page, state, timeout = 20000) => page.waitForFunction((s) => document.body.dataset.run === s, state, { timeout });
 
-// Run an item of the menu by its kind with a real click: a click on an item
-// chooses it and runs it.
+// Choose an item of the menu by its kind with a real click, and run it with
+// the R key.
 export async function runScene(page, kind) {
   await page.click(`.scene[data-kind="${kind}"]`);
+  await page.keyboard.press('r');
 }
 
 // Run a scene and wait for its outcome, then for the files the panes asked

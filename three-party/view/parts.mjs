@@ -35,10 +35,12 @@ export function partOf(app, stepId) {
 // of the run names (the crossing's supplied capture check or its fallback),
 // with the path of its strings in the map; the part itself when the run
 // names none, and before a run.
+// Before a run, the variant the server says a run started now would use.
 export function shownPart(app, col) {
   const part = app.labels.parts?.[col] ?? null;
   const step = (app.run?.steps ?? []).find((s) => s.variant && app.labels.stepColumns?.[s.id] === col);
-  const variant = step && part?.variants && Object.hasOwn(part.variants, step.variant) ? step.variant : null;
+  const named = step ? step.variant : (app.run ? null : app.variants?.[col] ?? null);
+  const variant = named && part?.variants && Object.hasOwn(part.variants, named) ? named : null;
   return variant ? { part: part.variants[variant], path: `parts.${col}.variants.${variant}` } : { part, path: `parts.${col}` };
 }
 

@@ -131,7 +131,9 @@ test('--text --offline-check prints, after each run, each line the offline check
   try {
     const plain = await runStart(['--text', '--run', 'clean', '--pace', '0', '--runs-dir', dir]);
     assert.equal(plain.code, 0);
-    assert.equal(plain.lines.length, 12, 'without the option a clean run prints its twelve lines');
+    // The header (title, mock line, pace line), six steps, the outcome and
+    // the run directory; the header no longer has a fictional-data line.
+    assert.equal(plain.lines.length, 11, 'without the option a clean run prints its eleven lines');
     assert.equal(plain.lines.some((l) => l.includes('Offline check')), false);
 
     const r = await runStart(['--text', '--run', 'clean', '--pace', '0', '--offline-check', '--runs-dir', dir]);
@@ -139,7 +141,7 @@ test('--text --offline-check prints, after each run, each line the offline check
     assert.equal(r.stderr, '');
     assert.equal(r.code, 0, 'the exit code says how the run ended, not what the check returned');
     const directory = r.lines.findIndex((l) => l.startsWith('Run directory: '));
-    assert.equal(directory, 11);
+    assert.equal(directory, 10);
     const runDir = r.lines[directory].slice('Run directory: '.length);
     assert.equal(path.dirname(runDir), dir);
 

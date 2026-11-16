@@ -261,6 +261,7 @@ mark { background: none; color: inherit; }
 .run-help, .run-error { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 .run-error { color: var(--red); }
 
+.step-controls[hidden] { display: none; }
 .step-controls {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -281,7 +282,7 @@ mark { background: none; color: inherit; }
 .tab[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
 .tab:hover { color: var(--ink); }
 .tab:focus-visible { outline-offset: -2px; }
-.tab-panel { flex: 1; min-height: 0; padding: 12px var(--gut) 0; overflow: hidden; display: flex; flex-direction: column; }
+.tab-panel { flex: 1; min-height: 0; padding: 12px var(--gut) 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
 .tab-panel[hidden] { display: none; }
 
 /* ---- Orientation: before any run */
@@ -747,3 +748,18 @@ body[data-size="inspect"] .row[data-status="blocked"], .flow[data-many="yes"] .r
 
 /* A step of the sequence that holds the focus: the ring inside its rules. */
 .row:focus-visible { outline-offset: -2px; }
+
+/* From 1024 to 1199 px the inspector stands under the middle pane, so the
+   sequence keeps the width of five lanes; the page scrolls. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  html, body { height: auto; }
+  /* The where-you-are line keeps its room; the run's id stays in the
+     inspector's overview of the run. */
+  .top-run { display: none; }
+  body { grid-template-columns: var(--left) minmax(0, 1fr); grid-template-rows: var(--bar) auto auto auto; min-height: 100vh; overflow: auto; }
+  .pane-left { grid-column: 1; grid-row: 2 / 4; }
+  .pane-flow { grid-column: 2; grid-row: 2; overflow: visible; }
+  .tab-panel { overflow: visible; }
+  .pane-inspector { grid-column: 2; grid-row: 3; border-left: 0; border-top: 1px solid var(--rule); overflow: visible; }
+  .footer { grid-row: 4; }
+}
