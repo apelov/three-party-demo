@@ -697,9 +697,11 @@ kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px so
 
 /* ---- Motion: a change of state, the request travelling, the countdown, the trace bars */
 
-.chip, .chip .icon, .row-title, .row-num, .arrow, .rec-mark, .verdict { transition-property: color, background-color, border-color; transition-duration: var(--m1); transition-timing-function: ease-out; }
+.chip, .chip .icon, .arrow, .rec-mark, .verdict { transition-property: color, background-color, border-color; transition-duration: var(--m1); transition-timing-function: ease-out; }
 .arrow-line { transition-property: clip-path; transition-duration: var(--m3); transition-timing-function: ease-out; }
-.arrow-pulse { transition-property: inset-inline-start; transition-duration: var(--m3); transition-timing-function: ease-out; }
+/* The marker travels out when its step begins and comes back unseen at once. */
+.arrow-pulse { transition-property: inset-inline-start; transition-duration: 0s; transition-timing-function: ease-out; }
+.row[data-travel="yes"] .arrow-pulse { transition-duration: var(--m3); }
 .countdown-fill { transition-property: width; transition-duration: 1s; transition-timing-function: linear; }
 .trace-bar { transition-property: width, inset-inline-start; transition-duration: var(--m1); transition-timing-function: ease-out; }
 

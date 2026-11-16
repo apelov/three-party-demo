@@ -21,10 +21,9 @@ before(async () => { browser = await launchChrome(); });
 after(async () => { await browser?.close(); removeTempDirs(); });
 
 const j = (...parts) => parts.join('');
-const M1 = ['background-color', 'color', 'border-color', 'fill'];
+const M1 = ['color', 'background-color', 'border-color'];
 const M4 = ['width', 'inset-inline-start'];
 
-// Every rule of a stylesheet that declares a transition or an animation.
 function motionRules(css) {
   const plain = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [];
@@ -37,7 +36,7 @@ function motionRules(css) {
   return { plain, rules };
 }
 
-test('the census of the stylesheet: M1, M2 and M4 are the three transitions it declares; no keyframes, nothing infinite, no transform or opacity in motion, nothing over 200 ms but the countdown bar', (t) => {
+test('the census of the stylesheet: a change of state (M1), the request travelling once along its arrow (M3), the countdown bar (M2) and the trace bars (M4) are the transitions it declares; no keyframes, nothing infinite, no opacity, and one transform, the stamp\'s still tilt', (t) => {
   const sheets = viewFiles(['.css']);
   assert.deepEqual(sheets.map((s) => s.name), ['view.css']);
   const { plain, rules } = motionRules(sheets[0].text);
@@ -46,24 +45,39 @@ test('the census of the stylesheet: M1, M2 and M4 are the three transitions it d
   assert.equal(/infinite/.test(plain), false, 'nothing runs for ever');
   assert.equal(/\btransition\s*:/.test(plain), false, 'no transition shorthand, so no property is moved by default');
   assert.equal(/\banimation(-name)?\s*:/.test(plain), false, 'no animation');
-  assert.equal(new RegExp(j('\\b(trans', 'form|trans', 'late|sca', 'le|rot', 'ate|opa', 'city)\\s*:')).test(plain), false, 'the stylesheet sets none of the properties that slide, grow, turn or fade');
+  assert.equal(new RegExp(j('\\b(trans', 'form|trans', 'late|sca', 'le|opa', 'city)\\s*:')).test(plain), false, 'the stylesheet sets none of the properties that slide, grow or fade');
+  // One still tilt, on the stamp: the stopped step's state and a payment's outcome.
+  const tilts = [...plain.matchAll(/([^{}]+)\{[^{}]*\brot(?:ate)\s*:\s*([^;]+);/g)].map((m) => [m[1].trim().replace(/\s+/g, ' '), m[2].trim()]);
+  assert.deepEqual(tilts, [['.row[data-status="blocked"] .chip, .outcome[data-outcome="paid"] .outcome-chip', '-1.5deg']]);
 
   t.diagnostic('motion census: selector | property | duration | timing');
   for (const rule of rules) t.diagnostic(`motion census: ${rule.selector} | ${rule.decls['transition-property'] ?? ''} | ${rule.decls['transition-duration'] ?? rule.decls['animation-duration'] ?? ''} | ${rule.decls['transition-timing-function'] ?? ''}`);
 
   const listed = (r) => (r.decls['transition-property'] ?? '').split(',').map((p) => p.trim()).filter(Boolean);
-  const m4 = rules.filter((r) => listed(r).join() === M4.join());
-  const m1 = rules.filter((r) => r.decls['transition-property'] && r.decls['transition-property'] !== 'width' && !m4.includes(r));
-  const m2 = rules.filter((r) => r.decls['transition-property'] === 'width');
-  const reduced = rules.filter((r) => !r.decls['transition-property']);
+  const byProps = (props) => rules.filter((r) => listed(r).join() === props.join());
+  const m1 = byProps(M1);
+  const m3 = [...byProps(['clip-path']), ...byProps(['inset-inline-start'])];
+  const m2 = byProps(['width']);
+  const m4 = byProps(M4);
+  const travelling = rules.filter((r) => r.selector === '.row[data-travel="yes"] .arrow-pulse');
+  const reduced = rules.filter((r) => !r.decls['transition-property'] && !travelling.includes(r));
+
   assert.equal(m1.length, 1, 'one rule for a change of state');
-  assert.deepEqual(m1[0].decls['transition-property'].split(',').map((p) => p.trim()), M1);
+  assert.equal(m1[0].selector, '.chip, .chip .icon, .arrow, .rec-mark, .verdict', 'on the state, its icon, its arrow, its record mark and a verdict; a selection, which sets a step\'s title and number apart, moves nothing');
   assert.equal(m1[0].decls['transition-duration'], 'var(--m1)');
   assert.match(plain, /--m1:\s*200ms;/);
   assert.equal(m1[0].decls['transition-timing-function'], 'ease-out');
-  assert.equal(m1[0].selector, '.row-tile, .chip, .chip .icon, .row-title, .diff', 'on the row, its chip and icon, its title, and the differs underline');
 
-  assert.equal(m2.length, 1, 'one rule for the bar');
+  assert.deepEqual(m3.map((r) => r.selector), ['.arrow-line', '.arrow-pulse'], 'the request drawn along its arrow, and its marker');
+  for (const r of m3) assert.equal(r.decls['transition-timing-function'], 'ease-out');
+  assert.equal(m3[0].decls['transition-duration'], 'var(--m3)');
+  // The marker moves only on its way out, while its step's travel lasts; it
+  // comes back unseen at once.
+  assert.equal(m3[1].decls['transition-duration'], '0s');
+  assert.deepEqual(travelling.map((r) => r.decls), [{ 'transition-duration': 'var(--m3)' }]);
+  assert.match(plain, /--m3:\s*600ms;/);
+
+  assert.equal(m2.length, 1, 'one rule for the countdown bar');
   assert.equal(m2[0].selector, '.countdown-fill');
   assert.equal(m2[0].decls['transition-duration'], '1s');
   assert.equal(m2[0].decls['transition-timing-function'], 'linear');
@@ -71,33 +85,25 @@ test('the census of the stylesheet: M1, M2 and M4 are the three transitions it d
   assert.equal(m4.length, 1, 'one rule for the bars of the trace');
   assert.equal(m4[0].selector, '.trace-bar');
   assert.equal(m4[0].decls['transition-duration'], 'var(--m1)');
-  assert.equal(m4[0].decls['transition-timing-function'], 'ease-out');
-
-  // M1, M2, M4 and the reduced motion rule: the stylesheet has no other rule
-  // that moves. No property list holds a property that slides, grows, turns
-  // or fades, and no duration is over 200 ms but the countdown bar's.
-  assert.equal(rules.length, 4);
-  for (const rule of rules) {
-    for (const property of listed(rule)) assert.equal(new RegExp(j('trans', 'form|trans', 'late|sca', 'le|rot', 'ate|opa', 'city')).test(property), false, `${rule.selector}: ${property}`);
-    const duration = rule.decls['transition-duration'];
-    if (rule !== m2[0] && rule !== reduced[0]) assert.equal(duration, 'var(--m1)', `${rule.selector} lasts 200 ms`);
-  }
 
   assert.equal(reduced.length, 1, 'and the reduced motion rule');
   assert.deepEqual(reduced[0].decls, { 'transition-duration': '0s !important', 'animation-duration': '0s !important' });
   assert.match(plain, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{/);
+  assert.match(plain, /prefers-reduced-motion: reduce\) \{[^@]*\.row:not\(\[data-status="blocked"\]\) \.arrow-pulse \{ display: none; \}/, 'with reduced motion the travelling marker is not drawn');
+  assert.equal(rules.length, 7);
 });
 
-test('with motion allowed a row\'s transition lasts 0.2 s, over the four properties of M1', async () => {
+test('with motion allowed a state\'s colours pass through 0.2 s, and a request\'s arrow is drawn in 0.6 s', async () => {
   const view = await openView(browser, { motion: 'no-preference' });
   try {
-    const row = await view.page.evaluate(() => {
-      const s = getComputedStyle(document.querySelector('#rows .row-tile'));
-      return { duration: s.transitionDuration, property: s.transitionProperty, timing: s.transitionTimingFunction };
+    await runAndWait(view, 'clean', 'paid');
+    const seen = await view.page.evaluate(() => {
+      const chip = getComputedStyle(document.querySelector('#rows .row-state .chip'));
+      const line = getComputedStyle(document.querySelector('#rows .arrow-line'));
+      return { chip: [chip.transitionDuration, chip.transitionProperty], line: [line.transitionDuration, line.transitionProperty] };
     });
-    assert.equal(row.duration, '0.2s');
-    assert.equal(row.property, M1.join(', '));
-    assert.equal(row.timing, 'ease-out');
+    assert.deepEqual(seen.chip, ['0.2s', 'color, background-color, border-color']);
+    assert.deepEqual(seen.line, ['0.6s', 'clip-path']);
   } finally {
     await view.close();
   }
@@ -137,12 +143,15 @@ const watch = (page) => page.evaluate((allowed) => {
         if (!target.matches('.countdown-fill')) log.faults.push(`width moves on ${target.className}`);
         continue;
       }
-      if (!allowed.includes(property) && !/^border-(top|right|bottom|left)-color$/.test(property)) log.faults.push(`${property} moves on ${target.className}`);
+      // M3: the request drawn along its arrow, and its marker, on the row of
+      // the step that began; they last 600 ms.
+      const travel = (property === 'clip-path' && target.matches('.arrow-line')) || (property === 'left' && target.matches('.arrow-pulse'));
+      if (!travel && !allowed.includes(property) && !/^border-(top|right|bottom|left)-color$/.test(property)) log.faults.push(`${property} moves on ${target.className}`);
       const row = target.closest('#rows .row');
       if (!row) { log.faults.push(`${property} moves outside the rows, on ${target.className}`); continue; }
       rows.add(row);
       const at = changed.get(row);
-      if (at === undefined || performance.now() - at > 400) log.faults.push(`${property} moves on step ${row.dataset.step} with no change of its state`);
+      if (at === undefined || performance.now() - at > (travel ? 800 : 400)) log.faults.push(`${property} moves on step ${row.dataset.step} with no change of its state`);
     }
     log.most = Math.max(log.most, rows.size);
   }, 25);
@@ -163,11 +172,13 @@ test('during a run the transitions running are those of the step that changed st
     assert.deepEqual(run.faults, []);
     assert.ok(run.samples > 100, `${run.samples} samples`);
     assert.ok(run.properties.includes('width'), 'the bar moved');
-    assert.ok(run.properties.includes('background-color') && run.properties.includes('color'), `a change of state moved: ${run.properties}`);
+    assert.ok(run.properties.includes('color'), `a change of state moved: ${run.properties}`);
+    assert.ok(run.properties.includes('clip-path'), `a request travelled along its arrow: ${run.properties}`);
     assert.ok(run.most >= 1 && run.most <= 2, `at most the step that ended and the step that began at once: ${run.most}`);
 
-    // Selection, mode and the inspector cause no motion. The bar is gone by now (the grant of the replay has run out).
-    await page.waitForFunction(() => document.querySelector('.countdown')?.dataset.done === 'yes', null, { timeout: 15000 });
+    // Selection, mode and the inspector cause no motion. The countdown leaves
+    // the rows once the outcome is decided.
+    await page.waitForFunction(() => document.body.dataset.run === 'paid' && document.querySelector('#rows .countdown') === null, null, { timeout: 15000 });
     await page.waitForTimeout(1300);
     const before = await report(page);
     for (const key of ['1', 'ArrowRight', 'i', '4', '0', 's', 'End', 'Home']) {
@@ -184,24 +195,24 @@ test('during a run the transitions running are those of the step that changed st
   }
 });
 
-test('the stopped tile arrives by M1 alone: its colours pass through the 200 ms transition and nothing else moves', async () => {
+test('the stop arrives by M1 and its request by M3: its colours pass through the 200 ms transition, its stamp does not move, and nothing else moves', async () => {
   const view = await openView(browser, { motion: 'no-preference', server: { replay: true, speed: 10 } });
   const { page } = view;
   try {
     await watch(page);
     await page.click('.scene[data-kind="poisoned"]');
-    await page.keyboard.press('r');
     await runIs(page, 'blocked', 30000);
     const mid = await page.evaluate(() => {
-      const tile = document.querySelector('#rows .row[data-status="blocked"] .row-tile');
-      return { running: tile.getAnimations().map((a) => a.transitionProperty).sort(), duration: getComputedStyle(tile).transitionDuration };
+      const chip = document.querySelector('#rows .row[data-status="blocked"] .row-state .chip');
+      return { duration: getComputedStyle(chip).transitionDuration, rotate: getComputedStyle(chip).rotate };
     });
     assert.equal(mid.duration, '0.2s');
-    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="record"]').dataset.status === 'written', null, { timeout: 30000 });
+    assert.equal(mid.rotate, '-1.5deg', 'the stamp\'s tilt is still: it is not in a transition');
+    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="record"]')?.dataset.status === 'written', null, { timeout: 30000 });
     await page.waitForTimeout(500);
     const run = await report(page);
     assert.deepEqual(run.faults, []);
-    assert.ok(run.properties.includes('background-color'), `the tile's colour moved: ${run.properties}`);
+    assert.ok(run.properties.includes('color'), `the stop's colour moved: ${run.properties}`);
   } finally {
     await view.close();
   }
@@ -212,14 +223,17 @@ test('reduced motion: no animation runs through a whole run, the countdown numbe
   const view = await openView(browser, { motion: 'reduce', clockAt: new Date(Date.parse(grant.expiresAt) - 20000).toISOString() });
   const { page } = view;
   try {
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#rows .row-tile')).transitionDuration), '0s');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.tab')).transitionDuration), '0s');
     await page.evaluate(() => {
       window.seenAnimations = 0;
       setInterval(() => { window.seenAnimations = Math.max(window.seenAnimations, document.getAnimations().length); }, 20);
     });
     await runAndWait(view, 'clean', 'paid');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.countdown-fill')).transitionDuration), '0s');
-    const read = () => page.evaluate(() => ({ text: document.querySelector('#rows .countdown-text').textContent, width: document.querySelector('#rows .countdown-fill').getBoundingClientRect().width }));
+    // The grant's countdown, in the inspector's row of its remaining lifetime.
+    await page.keyboard.press('i');
+    await page.keyboard.press('2');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#pane-inspector .countdown-fill')).transitionDuration), '0s');
+    const read = () => page.evaluate(() => ({ text: document.querySelector('#pane-inspector .countdown-text').textContent, width: document.querySelector('#pane-inspector .countdown-fill').getBoundingClientRect().width }));
     const texts = [];
     const widths = [];
     for (let i = 0; i < 4; i += 1) {
@@ -255,7 +269,7 @@ test('nothing moves on load with the trace showing: two seconds after the page o
     const animations = () => page.evaluate(() => document.getAnimations().length);
     assert.equal(await animations(), 0, 'a finished run at rest');
     // The switch is an instant swap, by key and by click.
-    for (const press of [() => page.keyboard.press('t'), () => page.keyboard.press('t'), () => page.click('#view-switch [data-view="flow"]'), () => page.click('#view-switch [data-view="trace"]')]) {
+    for (const press of [() => page.keyboard.press('t'), () => page.keyboard.press('t'), () => page.click('#tab-sequence'), () => page.click('#tab-trace')]) {
       await press();
       assert.equal(await animations(), 0, 'right after the switch');
       await page.waitForTimeout(60);
@@ -356,7 +370,7 @@ test('during a run on the trace the transitions running are the state chip of th
     assert.ok(run.samples > 100, `${run.samples} samples`);
     assert.ok(run.bars.includes('width'), `a bar's width moved: ${run.bars}`);
     assert.ok(run.bars.some((p) => p !== 'width'), `a bar's start moved when the lane took the run's length: ${run.bars}`);
-    assert.ok(run.properties.includes('background-color') && run.properties.includes('color'), `a state chip moved: ${run.properties}`);
+    assert.ok(run.properties.includes('color'), `a state chip moved: ${run.properties}`);
     assert.ok(run.most >= 1 && run.most <= 2, `at most the step that ended and the step that began at once: ${run.most}`);
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.trace-bar')).transitionDuration), '0.2s');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.trace-bar')).transitionTimingFunction), 'ease-out');
