@@ -133,6 +133,8 @@ export async function takeStills({ out, url = null, pair = false, tracePair = fa
       const file = elsewhere ?? path.join(out, `${name}-${scheme}-${width}.png`);
       await settle();
       await page.mouse.move(0, 0);
+      // A still pictures the screen, not where the keyboard stands.
+      await page.evaluate(() => document.activeElement?.blur());
       // A still is taken of a page that fits its window: no still is written
       // of a page wider than the window it is shown in.
       const wide = await page.evaluate(() => ({ page: document.documentElement.scrollWidth, window: window.innerWidth }));

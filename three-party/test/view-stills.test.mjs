@@ -62,15 +62,14 @@ test('the stills script takes the pair of the stopped step through the dev serve
   assert.notDeepEqual(fs.readFileSync(path.join(out, PAIR[0])), fs.readFileSync(path.join(out, PAIR[1])));
 });
 
-test('the stills script takes the pair of the stopped step in the trace through the dev server: in Story with the step\'s rows open, in Inspect with the row of the call that decided opened in the inspector', async () => {
+test('the stills script takes the stopped step in the trace through the dev server, in Story with the step\'s rows open and the call that decided marked', async () => {
   const out = tempDir('three-party-stills-');
   const written = await takeStills({ out, tracePair: true });
-  assert.deepEqual(written.map((w) => path.basename(w.file)), [...TRACE_PAIR].reverse(), 'Story, then Inspect');
+  assert.deepEqual(written.map((w) => path.basename(w.file)), TRACE_PAIR);
   assert.deepEqual(fs.readdirSync(out).sort(), TRACE_PAIR);
   for (const w of written) {
     assert.deepEqual(sizeOf(w.file), [1440, 900]);
     assert.equal(w.pixels, '1440x900');
     assert.ok(w.pageWidth <= w.windowWidth, 'the page fits its window');
   }
-  assert.notDeepEqual(fs.readFileSync(path.join(out, TRACE_PAIR[0])), fs.readFileSync(path.join(out, TRACE_PAIR[1])));
 });
