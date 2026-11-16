@@ -9,7 +9,6 @@ what is real and what isn't yet. Every listener the demo starts is bound to
 
 ```sh
 npm ci
-node scripts/three-party/fetch-ai2ii.mjs   # optional, see "The crossing" below
 npm run three-party
 ```
 
@@ -73,9 +72,12 @@ line of a written record also ends with the note on its timestamp entry. The
 parties go by role: no line names a company, a DID or a domain of the
 fixtures.
 
-`three-party/test/fixtures/text-mode-both.txt` holds what the command printed
-for the two runs when this was written. A test runs the command again and
-compares its lines with that file, with the times, the payment id, the run
+`three-party/test/fixtures/text-mode-both-ai2ii.txt` holds what the command
+printed for the two runs when this was written, with the crossing checking
+AI2II's capture, and `three-party/test/fixtures/text-mode-both.txt` what it
+printed when the crossing ran its stand-in. A test runs the command again and
+compares its lines with the first file, or with the second in a checkout that
+is missing a file of the capture, with the times, the payment id, the run
 directories and the pace set aside.
 
 | Command | What it starts |
@@ -105,7 +107,7 @@ route returns the check's exit status, its lines and its notes.
 |---|---|---|
 | Verify the agent's ATX credential locally | `checkpoint` | `LocalAtxVerifier` of `@opena2a/atx-verify` over the exact bytes of `fixtures/agents/billpay-agent.atx.json`, under the pinned test issuer key |
 | Issue a scoped AAP grant | `checkpoint` | the reference grant resolver checks the credential and the grant policy, signs a broker token and exchanges it at the bank's token service for an access token that lives 60 seconds |
-| Cross into the supplier's bank's trust domain | `crossing` | the check of AI2II's capture when its files are fetched, otherwise the delegation chain check over a fixture, a stand-in (see "The crossing") |
+| Cross into the supplier's bank's trust domain | `crossing` | the check of AI2II's capture, held in `three-party/external/ai2ii/`; when a file of it is missing or changed, the delegation chain check over a fixture, a stand-in (see "The crossing") |
 | Apply the intent rule to each tool call | `checkpoint` | every argument of each tool call the agent makes is compared with the declared intent, field for field; a call with no declared intent is blocked |
 | Pay the invoice under the grant | `bank` | `POST /v1/payments` on the bank's payment API with the grant; the bank's own consent check decides, and the engine reads the ledger row back |
 | Write one signed Action Evidence Package per action | `record` | the OpenA2A record writer (`three-party/src/record/writer.mjs`): one package per action file, a tampered copy of one of them, and a manifest, signed with the run's test key |
@@ -140,7 +142,13 @@ The four parts, by their name in the label map and in the words of
 - **`bank`**: the payment, answered by the bank's own payment API. The bank
   is the repository's mock bank, started inside the engine process. The
   customer's consent is put on file there when a run starts; the bank checks
-  the agent's credential before it records it.
+  the agent's credential before it records it. The mock bank, its token
+  service and its broker are in `src/bank/`. The broker is the AAP broker of
+  `vendor/secretless-ai-0.23.1-unreleased.g0b25f7451f41.tgz`, an unreleased
+  build of OpenA2A's [secretless-ai](https://github.com/opena2a-org/secretless-ai)
+  at commit 0b25f7451f41; the mock bank runs that broker and no other part of
+  the package, and `vendor/VENDORED.md` gives the tarball's SHA-256 and the
+  rebuild command.
 
 The payments agent is scripted. No language model is called. It follows a
 hidden line that starts with `Assistant:`, the way a language model can
@@ -154,18 +162,22 @@ names for the two sides. Both sides run on this computer.
 The crossing step has two forms, and each step in `state.json` names the one that
 ran in its `variant` member.
 
-**With AI2II's files.** `node scripts/three-party/fetch-ai2ii.mjs [--dir <dir>]`
-downloads `capture_scenario1.pcap`, `decision-journal.jsonl` and `jwks.json` from
-[AI2II's repository](https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE) at
+**AI2II's capture.** The three files the crossing checks,
+`capture_scenario1.pcap`, `decision-journal.jsonl` and `jwks.json`, are the
+ones AI2II published in
+[its repository](https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE) at
 commit `32f584a2016d7ebd0d2f5156148cc404c496a086` (branch
-`feature/opena2a-wimse-aep`, folder `handover/wimse_ai2ii/`) into
-`three-party/external/ai2ii/`, which git ignores. It checks each file's size and
-SHA-256 against its pin, keeps a file only on a match, makes no other network
-call, and exits 1 naming the file and both digests on a mismatch. A file already
-in place with its pinned size and digest is not fetched again.
+`feature/opena2a-wimse-aep`, folder `handover/wimse_ai2ii/`). They are
+committed to this repository in `three-party/external/ai2ii/`, with a `NOTICE`
+beside them that reads: "Recorded by AI2II (Alexander Pelov, IMT Atlantique,
+with Ivaylo Petrov), from commit 32f584a. Included with permission under
+Apache-2.0." At each run the engine reads the three files and compares each
+one's size and SHA-256 with the pin `three-party/src/engine/ai2ii-source.mjs`
+holds for it, with no network call.
 
-When the three files are there and match their pins, the crossing runs the AI2II
-capture check (`three-party/src/engine/capture.mjs`, Node.js built-ins only):
+By default the three files are there and match their pins, and the crossing
+runs the AI2II capture check (`three-party/src/engine/capture.mjs`, Node.js
+built-ins only):
 
 | Check | What it verifies |
 |---|---|
@@ -187,15 +199,24 @@ the bank's answer and is not validated as a token, and the signature's
 or `Txn-Token` value is written to the run directory; the token's claims and
 its SHA-256 are.
 
-**Without them**, or with files that do not match their pins, the crossing runs
-the delegation chain check the repository already has, over
-`fixtures/delegation-chain/dc-compact-valid-two-hop.json`, under the clock and
-the root key the fixture carries, and writes a hop file. The check holds the
-chain and no request, so it runs steps 1 to 5 and 7 of
+**When a file is missing or changed.** Only when one of the three files is not
+in `three-party/external/ai2ii/`, or differs from its pinned size or SHA-256,
+does the crossing run its stand-in: the delegation chain check the repository
+already has, over `fixtures/delegation-chain/dc-compact-valid-two-hop.json`,
+under the clock and the root key the fixture carries, and it writes a hop file.
+The check holds the chain and no request, so it runs steps 1 to 5 and 7 of
 draft-asor-wimse-agent-delegation-chain-03 section 6 and reports no action as
 permitted. The chain is not minted for this payment. The crossing's lane
-carries the stand-in mark, and its note names AI2II's repository and the fetch
-command.
+carries the stand-in mark and the stand-in note. The inspector of the crossing
+step, and its line in text mode, also carry a second note: this repository
+holds AI2II's capture in `three-party/external/ai2ii/`, a file of it is missing
+or changed, and the command below restores it, after which the crossing checks
+the capture. In text mode the line ends with both notes, the stand-in note
+first.
+
+```sh
+git checkout -- three-party/external/ai2ii
+```
 
 ## The run directory
 
@@ -285,9 +306,10 @@ under the method of the operating system, where it must be refused.
 | Linux | a new user and network namespace with `unshare --user --map-root-user --net`, or `bwrap --unshare-user --unshare-net` where `unshare` cannot make one | `network denied: yes` |
 | Windows | none: no method works there without administrator rights | `network denied: not measured (no method that works without administrator rights is used on Windows)` |
 
-Where no method can be applied (a container whose profile forbids namespaces,
-or a process that is already sandboxed), the check prints `network denied: not
-measured (<reason>)`, still checks every record, and writes the result with
+Where no method can be applied (on Windows, in a container whose profile
+forbids namespaces, such as Docker's default profile, or in a process that is
+already sandboxed), the check prints `network denied: not measured (<reason>)`,
+still checks every record, and writes the result with
 `networkDenied: "not measured"`. It never prints `yes` without the probe having
 been refused.
 
@@ -324,6 +346,24 @@ second signature and the timestamp are not checked.
 `three-party/FORMAT-SOURCE.txt` names the format text the verifier was written
 from, by its SHA-256; no code of the format's reference verifier is used.
 
+## The stills
+
+The pictures in `three-party/stills/` are taken from runs of the demo itself:
+`node three-party/view/stills.mjs --url <address>` against a demo started with
+`node three-party/bin/start.mjs --serve --pace 2`.
+
+The normal payment, paid:
+
+![The normal payment after its six steps: the credential check, the grant, the crossing, the intent rule, the payment and the records, ending paid.](stills/s1-paid-story-light-1440.png)
+
+The poisoned invoice, stopped by the intent rule before the payment:
+
+![The poisoned invoice run: the intent rule stops the run at the tool call that differs from the declared intent, and no payment is sent.](stills/s2-stopped-story-light-1440.png)
+
+The offline check of a run's records:
+
+![The offline check of the poisoned run's records: the verifier, the network state and the trusted signer; four records pass steps 1 to 6 of the format and the tampered copy is rejected at step 3.](stills/s6-offline-inspect-light-1440.png)
+
 ## A packaged copy
 
 ```sh
@@ -337,9 +377,9 @@ the one command to run on the other computer and what that computer needs:
 Node.js 22.12 or later, a browser, and tar and a POSIX shell for that command
 (Git Bash or WSL on Windows); no login, no network. The packaged copy has no git
 directory; it names its commit from `three-party/BUILD.txt`, which the script
-writes. The tarball leaves two things out of the export: `three-party/stills/`,
-pictures taken from the example files and not from a run, and git's ignore
-files. Nothing is pushed or copied anywhere else. The script itself needs bash.
+writes. The tarball leaves two things out of the export: `three-party/stills/`
+(see "The stills") and git's ignore files. Nothing is pushed or copied
+anywhere else. The script itself needs bash.
 
 `scripts/three-party/browser-proof.mjs` drives the screens of a running demo
 in a real browser, both runs and the offline check, and writes down the time
@@ -380,9 +420,22 @@ page does not list them.
 
 ```sh
 npm run test:three-party
+npm test
 ```
+
+`npm run test:three-party` checks the engine, the records, the verifier, the
+crossing and the screens. It drives the screens in the installed Google
+Chrome, which it needs, and takes several minutes. `npm test` checks the
+vendored secretless-ai build, and that nothing in the installed tree runs at
+install time.
 
 The files named `engine-`, `record-`, `verifier-` and `view-` each hold one
 part to its own contract. The files named `integration-` run the parts
 together: runs over the API with the record writer, the command line, the
 screens on the engine in a real browser, and the package script.
+
+Checked on macOS 26.4 (Apple silicon) with Node.js 22.20.0 and 24.21.0, and on
+Debian 12 in Docker with Node.js 22.12.0 and 22.23.5. On Linux the browser
+checks have run only on amd64 under emulation (Google Chrome 157), where three
+of them fail because of the emulator and pass on native arm64 Linux; not yet
+run on Windows.
