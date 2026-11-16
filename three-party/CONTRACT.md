@@ -210,7 +210,8 @@ All on `127.0.0.1`, JSON, no auth (local demo). `POST /api/runs` body `{"kind":"
 /api/runs/<runId>/files/<relative path under the run directory>` returns the file (JSON as
 `application/json`, `.aep` as `application/zip`, text as `text/plain`); `POST
 /api/runs/<runId>/offline-check` runs the offline check and returns `offline-check.json`; `GET /api/health`
-returns `{"ok":true,"build":<short sha>}`.
+returns `{"ok":true,"build":<short sha>}`; `GET /api/variants` returns `{"crossing":"supplied"|"fallback"}`, the
+crossing a run started now would use, read again on each request the way a run reads it.
 
 `GET /api/labels` returns `three-party/labels.json`: every member, each value as the file has it. A listener
 that also serves the screens adds the screens' own words to that answer and changes no value of the file. These

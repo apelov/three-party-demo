@@ -15,10 +15,13 @@ npm run three-party
 
 `npm run three-party` prints a build line, then the address to open, then how
 to stop. The port is 7390, or the next free port; the line names the one in
-use. On the left, choose scene 1 (Normal payment) or scene 2 (Poisoned
-invoice) and press the control under the list, or the R key. Once a run has
-finished, scene 6 (Audit later) runs the offline check on it, with the same
-control or the O key. S and I switch between the Story and Inspect modes. At
+use. On the left, choose 1 (Normal payment) or 2 (Poisoned invoice) and press
+the control under the list, or the R key; the buttons in the middle pane and
+under a finished run start the next run too. Once a run has finished, 3 (Audit
+the records) runs the offline check on it, with the same control or the O key.
+S and I switch between the Story and Inspect modes, and View as chooses what
+each step's panel leads with: for a security lead, finance, a platform
+engineer or a standards engineer. At
 the default pace a run takes a little over one minute: 68 seconds for the
 clean run and 66 for the poisoned run when this was written.
 
@@ -28,13 +31,16 @@ step 0. A replay runs nothing a second time: the steps after the one it
 stands at show as pending, and key 0 ends it. Once a run has finished, the
 control above them runs the scene again.
 
-Beside the mode switch, Flow and Trace (the T key) choose what the middle pane
-shows under the invoice: the message flow, or a trace with one row per step
-(its start, the time it took, its state, and a bar on one time lane) and,
+The tabs over the middle pane choose what it shows under the invoice:
+Sequence, the six steps across the five parts; Records, the run's records and
+their audit; and Trace (T switches between Sequence and Trace), a trace with
+one row per step (its start, the time it took, its state, and a bar on one
+time lane) and,
 under a step, the rows of what happened inside it: the declared intent and
 each tool call, each check, each record. Enter or a click on a row opens its
-step in the inspector. The address keeps the mode and the view, for example
-`#story-trace` or `#inspect-flow`. The trace has the shape of a distributed
+step in the inspector. The address keeps the mode, the tab and the view as
+reader, for example `#story-trace`, `#inspect-records` or
+`#story-sequence-finance`. The trace has the shape of a distributed
 trace and is not an OpenTelemetry export; `three-party/test/fixtures/trace-field-map.md`
 lists each field of a row and where the run carries it.
 
