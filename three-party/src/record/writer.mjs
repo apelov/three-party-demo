@@ -1,6 +1,6 @@
 // The record writer: one Action Evidence Package per action file of a run,
 // in the package format named by FORMAT below, steps 1 to 6 of its ordered
-// verification. This is our own writer of that format.
+// verification. This is an OpenA2A writer of that format.
 //
 // What a package holds, entry by entry (the names and their order are the
 // format's entry table; a package has the seven required entries and no
