@@ -161,13 +161,13 @@ test('node three-party/bin/start.mjs --text prints, for both runs, the lines of 
   const kept = fs.readFileSync(path.join(THREE_PARTY, 'test', 'fixtures', 'text-mode-both.txt'), 'utf8');
   assert.ok(kept.endsWith('\n'));
   const keptLines = kept.slice(0, -1).split('\n');
-  assert.equal(keptLines.length, 12 + 1 + 13, 'the clean run, an empty line, the poisoned run');
+  assert.equal(keptLines.length, 11 + 1 + 12, 'the clean run, an empty line, the poisoned run');
   assert.deepEqual(printed.map(settled), keptLines.map(settled));
   // The kept transcript was printed at the default pace, by a paid clean run
   // and a stopped poisoned run.
-  assert.equal(keptLines[3], 'Times in UTC. Paced for viewing: at least 8 seconds per step.');
-  assert.match(keptLines[10], /^\[[0-9]{6}\] Outcome \| Paid \| /);
-  assert.match(keptLines[24], /^\[[0-9]{6}\] Outcome \| Stopped by the intent rule \| /);
+  assert.equal(keptLines[2], 'Times in UTC. Paced for viewing: at least 8 seconds per step.');
+  assert.match(keptLines[9], /^\[[0-9]{6}\] Outcome \| Paid \| /);
+  assert.match(keptLines[22], /^\[[0-9]{6}\] Outcome \| Stopped by the intent rule \| /);
 });
 
 test('no line of text mode names a company, a DID or a domain of the fixtures: the lines of both runs, and the lines built from the contract examples', () => {
@@ -178,7 +178,7 @@ test('no line of text mode names a company, a DID or a domain of the fixtures: t
   assert.ok(names.length >= 12, `${names.length} identifiers looked for`);
   // The run directory line names a directory of this computer, not a party.
   const lines = [...printed.filter((l) => !l.startsWith('Run directory: ')), ...built];
-  assert.equal(lines.length, 12 - 1 + 13 - 1 + 1 + 18, 'both runs less their directory lines, the empty line, and the eighteen example step lines');
+  assert.equal(lines.length, 11 - 1 + 12 - 1 + 1 + 18, 'both runs less their directory lines, the empty line, and the eighteen example step lines');
   const hits = [];
   for (const line of lines) for (const name of names) if (line.includes(name)) hits.push(`${name} in: ${line}`);
   assert.deepEqual(hits, []);

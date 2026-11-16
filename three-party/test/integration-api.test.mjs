@@ -8,7 +8,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { FICTIONAL_LINE } from '../../src/config.mjs';
 import { pinFileOf, pinsDirOf } from '../src/engine/records.mjs';
 import { runToEnd, startRun } from '../src/engine/run.mjs';
 import { SCREEN_POLICY, VIEW_DIR } from '../src/engine/screens.mjs';
@@ -201,7 +200,7 @@ test('a run whose test key cannot be made still pays; its record step says why n
   }
 });
 
-test('the served / is the screens, and the fictional line is in the deck the page loads and in the state of every run', async () => {
+test('the served / is the screens, and neither the deck the page loads nor the state of a run carries a fictional line', async () => {
   const page = await demo.get('/');
   assert.equal(page.status, 200);
   assert.equal(page.headers['content-type'], 'text/html; charset=utf-8');
@@ -212,9 +211,9 @@ test('the served / is the screens, and the fictional line is in the deck the pag
 
   const deck = await demo.get('/copy.json');
   assert.equal(deck.status, 200);
-  assert.equal(deck.json()['footer.fictional'], FICTIONAL_LINE, 'the footer line of the deck is the fictional line, byte for byte');
-  assert.equal(clean.state.fictionalLine, FICTIONAL_LINE);
-  assert.equal(poisoned.state.fictionalLine, FICTIONAL_LINE);
+  assert.equal(Object.hasOwn(deck.json(), 'footer.fictional'), false, 'the deck has no fictional line');
+  assert.equal(Object.hasOwn(clean.state, 'fictionalLine'), false);
+  assert.equal(Object.hasOwn(poisoned.state, 'fictionalLine'), false);
 
   // The page's own files, each under its type, and the label map at both places the page reads it.
   const types = { '/view.mjs': 'text/javascript; charset=utf-8', '/view.css': 'text/css; charset=utf-8', '/labels.json': 'application/json; charset=utf-8', '/fonts/inter-latin-wght.woff2': 'font/woff2' };

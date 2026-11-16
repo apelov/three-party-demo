@@ -10,16 +10,14 @@
 // the example files, so a change that leaves the contract shows as a failing
 // test.
 
-import { FICTIONAL_LINE } from '../../../src/config.mjs';
 import { partFields } from './label-map.mjs';
 
 export const LABELS = Object.freeze({
-  // Text mode header. The poisoned line follows the fictional line on a
-  // poisoned run. {paceSeconds} is the run's own value.
+  // Text mode header. The poisoned line follows the title on a poisoned
+  // run. {paceSeconds} is the run's own value.
   header: Object.freeze({
     title: 'Three parts, one payment',
-    fictionalLine: FICTIONAL_LINE,
-    poisonedLine: 'The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.',
+    poisonedLine: 'The poisoned invoice is modeled on what OpenA2A honeypots saw; no captured traffic is replayed.',
     mockLine: "The supplier's bank is a mock bank on this computer, and the payments agent is scripted.",
     paceLine: 'Times in UTC. Paced for viewing: at least {paceSeconds} seconds per step.',
   }),

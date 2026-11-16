@@ -1,7 +1,6 @@
 # Fixtures
 
-Every customer, account, payee and payment in this demo is fictional. Account
-identifiers carry a DEMO marker and every domain ends in `.test`.
+Account identifiers carry a DEMO marker and every domain ends in `.test`.
 
 ## Agent credentials (`agents/`)
 

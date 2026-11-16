@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FICTIONAL_LINE } from '../../src/config.mjs';
 import { LABEL_MAP } from '../src/engine/label-map.mjs';
 import { LABELS, fill, stepLabel } from '../src/engine/labels.mjs';
 import { NO_RECORD_WRITER, displayPath, headerLines, outcomeLine, partCell, runDirectoryLine, stepDetailText, stepLine } from '../src/engine/text.mjs';
@@ -14,10 +13,9 @@ import { REPO_ROOT, START, example, readJson, removeDir, request, runStart, temp
 
 const HEADER = [
   'Three parts, one payment',
-  'Every customer, account, payee and payment in this demo is fictional.',
   "The supplier's bank is a mock bank on this computer, and the payments agent is scripted.",
 ];
-const POISONED_LINE = 'The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.';
+const POISONED_LINE = 'The poisoned invoice is modeled on what OpenA2A honeypots saw; no captured traffic is replayed.';
 const paceLine = (seconds) => `Times in UTC. Paced for viewing: at least ${seconds} seconds per step.`;
 const REASON = 'The credential and the grant were valid, but the agent asked for a secret and changed the payee, which its declared intent does not allow.';
 const TITLES = {
@@ -53,13 +51,13 @@ test('the label map carries the part labels, the step titles and the set lines b
     assert.deepEqual(ex.steps.map((s) => s.id), STEP_IDS, name);
     for (const s of ex.steps) assert.deepEqual(stepLabel(s.id), { id: s.id, part: s.part, partLabel: s.partLabel, standIn: s.standIn, standInNote: s.standInNote, title: s.title }, `${name} ${s.id}`);
     assert.deepEqual(ex.parties, LABEL_MAP.parties, name);
-    assert.equal(LABELS.header.fictionalLine, ex.fictionalLine, name);
+    assert.equal(Object.hasOwn(ex, 'fictionalLine'), false, name);
     assert.equal(LABELS.domains.agent, ex.agent.domain, name);
     assert.equal(LABELS.agentRole, ex.agent.role, name);
   }
   const poisoned = example('state-poisoned-blocked.json');
   const clean = example('state-clean-done.json');
-  assert.equal(LABELS.header.fictionalLine, FICTIONAL_LINE);
+  assert.equal(Object.hasOwn(LABELS.header, 'fictionalLine'), false);
   assert.equal(LABELS.header.poisonedLine, POISONED_LINE);
   assert.equal(LABELS.header.poisonedLine, poisoned.poisonedLine);
   assert.equal(LABELS.intent.reasonSecretAndPayee, REASON);
@@ -100,7 +98,7 @@ test('no label calls the intent rule a model, a detector or AI, describes the hi
   }
   const fixtures = fs.readFileSync(path.join(REPO_ROOT, 'three-party/fixtures/invoices.json'), 'utf8');
   assert.doesNotMatch(fixtures, /\b[0-9][0-9,]* (events|hits|attacks|requests)\b/);
-  assert.match(JSON.parse(fixtures).note, /modeled on what our honeypots saw; no captured traffic is replayed\.$/);
+  assert.match(JSON.parse(fixtures).note, /modeled on what OpenA2A honeypots saw; no captured traffic is replayed\.$/);
 });
 
 test('fill puts values where the names are, and a name with no value is an error, not a brace in a line', () => {
@@ -112,11 +110,10 @@ test('fill puts values where the names are, and a name with no value is an error
   assert.throws(() => stepLabel('audit'), /unknown step/);
 });
 
-test('the header: four lines, with the pace the run applied, and the poisoned line after the fictional line on a poisoned run', () => {
+test('the header: three lines, with the pace the run applied, and the poisoned line after the title on a poisoned run', () => {
   assert.deepEqual(headerLines(example('state-clean-done.json')), [...HEADER, paceLine(8)]);
   assert.deepEqual(headerLines({ ...example('state-clean-done.json'), paceSeconds: 12 }), [...HEADER, paceLine(12)]);
-  assert.deepEqual(headerLines(example('state-poisoned-blocked.json')), [HEADER[0], HEADER[1], POISONED_LINE, HEADER[2], paceLine(8)]);
-  assert.equal(HEADER[1], FICTIONAL_LINE);
+  assert.deepEqual(headerLines(example('state-poisoned-blocked.json')), [HEADER[0], POISONED_LINE, HEADER[1], paceLine(8)]);
 });
 
 test('a step line is [hhmmss] part label | title | state word | detail, for every step and status of the contract examples', () => {
@@ -203,7 +200,7 @@ const STEP_LINE = /^\[([0-9]{6})\] (.+?) \| (.+?) \| (.+?) \| (.+)$/;
 // was started from.
 function checkRunLines(lines, { kind, paceSeconds, runsDir, cwd = REPO_ROOT }) {
   const poisoned = kind === 'poisoned';
-  const header = poisoned ? [HEADER[0], HEADER[1], POISONED_LINE, HEADER[2], paceLine(paceSeconds)] : [...HEADER, paceLine(paceSeconds)];
+  const header = poisoned ? [HEADER[0], POISONED_LINE, HEADER[1], paceLine(paceSeconds)] : [...HEADER, paceLine(paceSeconds)];
   assert.deepEqual(lines.slice(0, header.length), header);
   const rest = lines.slice(header.length);
   assert.equal(rest.length, 8, 'six step lines, the outcome line and the run directory');
@@ -256,8 +253,8 @@ test('node three-party/bin/start.mjs --text --run both: a clean run then a poiso
     assert.equal(r.stderr, '');
     assert.equal(r.code, 0);
     const gap = r.lines.indexOf('');
-    assert.equal(gap, 12, 'the clean run prints four header lines and eight more, then an empty line');
-    assert.equal(r.lines.length, 12 + 1 + 13);
+    assert.equal(gap, 11, 'the clean run prints three header lines and eight more, then an empty line');
+    assert.equal(r.lines.length, 11 + 1 + 12);
     const clean = checkRunLines(r.lines.slice(0, gap), { kind: 'clean', paceSeconds: 0, runsDir: dir });
     const poisoned = checkRunLines(r.lines.slice(gap + 1), { kind: 'poisoned', paceSeconds: 0, runsDir: dir });
     assert.equal(clean.outcome, 'paid');
@@ -276,12 +273,12 @@ test('--run clean and --run poisoned each print one run; a pace is carried into 
   try {
     const clean = await runStart(['--text', '--run', 'clean', '--pace', '0', '--runs-dir', dir]);
     assert.equal(clean.code, 0);
-    assert.equal(clean.lines.length, 12);
+    assert.equal(clean.lines.length, 11);
     checkRunLines(clean.lines, { kind: 'clean', paceSeconds: 0, runsDir: dir });
     const poisoned = await runStart(['--text', '--run', 'poisoned', '--pace', '0.05', '--runs-dir', dir]);
     assert.equal(poisoned.code, 0);
-    assert.equal(poisoned.lines.length, 13);
-    assert.equal(poisoned.lines[4], 'Times in UTC. Paced for viewing: at least 0.05 seconds per step.');
+    assert.equal(poisoned.lines.length, 12);
+    assert.equal(poisoned.lines[3], 'Times in UTC. Paced for viewing: at least 0.05 seconds per step.');
     checkRunLines(poisoned.lines, { kind: 'poisoned', paceSeconds: 0.05, runsDir: dir });
   } finally {
     removeDir(dir);
@@ -358,10 +355,10 @@ test('Ctrl+C during a text run stops it where it is: the step due reads Stopped,
     assert.deepEqual(end, { code: 130, signal: null });
     assert.equal(stderr, '');
     const lines = stdout.split('\n').filter((l) => l !== '');
-    assert.equal(lines.length, 4 + 1 + 3, 'the header, the credential line, then the stopped step, the outcome and the run directory');
-    assert.match(lines[5], /^\[[0-9]{6}\] OpenA2A · ATX · AAP \| Issue a scoped AAP grant \| Stopped \| the run was stopped before this step finished$/);
-    assert.match(lines[6], /^\[[0-9]{6}\] Outcome \| Stopped at: Issue a scoped AAP grant \| The run was stopped before it finished, at the step grant\.$/);
-    assert.match(lines[7], /^Run directory: /);
+    assert.equal(lines.length, 3 + 1 + 3, 'the header, the credential line, then the stopped step, the outcome and the run directory');
+    assert.match(lines[4], /^\[[0-9]{6}\] OpenA2A · ATX · AAP \| Issue a scoped AAP grant \| Stopped \| the run was stopped before this step finished$/);
+    assert.match(lines[5], /^\[[0-9]{6}\] Outcome \| Stopped at: Issue a scoped AAP grant \| The run was stopped before it finished, at the step grant\.$/);
+    assert.match(lines[6], /^Run directory: /);
     const runs = fs.readdirSync(dir);
     assert.equal(runs.length, 1, 'the poisoned run was not started');
     assert.ok(runs[0].startsWith('clean-'));

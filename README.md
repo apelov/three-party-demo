@@ -2,30 +2,85 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Every customer, account, payee and payment in this demo is fictional.
+One agent payment, checked by three independent pieces, each checking only
+its own part. A scripted payments agent pays a supplier invoice at a mock
+bank: an ATX credential and an AAP grant say who the agent is and what it may
+pay, a WIMSE crossing carries the request into the bank's trust domain, and
+every action leaves an Action Evidence Package (AEP) that anyone can check
+offline. In the second run the invoice is poisoned: the intent rule stops the
+payment before it is sent, and the record of that step says why.
 
-A scripted payments agent pays one supplier invoice at a mock bank on your
-computer. The payment runs as six steps, and each action leaves a signed
-record. After a run, a verifier checks those records with network access
-denied.
+## How this came together
 
-There are two runs:
+Built at the IETF 127 Hackathon, San Francisco, 14 to 15 November 2026, by
+three teams working from each other's drafts.
 
-- **Normal payment.** The invoice is what it says, and the payment goes through.
-- **Poisoned invoice.** The invoice hides a line of text addressed to the
-  agent. The agent follows it, and the intent rule stops the run before any
-  payment is sent.
+## The three parts
+
+**Agent credential and grant: ATX and AAP, OpenA2A.** The payments agent
+carries an [ATX](https://github.com/opena2a-org/atx-spec) credential, verified
+locally under a pinned issuer key. A grant resolver built on
+[AAP](https://datatracker.ietf.org/doc/draft-fane-opena2a-aap/)
+(draft-fane-opena2a-aap-03) checks the credential against the grant policy,
+and the bank's token service exchanges the result for an access token that
+lives 60 seconds. The intent rule then compares every tool call with the
+intent declared from the invoice's structured fields.
+
+**Crossing between domains: WIMSE, by way of AI2II.** The crossing is the
+WIMSE agent delegation chain
+([draft-asor-wimse-agent-delegation-chain-03](https://datatracker.ietf.org/doc/draft-asor-wimse-agent-delegation-chain/),
+by Rafael Asor) as exercised by
+[AI2II](https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE) (Alexander
+Pelov, IMT Atlantique, with Ivaylo Petrov). AI2II's capture of a cross-domain
+payment request carries a WIMSE workload identity token and an RFC 9421
+request signature. With its files fetched, the crossing step checks that
+capture; without them, an OpenA2A check of a two-hop chain fixture runs in its
+place, marked as a stand-in.
+
+**Evidence: AEP, Tyche Institute.** Every action leaves an Action Evidence
+Package
+([draft-sokolov-rats-aep-composition](https://datatracker.ietf.org/doc/draft-sokolov-rats-aep-composition/),
+by Anton Sokolov, Tyche Institute): a ZIP archive that holds the exact
+response bytes, the action's metadata, their canonical form, its hash and a
+signature. Anyone with the run's public key can check a package offline, with
+no service to ask. The format and its reference verifier are in
+[eatf-verifier](https://github.com/tyche-institute/eatf-verifier); the demo's
+offline check runs an OpenA2A verifier written from that format.
+
+## What is real and what isn't yet
+
+- **The records** are written in the AEP format, as its
+  [format page](https://github.com/tyche-institute/eatf-verifier/blob/main/docs/aep-format.md)
+  gives it (`three-party/FORMAT-SOURCE.txt` names the text by its SHA-256),
+  and checked by an OpenA2A verifier for steps 1 to 6 of the format's ordered
+  verification. Steps 7 to 10 are not run.
+- **The AEP reference verifier** has not yet been run on these records.
+- **The timestamp entry** of each package is a placeholder: there is no
+  timestamp authority.
+- **The signer** is a test key made for each run. Its private half never
+  reaches a file and is deleted once the run's last record is signed.
+- **The crossing** CROSSING_FACTS
+- **The agent** is scripted. No language model is called.
+- **The bank** is a local mock that runs inside the demo on your computer.
+
+Real, and run again on every run: the credential check, the token exchange,
+the intent rule, the bank's decision on the payment, and the signature on
+every record.
 
 ## Run it
 
-Requirements: macOS, git, Node.js 22.12.0 or later and a browser. Checked on macOS 26.4 arm64 with Node.js 24.21.0, 2026-11-15.
+Requirements: git, Node.js 22.12.0 or later and a browser, on macOS, Linux or
+Windows. CHECKED_LINE
 
 ```sh
 git clone https://github.com/opena2a-org/three-party-demo
 cd three-party-demo
 npm ci
+node scripts/three-party/fetch-ai2ii.mjs
 npm run three-party
 ```
+
+FETCH_LINE
 
 ```text
 Three-party demo, build <short sha>
@@ -44,10 +99,15 @@ The same two runs in a terminal, with no browser:
 node three-party/bin/start.mjs --text --offline-check
 ```
 
+The offline check denies the verifier network access with the method of the
+operating system, and says on screen whether it could:
+
+OFFLINE_TABLE
+
 ## The screens
 
-The pictures below are taken from the example files in `three-party/examples/`,
-not from a live run.
+The pictures are taken from the example files in `three-party/examples/`, not
+from a live run.
 
 The normal payment, paid:
 
@@ -61,46 +121,18 @@ The offline check of a run's records:
 
 ![The offline check: the verifier, the network state and the trusted signer, and each record shown passing steps 1 to 6 of the format.](three-party/stills/s6-offline-inspect-light-1440.png)
 
-## The six steps
+## What is in the repository
 
-| Step | What runs |
-|---|---|
-| Verify the agent's ATX credential locally | the credential's Ed25519 signature is checked under a pinned test issuer key |
-| Issue a scoped AAP grant | a grant resolver checks the credential and the policy; the bank's token service returns an access token that lives 60 seconds |
-| Cross into the supplier's bank's trust domain | a stand-in: a delegation chain check over a fixture of two hops |
-| Apply the intent rule to each tool call | every argument of each tool call is compared with the declared intent, field for field |
-| Pay the invoice under the grant | the mock bank's payment API decides, and the ledger row is read back |
-| Write one signed record per action | a stand-in: our own writer, in the Action Evidence Package format, signed with a test key made for the run |
-
-The declared intent is built from the invoice's structured fields before the
-agent reads the invoice body. The intent rule is a rule: it compares values
-for equality and nothing else.
-
-## What is real, and what is a stand-in
-
-Real, and run again on every run: the credential check, the token exchange,
-the intent rule, the payment and the bank's decision on it, and the signature
-on each record.
-
-Stand-ins. The crossing and the record carry a stand-in mark on the screens:
-
-- **The crossing.** The delegation chain is a fixture, not minted for this
-  payment. It stands in for the interop piece of another party's
-  specification.
-- **The record.** The packages are written by our own writer and checked by
-  our own verifier, which runs steps 1 to 6 of the format. Steps 7 to 10 are
-  not run. The signer is a test key, and the timestamp entry is a stand-in:
-  there is no timestamp authority.
-- **The agent.** It is scripted. No language model is called.
-- **The bank.** It is a mock bank that runs inside the demo on your computer.
-
-## More
-
-- [`three-party/README.md`](three-party/README.md): every command and option,
-  the run directory, the offline check and its exit codes.
+- [`three-party/README.md`](three-party/README.md): the detailed reference.
+  The six steps, every command and option, the run directory, the offline
+  check and its exit codes, the labels and the tests.
 - [`three-party/CONTRACT.md`](three-party/CONTRACT.md): the fields of every
   file a run writes.
-- `src/bank/`: the mock bank, token service and broker the engine starts.
+- `src/bank/`: the mock bank, its token service and its broker.
+- `vendor/secretless-ai-0.23.1-unreleased.g0b25f7451f41.tgz`: an unreleased
+  build of OpenA2A's [secretless-ai](https://github.com/opena2a-org/secretless-ai)
+  at commit 0b25f7451f41. The mock bank runs its AAP broker and no other part
+  of it; `vendor/VENDORED.md` gives its SHA-256 and the rebuild command.
 
 ## Tests
 
@@ -109,8 +141,8 @@ npm run test:three-party
 npm test
 ```
 
-Checked with Node.js 24.21.0. The first suite drives the screens in a browser
-and takes several minutes.
+TESTS_LINE The first suite drives the screens in a browser and takes several
+minutes.
 
 ## License
 

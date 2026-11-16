@@ -7,12 +7,12 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FICTIONAL_LINE, GRANT_TTL_SECONDS } from '../../src/config.mjs';
+import { GRANT_TTL_SECONDS } from '../../src/config.mjs';
 import { EXPECTED, NO_RECORD_WRITER, RECORD_WRITER, RunStopped, intentReason, runToEnd, startRun, validPace } from '../src/engine/run.mjs';
 import { RUN_ID } from '../src/engine/store.mjs';
 import { REPO_ROOT, example, movableClock, readJson, removeDir, tempRunsDir, walkFiles } from './support/engine-helpers.mjs';
 
-const STATE_KEYS = ['runId', 'kind', 'startedAt', 'finishedAt', 'fictionalLine', 'poisonedLine', 'parties', 'invoice', 'agent', 'grant', 'steps', 'outcome', 'blockedAt', 'reason', 'paceSeconds'];
+const STATE_KEYS = ['runId', 'kind', 'startedAt', 'finishedAt', 'poisonedLine', 'parties', 'invoice', 'agent', 'grant', 'steps', 'outcome', 'blockedAt', 'reason', 'paceSeconds'];
 const STEP_KEYS = ['id', 'part', 'partLabel', 'standIn', 'standInNote', 'title', 'status', 'startedAt', 'endedAt', 'detail', 'actionFile', 'recordFile'];
 const UTC = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -58,8 +58,6 @@ test('a clean run: six steps with the statuses of the contract example, except r
   assert.equal(state.blockedAt, null);
   assert.equal(state.reason, null);
   assert.deepEqual({ outcome: state.outcome, blockedAt: state.blockedAt }, EXPECTED.clean);
-  assert.equal(state.fictionalLine, FICTIONAL_LINE);
-  assert.equal(state.fictionalLine, ex.fictionalLine);
   assert.equal(state.poisonedLine, null);
   assert.equal(state.paceSeconds, 0);
   assert.match(state.startedAt, UTC);
@@ -196,8 +194,7 @@ test('a poisoned run ends blocked at intent, with pay not reached and the two ca
   assert.equal(state.reason, ex.reason);
   assert.equal(state.reason, 'The credential and the grant were valid, but the agent asked for a secret and changed the payee, which its declared intent does not allow.');
   assert.equal(state.poisonedLine, ex.poisonedLine);
-  assert.equal(state.poisonedLine, 'The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.');
-  assert.equal(state.fictionalLine, FICTIONAL_LINE);
+  assert.equal(state.poisonedLine, 'The poisoned invoice is modeled on what OpenA2A honeypots saw; no captured traffic is replayed.');
   assert.deepEqual(state.invoice, ex.invoice);
   assert.deepEqual(stepOf(state, 'pay'), stepOf(ex, 'pay'), 'the pay step is the example pay step: not reached, every other member null');
 

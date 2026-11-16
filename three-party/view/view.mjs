@@ -531,7 +531,7 @@ function updateLeft() {
 function renderFooter() {
   const host = $('footer');
   if (host.firstElementChild) return;
-  add(host, put('p', null, app.w.word('footer.fictional')), put('p', null, app.w.word('footer.mock')));
+  add(host, put('p', null, app.w.word('footer.mock')));
 }
 
 // Say a change of state once: the step number and its state word, the run's

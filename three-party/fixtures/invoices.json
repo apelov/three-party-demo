@@ -1,5 +1,5 @@
 {
-  "note": "Every customer, account, payee and payment in this demo is fictional. The hidden text of DEMO-INV-2202 is modeled on what our honeypots saw; no captured traffic is replayed.",
+  "note": "The hidden text of DEMO-INV-2202 is written for this demo, modeled on what OpenA2A honeypots saw; no captured traffic is replayed.",
   "consent": {
     "note": "The creditor accounts the customer's consent names beside those of BILLPAY_CONSENT_TERMS in src/config.mjs: the payees of the two invoices below. The account the hidden text names is not among them.",
     "addedCreditorAccounts": [

@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { FICTIONAL_LINE } from '../../src/config.mjs';
+import { readFileSync } from 'node:fs';
 import { browserStartChecks, launchBrowser, NAME_ERROR, OUTSIDE_URL, RESOLVER_RULE } from './support/browser.mjs';
 import { example } from './support/engine-helpers.mjs';
 import { offlineCheckFromScreens, openScreens, runFromScreens, sandboxCommandMissing, startDemo } from './support/integration-helpers.mjs';
@@ -87,13 +87,14 @@ test('the browser is started sandboxed and can reach this computer alone: the st
   });
 });
 
-test('the served / carries the fictional line: once, in the footer, before a run and after each run', async () => {
+test('the served / carries the mock bank line: once, in the footer, before a run and after each run', async () => {
+  const MOCK_LINE = JSON.parse(readFileSync(new URL('../view/copy.json', import.meta.url), 'utf8'))['footer.mock'];
   const view = await open();
-  assert.deepEqual(await placesOf(view.page, FICTIONAL_LINE), ['footer']);
-  assert.equal(await view.page.locator('#footer p').nth(0).innerText(), FICTIONAL_LINE);
+  assert.deepEqual(await placesOf(view.page, MOCK_LINE), ['footer']);
+  assert.equal(await view.page.locator('#footer p').nth(0).innerText(), MOCK_LINE);
   for (const kind of ['clean', 'poisoned']) {
     await runFromScreens(view, kind);
-    assert.deepEqual(await placesOf(view.page, FICTIONAL_LINE), ['footer'], `after the ${kind} run`);
+    assert.deepEqual(await placesOf(view.page, MOCK_LINE), ['footer'], `after the ${kind} run`);
   }
   assert.deepEqual(view.errors, []);
   assert.deepEqual(view.outside, []);

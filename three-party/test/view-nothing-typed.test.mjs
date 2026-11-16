@@ -35,14 +35,14 @@ function blockLines(name) {
 // keys below, in the block's order.
 const LEFT_OUT = ['tryit.yours', 'tryit.agentReads', 'tryit.inMemory', 'tryit.badAccount'];
 
-test('copy.json holds the 105 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits: each key and value byte for byte, and nothing else', () => {
+test('copy.json holds the 103 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
-  assert.equal(deck.length, 105);
+  assert.equal(deck.length, 103);
   assert.equal(added.length, 68 - LEFT_OUT.length);
   const lines = [...deck, ...added];
-  const members = 105 + added.length;
-  assert.equal(members, 169);
+  const members = 103 + added.length;
+  assert.equal(members, 167);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);
@@ -59,7 +59,7 @@ test('copy.json holds the 105 lines of the staged copy deck and, after them, the
   for (const value of Object.values(COPY)) assert.equal(typeof value, 'string');
   // No key of the added block was in the deck before it.
   assert.equal(new Set(keys).size, members);
-  assert.deepEqual(keys.slice(0, 105), deck.map((line) => line.slice(0, line.indexOf(' = '))));
+  assert.deepEqual(keys.slice(0, 103), deck.map((line) => line.slice(0, line.indexOf(' = '))));
 });
 
 test('the label map the page holds: the members of the contract\'s map from the server, the structure of the screen from the view\'s own file, and no member the brief does not name', () => {

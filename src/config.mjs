@@ -1,13 +1,10 @@
-// Fixture values for the mock bank. Every customer, account, payee and payment
-// here is fictional. Account identifiers carry a visible DEMO marker, and
-// every domain is under the reserved .test top level domain.
+// Fixture values for the mock bank. Account identifiers carry a visible DEMO
+// marker, and every domain is under the reserved .test top level domain.
 
 export const BANK = Object.freeze({
   name: 'Example Bank',
   domain: 'examplebank.test',
 });
-
-export const FICTIONAL_LINE = 'Every customer, account, payee and payment in this demo is fictional.';
 
 export const OPENING_BALANCE_CENTS = 480000;
 

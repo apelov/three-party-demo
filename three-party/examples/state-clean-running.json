@@ -3,7 +3,6 @@
   "kind": "clean",
   "startedAt": "2026-11-15T12:00:00Z",
   "finishedAt": null,
-  "fictionalLine": "Every customer, account, payee and payment in this demo is fictional.",
   "poisonedLine": null,
   "parties": {
     "agent": "Payments agent",

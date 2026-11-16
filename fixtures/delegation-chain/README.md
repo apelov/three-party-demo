@@ -1,7 +1,6 @@
 # Delegation chain fixtures
 
-Every customer, account, payee and payment in this demo is fictional. Account
-identifiers carry a DEMO marker and every domain ends in `.test`.
+Account identifiers carry a DEMO marker and every domain ends in `.test`.
 
 Each file is one case of an Agent Delegation Chain as
 [draft-asor-wimse-agent-delegation-chain-03](https://datatracker.ietf.org/doc/html/draft-asor-wimse-agent-delegation-chain-03)

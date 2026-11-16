@@ -1,5 +1,4 @@
 Three parts, one payment
-Every customer, account, payee and payment in this demo is fictional.
 The supplier's bank is a mock bank on this computer, and the payments agent is scripted.
 Times in UTC. Paced for viewing: at least 8 seconds per step.
 [151729] OpenA2A · ATX · AAP | Verify the agent's ATX credential locally | Passed | valid; signed by the test issuer; not after 2099-12-31T23:59:59Z; file sha256 8e66c6db3c16...
@@ -12,8 +11,7 @@ Times in UTC. Paced for viewing: at least 8 seconds per step.
 Run directory: three-party/runs/clean-20261115T151719Z
 
 Three parts, one payment
-Every customer, account, payee and payment in this demo is fictional.
-The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.
+The poisoned invoice is modeled on what OpenA2A honeypots saw; no captured traffic is replayed.
 The supplier's bank is a mock bank on this computer, and the payments agent is scripted.
 Times in UTC. Paced for viewing: at least 8 seconds per step.
 [151837] OpenA2A · ATX · AAP | Verify the agent's ATX credential locally | Passed | valid; signed by the test issuer; not after 2099-12-31T23:59:59Z; file sha256 8e66c6db3c16...

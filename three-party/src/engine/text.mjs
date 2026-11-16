@@ -12,11 +12,11 @@ import { clockDigits } from './store.mjs';
 
 const NOTHING = 'nothing';
 
-// The header of one run: four lines, and the poisoned line after the
-// fictional line on a poisoned run.
+// The header of one run: three lines, and the poisoned line after the
+// title on a poisoned run.
 export function headerLines(state) {
   const h = LABELS.header;
-  const lines = [h.title, state.fictionalLine];
+  const lines = [h.title];
   if (state.poisonedLine) lines.push(state.poisonedLine);
   lines.push(h.mockLine, fill(h.paceLine, { paceSeconds: state.paceSeconds }));
   return lines;

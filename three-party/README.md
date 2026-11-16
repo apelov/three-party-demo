@@ -1,46 +1,26 @@
-# Three-party demo
+# Three-party demo: reference
 
-Every customer, account, payee and payment in this demo is fictional.
+This is the detailed reference for the demo. The top-level
+[README](../README.md) introduces it: the three parts, who built each, and
+what is real and what isn't yet. Every listener the demo starts is bound to
+`127.0.0.1`, and a run calls no other host.
 
-A scripted payments agent pays one supplier invoice at a mock bank on this
-computer. The engine runs that payment as six steps, each a real local
-transaction against the repository's own bank, token service and broker code,
-paced so a viewer can follow it. It writes what happened to a run directory,
-and the record writer signs one record of each action with a test key made
-for that run. The screens show the run as it happens. Every listener is bound
-to `127.0.0.1`, and the demo calls no other host.
-
-There are two runs. In the clean run the invoice is what it says, and the
-payment goes through. In the poisoned run the invoice hides a line of text
-addressed to the agent. The agent follows it, and the intent rule stops the
-run before any payment is sent. The poisoned invoice is modeled on what our
-honeypots saw; no captured traffic is replayed.
-
-After a run, the offline check runs our verifier over the run's records with
-network access denied. The verifier is one file, written for this demo from
-the text of the format. It applies steps 1 to 6 of the format to each record
-and to a tampered copy of one of them (see "The offline check" below).
-
-## Run it
+## Commands
 
 ```sh
 npm ci
+node scripts/three-party/fetch-ai2ii.mjs   # optional, see "The crossing" below
 npm run three-party
 ```
 
-```
-Three-party demo, build <short sha>
-Ready. Open http://127.0.0.1:7390/ in a browser.
-Press Ctrl+C to stop.
-```
-
-Open the address in a browser. The port is 7390, or the next free port; the
-line names the one in use. On the left, choose scene 1 (Normal payment) or
-scene 2 (Poisoned invoice) and press the control under the list, or the R
-key. Once a run has finished, scene 6 (Audit later) runs the offline check on
-it, with the same control or the O key. S and I switch between the Story and
-Inspect modes. At the default pace a run takes a little over one minute: 68
-seconds for the clean run and 66 for the poisoned run when this was written.
+`npm run three-party` prints a build line, then the address to open, then how
+to stop. The port is 7390, or the next free port; the line names the one in
+use. On the left, choose scene 1 (Normal payment) or scene 2 (Poisoned
+invoice) and press the control under the list, or the R key. Once a run has
+finished, scene 6 (Audit later) runs the offline check on it, with the same
+control or the O key. S and I switch between the Story and Inspect modes. At
+the default pace a run takes a little over one minute: 68 seconds for the
+clean run and 66 for the poisoned run when this was written.
 
 Under that control, Back and Forward move one step at a time, as the Left and
 Right arrow keys do, and Replay (the P key) walks a finished run again from
@@ -72,9 +52,9 @@ With `--offline-check` it also runs the offline check after each run and
 prints each line the check returned and its exit status; the exit code of the
 command still says how the runs ended.
 
-A run prints four header lines (five on a poisoned run, which adds the line
-on the poisoned invoice), one line for each of the six steps, the outcome and
-the run directory. A step line reads:
+A run prints its header lines (one more on a poisoned run, the line on the
+poisoned invoice), one line for each of the six steps, the outcome and the run
+directory. A step line reads:
 
 ```
 [hhmmss] part label | step title | state word | detail
@@ -119,69 +99,53 @@ route returns the check's exit status, its lines and its notes.
 |---|---|---|
 | Verify the agent's ATX credential locally | `checkpoint` | `LocalAtxVerifier` of `@opena2a/atx-verify` over the exact bytes of `fixtures/agents/billpay-agent.atx.json`, under the pinned test issuer key |
 | Issue a scoped AAP grant | `checkpoint` | the reference grant resolver checks the credential and the grant policy, signs a broker token and exchanges it at the bank's token service for an access token that lives 60 seconds |
-| Cross into the supplier's bank's trust domain | `crossing`, a stand-in | the repository's delegation chain check over `fixtures/delegation-chain/dc-compact-valid-two-hop.json`, with the result written to a hop file |
+| Cross into the supplier's bank's trust domain | `crossing` | the check of AI2II's capture when its files are fetched, otherwise the delegation chain check over a fixture, a stand-in (see "The crossing") |
 | Apply the intent rule to each tool call | `checkpoint` | every argument of each tool call the agent makes is compared with the declared intent, field for field; a call with no declared intent is blocked |
 | Pay the invoice under the grant | `bank` | `POST /v1/payments` on the bank's payment API with the grant; the bank's own consent check decides, and the engine reads the ledger row back |
-| Write one signed Action Evidence Package per action | `record`, a stand-in | the record writer (`three-party/src/record/writer.mjs`): one package per action file, a tampered copy of one of them, and a manifest, signed with the run's test key |
+| Write one signed Action Evidence Package per action | `record` | the OpenA2A record writer (`three-party/src/record/writer.mjs`): one package per action file, a tampered copy of one of them, and a manifest, signed with the run's test key |
 
 The declared intent is built from the invoice's structured fields before the
 agent reads the invoice body, so nothing the body says can change it. The
 intent rule is a rule: it compares values for equality and nothing else.
 
-## What is real, and what is a stand-in
+## What runs in each part
 
 The four parts, by their name in the label map and in the words of
 `CONTRACT.md` section 1. The label each one shows is in
 `three-party/labels.json`.
 
-- **`checkpoint`**: the ATX credential check, the short-lived scoped grant,
-  the intent rule, the app and the glue.
-- **`crossing`**, a stand-in: the domain A to domain B hop through the
-  delegation chain check the repository already has, with a hop log written
-  to a file.
-- **`record`**, a stand-in: one Action Evidence Package per action, written
-  by our own writer in the named format, checked by our own verifier.
-- **`bank`**: the payment, answered by the bank's own payment API.
+- **`checkpoint`**: the ATX credential check (the Ed25519 signature is
+  verified; a post-quantum signature is not verified in this demo), the
+  short-lived scoped grant, the intent rule, the app and the glue. The access
+  token value stays in memory and is never written to a file or to
+  `state.json`. A request for a secret that the intent rule stops is also put
+  to the resolver the bank's broker is built with, which refuses every name.
+- **`crossing`**: the domain A to domain B hop. See "The crossing".
+- **`record`**: one Action Evidence Package per action, written by the
+  OpenA2A record writer in the AEP format and checked by the OpenA2A verifier,
+  `three-party/src/verifier/aep-verify.mjs`: one file that imports Node.js
+  modules and nothing else, written for this demo from the text of the format
+  (`three-party/FORMAT-SOURCE.txt` names that text by its SHA-256). It runs
+  steps 1 to 6 of the format's ordered verification. Steps 7 to 10 are not
+  run, so the timestamp entry is not checked. The signer is a test key
+  generated for the run, not a key in use anywhere, and the timestamp entry
+  is a placeholder: there is no timestamp authority. The inspector of the
+  record step carries the note on the timestamp line.
+- **`bank`**: the payment, answered by the bank's own payment API. The bank
+  is the repository's mock bank, started inside the engine process. The
+  customer's consent is put on file there when a run starts; the bank checks
+  the agent's credential before it records it.
 
-The verifier is `three-party/src/verifier/aep-verify.mjs`: one file that
-imports Node.js modules and nothing else, written for this demo from the
-text of the format (`three-party/FORMAT-SOURCE.txt` names that text). It runs
-steps 1 to 6 of the format's ordered verification. Steps 7 to 10 are not
-run, so the timestamp entry is not checked.
+The payments agent is scripted. No language model is called. It follows a
+hidden line that starts with `Assistant:`, the way a language model can
+follow text planted in its input. The poisoned invoice is written for this
+demo, modeled on what OpenA2A honeypots saw; no captured traffic is replayed.
+The two trust domains, `payments.acme-demo.test` and `bank.example.test`, are
+names for the two sides. Both sides run on this computer.
 
-Real, and run again on every run: the credential check (the Ed25519 signature
-is verified; a post-quantum signature is not verified in this demo), the token
-exchange, the intent rule, the payment and the bank's own decision on it, and
-the signature on each record. The access token value stays in memory and is
-never written to a file or to `state.json`. A request for a secret that the
-intent rule stops is also put to the resolver the bank's broker is built
-with, which refuses every name.
+## The crossing
 
-Stand-ins, and what each stands in for:
-
-- The crossing. The chain is a fixture of two hops, checked under the clock and
-  the root key the fixture carries; it is not minted for this payment. The
-  check holds the chain and no request, so it runs steps 1 to 5 and 7 of
-  draft-asor-wimse-agent-delegation-chain-03 section 6 and reports no action
-  as permitted. The real AI2II interop piece replaces the hop file, not code.
-  The lane of the crossing carries the stand-in mark. The part's note stands
-  under the mark in a window of 1440 by 860 px or more during a run of six
-  steps, and in the inspector whenever the crossing step is selected.
-- The record. The packages are written by our own writer in the named format.
-  The signer is a test key generated for the run, not a key in use anywhere,
-  and the timestamp entry is a stand-in: there is no timestamp authority. The
-  record's label is a stand-in label until the format is confirmed. Its lane
-  carries the mark and, in the same windows, the note that says so. The
-  inspector of the record step carries both, and the note on the timestamp
-  line.
-- The payments agent is scripted. No language model is called. It follows a
-  hidden line that starts with `Assistant:`, the way a language model can
-  follow text planted in its input.
-- The supplier's bank is the repository's mock bank, started inside the engine
-  process. The customer's consent is put on file there when a run starts; the
-  bank checks the agent's credential before it records it.
-- The two trust domains, `payments.acme-demo.test` and `bank.example.test`,
-  are names for the two sides. Both sides run on this computer.
+AI2II_SECTION
 
 ## The run directory
 
@@ -193,7 +157,7 @@ git.
 state.json                      the run so far, rewritten whole after every status change
 actions/NN-<step>.action.json   one per step that ran: who, what, the decision and its reason
 actions/NN-<step>.response.txt  what that step got back; the action file names its sha256
-hops/03-crossing.hop.json       the crossing stand-in's hop log
+hops/03-crossing.hop.json       the crossing's hop log
 records/NN-<step>.aep           one signed package per action file
 records/tampered/NN-<step>.aep  a copy of one package with one byte of its response changed
 records/manifest.json           the records, the tampered copy and the signer's public key, each by its sha256
@@ -233,44 +197,7 @@ For another runs directory the pins directory is that directory's path with
 node three-party/bin/offline-check.mjs three-party/runs/<runId> --pin three-party/runs.pins/<runId>.pub.pem
 ```
 
-The screens (scene 6), the run API and `--text --offline-check` run the same
-check with that pin. In this order it looks for a private key in the run
-directory, shows that its sandbox profile denies the network (a probe reaches
-the check's own listener on `127.0.0.1` outside the sandbox and is refused
-under it), and runs the verifier under that profile, with an empty
-environment, once for each record file: the files under `records/` and
-`records/tampered/`, and the files `records/manifest.json` names. For a clean
-run it prints:
-
-```
-private key: absent
-network denied: yes
-verifier: aep-verify.mjs sha256 <sha256 of the verifier file>
-pin: sha256 <sha256 of the pin> (the public key captured when the run started, held outside the run directory)
-records/01-credential.aep: pass-1-6
-records/02-grant.aep: pass-1-6
-records/03-crossing.aep: pass-1-6
-records/04-intent.aep: pass-1-6
-records/05-pay.aep: pass-1-6
-records/tampered/05-pay.aep: rejected at step 3
-result: 5 passed steps 1 to 6, 1 rejected (1 expected)
-written: offline-check.json
-```
-
-It writes the result to `offline-check.json` in the run directory
-(`CONTRACT.md` section 5) and ends with exit status 0. The tampered copy has
-one byte of its response changed, so the form step 3 rebuilds from the
-response and the metadata no longer equals `canonical.bin`. A poisoned run
-has four records, and its check prints `result: 4 passed steps 1 to 6, 1
-rejected (1 expected)`. The screens show the same result: `Passed steps 1 to
-6` on each record, `Rejected at step 3` on the tampered copy, and the counts.
-
-| Exit status | Meaning |
-|---|---|
-| 0 | every record passed steps 1 to 6, every tampered copy was rejected, and the disk and the manifest name the same files with the same hashes; the result is written |
-| 4 | the verifier ran and the result is not that; the result is written, and standard error names each difference |
-| 1 | an error: a wrong argument, a directory that is not a run, a private key in the run directory, no pin; nothing is written |
-| 3 | the network denial was not shown; nothing is checked and nothing is written |
+OFFLINE_SECTION
 
 The verifier can be run on one record:
 
@@ -282,35 +209,11 @@ It prints one JSON line (the file, its sha256, the verdict `pass-1-6` or
 `reject`, the step that failed, and notes) and exits 0 on a pass, 1 on a
 rejection, and 2 on a wrong argument or a pin it cannot read.
 
-What a pass says: the package is a ZIP archive that holds the seven required
-entries; its metadata is a JSON object; `canonical.bin` is the response, a
-line feed and the RFC 8785 form of the metadata; `hash.sha256` is the SHA-256
-of `canonical.bin`; `public_key.pem` is the pin, byte for byte; and
-`signature.sig` verifies over `canonical.bin` as RSASSA-PKCS1-v1_5 with
-SHA-256 under that key. The pin is the public half of a test key made for
-the run, so a pass says the record is one that key signed, and nothing about
-a key in use anywhere. Steps 7 to 10 of the format are not run: the receipt,
-the second signature and the timestamp are not checked.
+VERIFIER_PASS_SECTION
 
-The network control uses the sandbox command of macOS. Where that command
-cannot apply a profile, for example when the demo itself runs inside a
-sandbox, the check prints `network denied: not measured` and ends with 3.
+## A packaged copy
 
-## The package for another Mac
-
-```sh
-scripts/three-party/package.sh --out <directory>
-```
-
-It exports the commit that is checked out into a temporary directory,
-installs there the dependencies the demo runs on, and writes a tarball with
-its sha256, a git bundle of the branch with its sha256, and `ONE-COMMAND.txt`,
-which holds the one command to run on the other Mac and what it needs. The
-packaged copy has no git directory; it names its commit from
-`three-party/BUILD.txt`, which the script writes. The tarball leaves two
-things out of the export: `three-party/stills/`, pictures taken from the
-example files and not from a run, and git's ignore files. Nothing is pushed
-or copied anywhere else.
+PACKAGE_SECTION
 
 `scripts/three-party/browser-proof.mjs` drives the screens of a running demo
 in a real browser, both runs and the offline check, and writes down the time
@@ -319,19 +222,17 @@ each run took and what the offline check screen showed.
 ## Labels and roles
 
 Every part label, party role, stand-in note and scene button is in one file,
-`three-party/labels.json`, a byte for byte copy of the staged label map. The
-engine writes each step's `partLabel`, `standIn` and `standInNote` into
-`state.json` from it, and copies its `parties` there. Text mode prints them
-from that state. The listener answers `GET /api/labels` with the map, and the
-screens take the lane titles, the legend, the stand-in notes, the party roles
-and the buttons from that answer.
+`three-party/labels.json`. The engine writes each step's `partLabel`,
+`standIn` and `standInNote` into `state.json` from it, and copies its
+`parties` there. Text mode prints them from that state. The listener answers
+`GET /api/labels` with the map, and the screens take the lane titles, the
+legend, the stand-in notes, the party roles and the buttons from that answer.
 
 Outside the contract, the examples and the tests, no other file under
 `three-party/` holds a part label, a party role or a stand-in note:
 `three-party/test/integration-label-source.test.mjs` reads every file and
-checks it. The copy deck holds two labels inside the two cells text mode
-prints for the stand-in parts; the same test compares those cells with the
-map.
+checks it. The copy deck holds the label of a stand-in part inside the cell
+text mode prints for it; the same test compares that cell with the map.
 
 The parties go by role on the screens and in text mode: the payments agent,
 the supplier's bank, the supplier and the two domains. The company names, the
@@ -356,6 +257,6 @@ npm run test:three-party
 ```
 
 The files named `engine-`, `record-`, `verifier-` and `view-` each hold one
-part to its own contract. The files named `integration-` run the parts together: runs
-over the API with the record writer, the command line, the screens on the
-engine in a real browser, and the package script.
+part to its own contract. The files named `integration-` run the parts
+together: runs over the API with the record writer, the command line, the
+screens on the engine in a real browser, and the package script.

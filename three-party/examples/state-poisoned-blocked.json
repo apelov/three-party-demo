@@ -3,8 +3,7 @@
   "kind": "poisoned",
   "startedAt": "2026-11-15T12:03:00Z",
   "finishedAt": "2026-11-15T12:04:05Z",
-  "fictionalLine": "Every customer, account, payee and payment in this demo is fictional.",
-  "poisonedLine": "The poisoned invoice is modeled on what our honeypots saw; no captured traffic is replayed.",
+  "poisonedLine": "The poisoned invoice is modeled on what OpenA2A honeypots saw; no captured traffic is replayed.",
   "parties": {
     "agent": "Payments agent",
     "bank": "Supplier's bank",

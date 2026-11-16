@@ -156,7 +156,6 @@ export async function startRun({
     kind,
     startedAt: utcStamp(startedAt),
     finishedAt: null,
-    fictionalLine: LABELS.header.fictionalLine,
     poisonedLine: kind === 'poisoned' ? LABELS.header.poisonedLine : null,
     // The parties by role, copied from the contract's label map.
     parties: { ...LABEL_MAP.parties },

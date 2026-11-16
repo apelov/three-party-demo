@@ -1,5 +1,5 @@
 // The words of the screen: stand-ins are marked, the intent check is a rule,
-// the fictional line stands once in the footer, and no file of the view
+// the mock bank line stands once in the footer, and no file of the view
 // names who built it. Patterns that name what they look for are built from
 // fragments, so this file does not match itself.
 
@@ -154,32 +154,32 @@ test('no file of the view calls the check anything but a rule', () => {
   assert.equal(COPY['hidden.poisoned'], POISONED.poisonedLine);
 });
 
-test('the footer: the fictional line once, in the footer, with the mock bank line beside it, on every state; the poisoned line once, in the invoice box', async () => {
+test('the footer: the mock bank line once, in the footer, on every state; the poisoned line once, in the invoice box', async () => {
   const view = await openView(browser);
   const { page } = view;
   try {
-    const read = () => page.evaluate(([fictional, poisoned]) => {
+    const read = () => page.evaluate(([mock, poisoned]) => {
       const all = [...document.querySelectorAll('body *')];
       const holding = (text) => all.filter((n) => n.childElementCount === 0 && n.textContent === text);
       const lines = [...document.querySelectorAll('#footer p')].map((p) => p.textContent);
-      return { fictional: holding(fictional).map((n) => n.closest('footer') !== null), footer: lines, poisoned: holding(poisoned).map((n) => n.closest('.hidden-box') !== null && n.closest('.invoice-card') !== null), inBody: document.body.textContent.split(fictional).length - 1 };
-    }, [COPY['footer.fictional'], POISONED.poisonedLine]);
+      return { mock: holding(mock).map((n) => n.closest('footer') !== null), footer: lines, poisoned: holding(poisoned).map((n) => n.closest('.hidden-box') !== null && n.closest('.invoice-card') !== null), inBody: document.body.textContent.split(mock).length - 1 };
+    }, [COPY['footer.mock'], POISONED.poisonedLine]);
     const check = async (label, withPoisoned) => {
       const seen = await read();
-      assert.deepEqual(seen.fictional, [true], `${label}: the fictional line, once, in the footer`);
+      assert.deepEqual(seen.mock, [true], `${label}: the mock bank line, once, in the footer`);
       assert.equal(seen.inBody, 1, `${label}: no second copy inside a longer text`);
-      assert.deepEqual(seen.footer, [COPY['footer.fictional'], COPY['footer.mock']], label);
+      assert.deepEqual(seen.footer, [COPY['footer.mock']], label);
       assert.deepEqual(seen.poisoned, withPoisoned ? [true] : [], `${label}: the poisoned line`);
     };
     await check('start', false);
     await runAndWait(view, 'clean', 'paid');
     await check('clean, finished', false);
-    assert.equal(COPY['footer.fictional'], CLEAN_DONE.fictionalLine, 'the footer line is the run\'s fictional line, byte for byte');
+    assert.equal(Object.hasOwn(CLEAN_DONE, 'fictionalLine'), false, 'the run carries no fictional line');
     await page.keyboard.press('o');
     await page.waitForFunction(() => document.querySelector('#pane-inspector .insp')?.dataset.panel === 'offline');
     await check('offline check', false);
     await runAndWait(view, 'poisoned', 'blocked');
-    assert.equal(COPY['footer.fictional'], POISONED.fictionalLine);
+    assert.equal(Object.hasOwn(POISONED, 'fictionalLine'), false);
     // The invoice box with the hidden text is in the run overview at this size.
     await check('poisoned, stopped, step selected', false);
     await page.keyboard.press('0');

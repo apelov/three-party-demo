@@ -5,8 +5,7 @@
 //
 // buildCases() makes fresh keys on every call, so the committed fixtures and
 // a call made inside a test carry different bytes and the same outcomes.
-// Every customer, account, payee and payment here is fictional; every domain
-// ends in .test.
+// Every domain ends in .test.
 
 import crypto from 'node:crypto';
 import { childHeader, makeKey, mint, parHash, rootHeader } from './mint.mjs';
