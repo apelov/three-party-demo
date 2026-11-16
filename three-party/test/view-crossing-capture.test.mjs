@@ -49,9 +49,9 @@ test('a crossing that ran the capture check: no stand-in mark on its lane or in 
   const { page } = view;
   try {
     await runAndWait(view, 'clean', 'paid');
-    const lanes = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#lanes-head .lane')].map((lane) => [lane.dataset.col, { badge: lane.querySelector('.badge')?.textContent ?? null, note: lane.querySelector('.lane-note')?.textContent ?? null, title: lane.querySelector('.lane-title')?.textContent ?? null }])));
-    assert.deepEqual(lanes.crossing, { badge: null, note: null, title: LABELS.parts.crossing.variants.supplied.label });
-    assert.equal(lanes.record.badge, COPY['marker.standIn'], 'the record stays a stand-in');
+    const lanes = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#lanes-head .lane')].map((lane) => [lane.dataset.col, { badge: lane.querySelector('.badge')?.textContent ?? null, tip: lane.querySelector('.lane-credit').getAttribute('title'), title: lane.querySelector('.lane-title')?.textContent ?? null, credit: lane.querySelector('.lane-credit').textContent }])));
+    assert.deepEqual(lanes.crossing, { badge: null, tip: null, title: LABELS.parts.crossing.variants.supplied.label, credit: COPY['credit.crossing'] }, 'the supplied crossing is credited to its maker, with no stand-in mark');
+    assert.equal(lanes.record.badge, null, 'the record part is no stand-in in this revision of the map');
     // The flow row of the crossing, once selected: the check's own summary line.
     await page.click('#rows .row[data-step="crossing"]');
     await view.settle();
@@ -65,8 +65,8 @@ test('a crossing that ran the capture check: no stand-in mark on its lane or in 
       const shown = await page.evaluate(() => {
         const pane = document.querySelector('#pane-inspector');
         return {
-          badge: pane.querySelector('.insp-part .badge')?.textContent ?? null,
-          note: pane.querySelector('.insp-part [data-note="stand-in"]')?.textContent ?? null,
+          badge: pane.querySelector('.insp-head .badge')?.textContent ?? null,
+          note: pane.querySelector('[data-note="stand-in"]')?.textContent ?? null,
           checks: [...pane.querySelectorAll('[data-capture-check]')].map((li) => ({ answer: li.dataset.answer, texts: [...li.querySelectorAll('[data-src]')].map((n) => n.textContent) })),
           scope: [...pane.querySelectorAll('[data-note="scope"]')].map((p) => p.textContent),
         };
@@ -76,7 +76,7 @@ test('a crossing that ran the capture check: no stand-in mark on its lane or in 
       assert.equal(shown.checks.length, 7, mode);
       shown.checks.forEach((c, n) => {
         assert.equal(c.answer, 'pass');
-        assert.deepEqual(c.texts, ['pass', capture.checks[n].name, capture.checks[n].claim], `${mode} check ${n}`);
+        assert.deepEqual(c.texts, [COPY['capture.pass'], capture.checks[n].name, capture.checks[n].claim], `${mode} check ${n}: the deck's word for the answer, then the run's name and claim`);
       });
       assert.deepEqual(shown.scope, capture.scope, mode);
       const result = await census(page);

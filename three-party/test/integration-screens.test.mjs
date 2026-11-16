@@ -40,49 +40,53 @@ const placesOf = (page, sentence) => page.evaluate((text) => [...document.queryS
   .filter((node) => node.textContent === text)
   .map((node) => node.closest('footer, nav, main, aside, header')?.id ?? 'elsewhere'), sentence);
 
-// The offline panel as the page shows it.
+// The audit as the page shows it: the Records tab's ledger, one row per
+// package, and the inspector's audit panel (what checked the records).
 const offlinePanel = (page) => page.evaluate(() => {
   const panel = document.querySelector('#pane-inspector [data-panel="offline"]');
-  if (!panel) return null;
+  const tab = document.getElementById('records-tab');
+  if (!panel || document.body.dataset.tab !== 'records') return null;
   const returned = panel.querySelector('[data-returned="offline-check"]');
   return {
-    text: panel.innerText,
+    ledger: tab.innerText,
+    inspector: panel.innerText,
+    all: `${tab.textContent}\n${panel.textContent}`,
     lines: returned ? [...returned.querySelectorAll('ul li')].map((li) => li.textContent) : null,
     keys: returned ? [...returned.querySelectorAll('.kv-key')].map((k) => k.textContent) : null,
-    values: returned ? [...returned.querySelectorAll('.kv-value')].map((v) => v.textContent) : null,
-    verdicts: panel.querySelectorAll('.verdict, [data-verdict], [data-verdict-for]').length,
-    records: panel.querySelectorAll('.record').length,
+    verdicts: tab.querySelectorAll('[data-verdict-for] .verdict').length,
+    records: tab.querySelectorAll('.ledger-row.record').length,
   };
 });
 
-// What the offline panel must show for a check that wrote a result: each
-// record of the result with its verdict in the deck's words, the counts,
-// and the lines of the deck that speak of the verifier. The answer is a
-// result, so no line is shown as a returned line.
+// What the audit must show for a check that wrote a result: each record of
+// the result with its verdict in the deck's words, the counts, and the lines
+// of the deck that speak of the verifier and the network. The answer is the
+// one the server sent.
 function assertWrittenResultShown(panel, answer) {
-  assert.ok(panel, 'the inspector shows the offline panel');
+  assert.ok(panel, 'the Records tab and the inspector\'s audit panel show');
   assert.equal(panel.lines, null, 'no line is shown as returned');
   assert.equal(panel.keys, null);
   assert.equal(panel.records, answer.records.length + answer.tampered.length, 'each record of the result is listed');
-  // Each record has its verdict line, and the verdict in it.
-  assert.equal(panel.verdicts, 2 * panel.records);
-  const times = (words) => panel.text.split(words).length - 1;
+  assert.equal(panel.verdicts, panel.records, 'each row carries its verdict');
+  const times = (words) => panel.ledger.split(words).length - 1;
   assert.equal(times(COPY['offline.pass']), answer.summary.pass, 'the passed words, once for each record that passed');
   assert.equal(times(COPY['offline.reject'].replace('{n}', answer.tampered[0].firstFailingStep)), answer.summary.reject, 'the rejected words, once for the tampered copy');
   const counts = [
     COPY['offline.summaryPass'].replace('{pass}', answer.summary.pass),
     COPY['offline.summaryReject'].replace('{reject}', answer.summary.reject).replace('{expectedRejects}', answer.summary.expectedRejects),
   ];
+  for (const line of [COPY['offline.tampered'], COPY['offline.expected'], ...counts]) assert.ok(panel.ledger.includes(line), `the ledger shows: ${line}`);
   // The words for the network follow the result: a denial where the
   // control showed one, not measured where it was not, and never both.
   const denied = answer.networkDenied === 'yes';
-  const network = denied ? [COPY['offline.sub'], COPY['offline.networkValue']] : [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured'], answer.network];
-  for (const line of [...network, COPY['offline.signerValue'], COPY['offline.tampered'], COPY['offline.expected'], COPY['limit.steps'], ...counts]) {
-    assert.ok(panel.text.includes(line), `the panel shows: ${line}`);
+  const network = denied ? [COPY['audit.subDenied'], COPY['offline.networkValue']] : [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured'], answer.network];
+  for (const line of [...network, COPY['offline.signerValue']]) assert.ok(panel.inspector.includes(line), `the audit panel shows: ${line}`);
+  for (const line of denied ? [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured']] : [COPY['audit.subDenied'], COPY['offline.networkValue']]) {
+    assert.equal(panel.all.includes(line), false, `the page does not show: ${line}`);
   }
-  for (const line of denied ? [COPY['offline.subNotMeasured'], COPY['offline.networkNotMeasured']] : [COPY['offline.sub'], COPY['offline.networkValue']]) {
-    assert.equal(panel.text.includes(line), false, `the panel does not show: ${line}`);
-  }
+  assert.equal(panel.all.includes(COPY['offline.sub']), false, 'the deck\'s older line with the word the screens no longer use is not shown');
+  // The steps the verifier does not run are said, in the closed Limits.
+  assert.ok(panel.all.includes(COPY['limit.steps']), 'the limits name the steps not run');
 }
 
 test('the browser is started sandboxed and can reach this computer alone: the start checks hold before a page of the demo is driven', () => {
@@ -113,6 +117,7 @@ test('a clean run from the screens ends Paid with every row in the state of the 
   const runId = await runFromScreens(view, 'clean');
   assert.match(runId, /^clean-[0-9]{8}T[0-9]{6}Z$/);
   assert.equal(await page.evaluate(() => document.body.dataset.run), 'paid');
+  await page.keyboard.press('6');
   const rows = await rowsOf(page);
   assert.deepEqual(rows.map((r) => `${r.step}=${r.status}`), example('state-clean-done.json').steps.map((s) => `${s.id}=${s.status}`));
   assert.deepEqual(rows.map((r) => r.word), ['Passed', 'Passed', 'Passed', 'Passed', 'Passed', 'Written']);
@@ -138,13 +143,17 @@ test('a poisoned run from the screens is Stopped by the intent rule at step 4 wi
   const runId = await runFromScreens(view, 'poisoned');
   assert.match(runId, /^poisoned-[0-9]{8}T[0-9]{6}Z$/);
   assert.equal(await page.evaluate(() => document.body.dataset.run), 'blocked');
+  await page.keyboard.press('6');
   const rows = await rowsOf(page);
   assert.deepEqual(rows.map((r) => `${r.step}=${r.status}`), ex.steps.map((s) => `${s.id}=${s.status}`));
   assert.deepEqual(rows.map((r) => r.word), ['Passed', 'Passed', 'Passed', 'Stopped', 'Not reached', 'Written']);
   assert.equal(rows[5].detail, COPY['detail.record'].replace('{written}', '4'));
-  assert.equal(await page.locator('#run-line .run-outcome').innerText(), COPY['outcome.stoppedIntent']);
-  // The poisoned line is the run's own, shown once, in the invoice box with
-  // the hidden text (at this size the box stands in the run overview).
+  assert.equal(await page.locator('#outcome-end [data-outcome-part="headline"]').innerText(), COPY['outcome.stoppedIntent']);
+  // The hidden text is highlighted in the sequence; the poisoned line is the
+  // run's own, shown once, in the invoice box of the run overview.
+  const state0 = docsFrom(view.served, runId).state;
+  assert.equal(await page.locator('#invoice mark.hidden-text').textContent(), state0.invoice.hidden.text);
+  await page.keyboard.press('0');
   assert.equal((await placesOf(page, ex.poisonedLine)).length, 1);
   const inBox = await page.evaluate((text) => [...document.querySelectorAll('[data-src]')]
     .filter((node) => node.textContent === text)
