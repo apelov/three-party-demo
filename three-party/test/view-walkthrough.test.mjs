@@ -166,7 +166,7 @@ test('the run\'s own facts: plain words in Story (Run, Started, Finished, Creden
   }
 });
 
-for (const [width, height, under] of [[1024, 768, true], [1280, 720, false]]) {
+for (const [width, height, under] of [[1024, 768, true], [1280, 720, false], [1280, 577, false]]) {
   test(`${width}x${height}: the inspector ${under ? 'stands under' : 'stands beside'} the middle pane, every lane head stays whole, and the outcome never lies over the step selected`, async () => {
     const view = await openView(browser, { width, height });
     const { page } = view;
