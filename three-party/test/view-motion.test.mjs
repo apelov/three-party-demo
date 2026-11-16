@@ -194,7 +194,9 @@ test('during a run the transitions running are those of the step that changed st
     const before = await report(page);
     for (const key of ['1', 'ArrowRight', 'i', '4', '0', 's', 'End', 'Home']) {
       await page.keyboard.press(key);
-      assert.deepEqual(await page.evaluate(MOVING), [], `after ${key}`);
+      // The grant's countdown bar may still be counting where a mode shows it:
+      // that is the clock's motion, not the key's.
+      assert.deepEqual((await page.evaluate(MOVING)).filter((m) => !/ on span\.countdown-fill$/.test(m)), [], `after ${key}`);
       await page.waitForTimeout(60);
     }
     const afterKeys = await report(page);
