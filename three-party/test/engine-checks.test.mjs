@@ -79,12 +79,12 @@ test('every reject category of the verifier has a named refusal, and a category 
 
 const terms = {
   permissions: [...BILLPAY_CONSENT_TERMS.permissions],
-  creditorAccounts: [...BILLPAY_CONSENT_TERMS.creditorAccounts, 'DEMO-0000-2201'],
+  creditorAccounts: [...BILLPAY_CONSENT_TERMS.creditorAccounts, '0000-2201'],
   maximumIndividualAmount: { ...BILLPAY_CONSENT_TERMS.maximumIndividualAmount },
   periodicLimits: [],
   validToDateTime: BILLPAY_CONSENT_TERMS.validToDateTime,
 };
-const declared = { action: 'pay', invoiceId: 'DEMO-INV-2201', payeeAccount: 'DEMO-0000-2201', amount: '148.20', currency: 'USD' };
+const declared = { action: 'pay', invoiceId: 'INV-2201', payeeAccount: '0000-2201', amount: '148.20', currency: 'USD' };
 const now = new Date('2026-11-15T12:00:00Z');
 const scope = (over = {}) => checkGrantScope({ terms, permission: CAPABILITY, declared, now, ...over });
 
@@ -105,7 +105,7 @@ test('the grant scope check names the check that fails: the permission, the paye
     assert.equal(r.refusal, `grant-scope-${name}`);
   };
   failing({ permission: 'balance:read' }, 'permissions');
-  failing({ declared: { ...declared, payeeAccount: 'DEMO-0000-9931' } }, 'creditorAccounts');
+  failing({ declared: { ...declared, payeeAccount: '0000-9931' } }, 'creditorAccounts');
   failing({ declared: { ...declared, amount: '250.01' } }, 'maximumIndividualAmount');
   failing({ declared: { ...declared, currency: 'EUR' } }, 'maximumIndividualAmount');
   failing({ declared: { ...declared, amount: 'a lot' } }, 'maximumIndividualAmount');
@@ -113,7 +113,7 @@ test('the grant scope check names the check that fails: the permission, the paye
   failing({ now: new Date('2027-04-01T00:00:00Z') }, 'validToDateTime');
   failing({ terms: { ...terms, validToDateTime: 'no date' } }, 'validToDateTime');
   // With two checks failing, the refusal names the earlier one in the list.
-  failing({ permission: 'balance:read', declared: { ...declared, payeeAccount: 'DEMO-0000-9931' } }, 'permissions');
+  failing({ permission: 'balance:read', declared: { ...declared, payeeAccount: '0000-9931' } }, 'permissions');
   failing({ terms: null }, 'permissions');
 });
 

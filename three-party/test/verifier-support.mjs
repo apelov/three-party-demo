@@ -56,7 +56,7 @@ export function makeSigner(modulusLength = 2048) {
 
 // A response and a metadata text of a fictional action, with the canonical
 // form of the metadata written out by hand: its members sorted, no space.
-export const RESPONSE = '{"paymentId":"DEMO-PAY-0001","status":"accepted"}\n';
+export const RESPONSE = '{"paymentId":"PAY-0001","status":"accepted"}\n';
 export const METADATA_TEXT = '{\n  "seq": 5,\n  "step": "pay",\n  "profile": "test-profile/1",\n  "decision": "allowed"\n}\n';
 export const METADATA_CANONICAL = '{"decision":"allowed","profile":"test-profile/1","seq":5,"step":"pay"}';
 

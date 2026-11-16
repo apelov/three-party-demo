@@ -69,7 +69,7 @@ test('the label map carries the part labels, the step titles and the set lines b
   const record = stepOf(clean, 'record').detail;
   assert.deepEqual(LABELS.record, { signer: record.signer, credentialCitedBy: record.credentialCitedBy, timestampEntry: record.timestampEntry });
   assert.equal(LABELS.actionReasons.payAllowed, example('action-05-pay.action.json').reason);
-  assert.deepEqual({ ...LABEL_MAP.parties }, { agent: 'Payments agent', bank: "Supplier's bank", supplier: 'Supplier', domainA: "Payments agent's domain", domainB: "Supplier's bank's domain", rawIdentifiersNote: 'Test identifiers, used by nothing outside this demo.' });
+  assert.deepEqual({ ...LABEL_MAP.parties }, { agent: 'Payments agent', bank: "Supplier's bank", supplier: 'Supplier', domainA: "Payments agent's domain", domainB: "Supplier's bank's domain", rawIdentifiersNote: 'Test identifiers, made up for this demo.' });
   assert.equal(LABELS.text.standInPart, '{partLabel} (stand-in)');
   assert.deepEqual(LABELS.statusWords, { pending: 'Pending', running: 'Checking', passed: 'Passed', blocked: 'Stopped', 'not-reached': 'Not reached', written: 'Written' });
   assert.deepEqual(LABELS.outcome, {
@@ -122,14 +122,14 @@ test('a step line is [hhmmss] part label | title | state word | detail, for ever
   assert.equal(lines.grant, '[120041] OpenA2A · ATX · AAP | Issue a scoped AAP grant | Passed | Bearer grant for payment:billpay, expires in 60 seconds; the declared payment is in scope (permissions, creditorAccounts, maximumIndividualAmount, validToDateTime)');
   assert.equal(lines.crossing, `[120041] WIMSE · AI2II (stand-in) | Cross into the supplier's bank's trust domain | Passed | Payments agent to Supplier's bank; chain of 2 hops: valid. ${CROSSING_NOTE}`);
   assert.equal(lines.intent, '[120041] OpenA2A · ATX · AAP | Apply the intent rule to each tool call | Passed | tool calls checked: 1; each equals the declared intent field for field');
-  assert.equal(lines.pay, "[120041] Supplier's bank | Pay the invoice under the grant | Passed | POST /payments answered 201; payment DEMO-PAY-000031; 148.20 USD to DEMO-0000-2201; in the bank ledger");
+  assert.equal(lines.pay, "[120041] Supplier's bank | Pay the invoice under the grant | Passed | POST /payments answered 201; payment PAY-000031; 148.20 USD to 0000-2201; in the bank ledger");
   const record = stepOf(clean, 'record');
   assert.equal(lines.record, `[120041] AEP | Write one signed Action Evidence Package per action | Written | 5 records; ${record.detail.format}; signer: test key generated for this run. ${TIMESTAMP_NOTE}`);
 
   const poisoned = example('state-poisoned-blocked.json');
   assert.equal(
     stepLine(stepOf(poisoned, 'intent'), poisoned, at),
-    '[120041] OpenA2A · ATX · AAP | Apply the intent rule to each tool call | Stopped | secrets.read has no declared intent; bank.payments.create differs in payeeAccount (declared DEMO-0000-2202, called with DEMO-0000-9931)',
+    '[120041] OpenA2A · ATX · AAP | Apply the intent rule to each tool call | Stopped | secrets.read has no declared intent; bank.payments.create differs in payeeAccount (declared 0000-2202, called with 0000-9931)',
   );
   assert.equal(stepLine(stepOf(poisoned, 'pay'), poisoned, at), "[120041] Supplier's bank | Pay the invoice under the grant | Not reached | no payment was sent: the run stopped at an earlier step");
 
@@ -169,14 +169,14 @@ test('a step that was stopped, at any step, says why in its line', () => {
   intent.detail.calls[0].brokerResolver = { name: 'bank-api-key', exists: false, resolved: false, refused: true };
   assert.equal(
     stepDetailText(intent, poisoned),
-    "secrets.read has no declared intent (the broker's resolver also refused the name bank-api-key); bank.payments.create differs in payeeAccount (declared DEMO-0000-2202, called with DEMO-0000-9931)",
+    "secrets.read has no declared intent (the broker's resolver also refused the name bank-api-key); bank.payments.create differs in payeeAccount (declared 0000-2202, called with 0000-9931)",
   );
   assert.throws(() => stepLine({ ...stepOf(state, 'pay'), status: 'unknown' }, state, at), /no state word/);
 });
 
 test('the outcome line: Paid with the payment id, Stopped by the intent rule with the run\'s reason, and the step named when another step stopped the run', () => {
   const clean = example('state-clean-done.json');
-  assert.equal(outcomeLine(clean, new Date('2026-11-15T12:01:12Z')), "[120112] Outcome | Paid | Every tool call passed the intent rule, and the supplier's bank accepted payment DEMO-PAY-000031.");
+  assert.equal(outcomeLine(clean, new Date('2026-11-15T12:01:12Z')), "[120112] Outcome | Paid | Every tool call passed the intent rule, and the supplier's bank accepted payment PAY-000031.");
   const poisoned = example('state-poisoned-blocked.json');
   assert.equal(outcomeLine(poisoned, new Date('2026-11-15T12:04:05Z')), `[120405] Outcome | Stopped by the intent rule | ${REASON}`);
   const atPay = { ...clean, outcome: 'blocked', blockedAt: 'pay', reason: "Every tool call passed the intent rule, but the supplier's bank did not accept the payment (grant-expired)." };
@@ -234,12 +234,12 @@ function checkRunLines(lines, { kind, paceSeconds, runsDir, cwd = REPO_ROOT }) {
     assert.match(rest[6], /^\[[0-9]{6}\] Outcome \| Stopped by the intent rule \| /);
     assert.equal(rest[6].split(' | ')[2], REASON);
     assert.equal(state.reason, REASON);
-    assert.match(rest[3], /secrets\.read has no declared intent \(the broker's resolver also refused the name bank-api-key\); bank\.payments\.create differs in payeeAccount \(declared DEMO-0000-2202, called with DEMO-0000-9931\)$/);
+    assert.match(rest[3], /secrets\.read has no declared intent \(the broker's resolver also refused the name bank-api-key\); bank\.payments\.create differs in payeeAccount \(declared 0000-2202, called with 0000-9931\)$/);
   } else {
     const paid = /^\[[0-9]{6}\] Outcome \| Paid \| Every tool call passed the intent rule, and the supplier's bank accepted payment (led_[0-9a-f]{16})\.$/.exec(rest[6]);
     assert.ok(paid, rest[6]);
     assert.equal(paid[1], stepOf(state, 'pay').detail.paymentId, 'the payment id on the line is the one the bank gave');
-    assert.match(rest[4], new RegExp(`payment ${paid[1]}; 148\\.20 USD to DEMO-0000-2201; in the bank ledger$`));
+    assert.match(rest[4], new RegExp(`payment ${paid[1]}; 148\\.20 USD to 0000-2201; in the bank ledger$`));
   }
   if (!WRITER_IN_TREE) assert.match(rest[5], / \| Pending \| no record written: the record writer \(three-party\/src\/record\/writer\.mjs\) is not in this build$/);
   assert.equal(state.paceSeconds, paceSeconds);

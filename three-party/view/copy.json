@@ -282,5 +282,8 @@
   "insp.finished": "Finished",
   "insp.credentialSha": "Credential SHA-256",
   "task.told": "You told your payments agent to pay invoice {invoiceId}: {amount} {currency} to your supplier's account {account}.",
-  "task.hidden": "The invoice also carries a line you never see, written for your agent:"
+  "task.hidden": "The invoice also carries a line you never see, written for your agent:",
+  "intent.onInvoice": "Your supplier's account",
+  "intent.fromHidden": "Named in the hidden text",
+  "crossing.noChain": "This step checked a recording of one signed request, so chainFile, hops, standIn and hopFile are null; a delegation chain is checked only by the stand-in, which runs when a recording file is missing or changed."
 }

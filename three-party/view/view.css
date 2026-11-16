@@ -1,8 +1,21 @@
 /* Three-party view: one payment set out as a statement. Three panes that
    never move under a top bar, and one quiet line at the foot.
    The page speaks in a document serif (Charter, installed with macOS; the
-   serif of the system elsewhere), ruled like a ledger: no cards, no shadows,
-   no tinted boxes. Ids and hashes are set in the system's monospace face.
+   serif of the system elsewhere), ruled like a ledger: no shadows and no
+   tinted boxes. Ids and hashes are set in the system's monospace face.
+   Strokes have ranks. A hairline (1px, --rule) parts rows, lanes and panes.
+   One 2px rule in --rule-strong stands under the column heads of the tab
+   shown, under the side panel's head and over the outcome. A 2px frame in
+   --rule-strong, square, goes around a menu card and around the box of what
+   you told the agent; the chosen card is ruled 2px more, inside. A control
+   keeps its 1px outline. A 3px bar in --ink marks the selected row and the
+   tab shown. The focus ring is 2px, dotted, in --ink.
+   Ink has roles. --ink carries titles, heads and what is read first; --ink-2
+   carries the sentence of the selected step, descriptions and times; --muted
+   carries metadata (numbers, column heads, credits, keys, notes) and what is
+   pending, not reached or not available. Bold is for titles, the tab shown,
+   heads, state words and buttons.
+   One step's sentence shows at a time on a tab: the selected step's.
    Each part has one ink, used for its lane, its arrows and its mark; the
    states have their own inks (green passed, red stopped, amber expired) and
    always come with an icon and a word. One element carries weight at a time:
@@ -62,6 +75,8 @@
   --bar: 56px;
   --num: 32px;
   --icon: 16px;
+  /* The room above and below a row of the sequence, the trace and the ledger. */
+  --row-pad: 8px;
   --m1: 200ms;
   --m3: 600ms;
 }
@@ -111,6 +126,7 @@ body[data-size="story"] {
   --t-stamp: 30px;
   --icon: 18px;
   --num: 36px;
+  --row-pad: 12px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -124,12 +140,19 @@ body {
   font-size: var(--t-value);
   line-height: var(--l-value);
   font-variant-numeric: lining-nums;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: auto;
+  /* Data in the monospace face (keys, field names, paths, hashes, file
+     bodies): 0.88 of label size, never under 13px. */
+  --mono-label: max(13px, calc(var(--t-label) * 0.88));
   display: grid;
   grid-template-columns: var(--left) minmax(0, 1fr) var(--right);
   grid-template-rows: var(--bar) minmax(0, 1fr) auto;
   height: 100vh;
   overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body { -webkit-font-smoothing: antialiased; }
 }
 
 h1, h2, h3, p, dl, dd, dt, ul, ol, pre { margin: 0; padding: 0; font-size: inherit; font-weight: inherit; }
@@ -139,14 +162,20 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 mark { background: none; color: inherit; }
 
-.mono { font-family: var(--mono); font-size: max(12px, 0.88em); overflow-wrap: anywhere; }
+/* The monospace face: 0.88 of the size of its role, never under 13px. An id
+   inside a sentence takes the sentence's size; keys, field names, paths,
+   hashes and file bodies are data, set at label size. */
+.mono { font-family: var(--mono); font-size: max(13px, 0.88em); overflow-wrap: anywhere; }
 /* An id inside a sentence stays whole; a hash in a list may break anywhere. */
 .insp-text .mono, .insp-lens .mono, .row-detail .mono, .outcome-text .mono, .invoice .mono { overflow-wrap: normal; white-space: nowrap; }
+/* A token's own break points are for a list's narrow column: inside a
+   sentence they are switched off, so the id moves to the next line whole. */
+.insp-text .mono wbr, .insp-lens .mono wbr, .row-detail .mono wbr, .outcome-text .mono wbr, .invoice .mono wbr { display: none; }
 .num { font-variant-numeric: tabular-nums lining-nums; }
 .meta, .muted { color: var(--muted); }
 
 :focus { outline: none; }
-:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+:focus-visible { outline: 2px dotted var(--ink); outline-offset: 3px; }
 
 .sprite { position: absolute; }
 
@@ -195,10 +224,9 @@ mark { background: none; color: inherit; }
   min-width: 0;
 }
 .app-title { font-size: var(--t-head); line-height: var(--l-head); font-weight: 700; white-space: nowrap; }
-.where { flex: 1; min-width: 0; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.where { flex: 1; min-width: 0; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top-run { display: flex; align-items: center; min-width: 0; }
 .run-id { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-label); color: var(--ink-2); white-space: nowrap; }
-.run-id .mono { font-size: 0.95em; }
 .lens-pick { display: flex; align-items: center; gap: 8px; }
 .lens-label { font-size: var(--t-label); color: var(--muted); white-space: nowrap; }
 .lens-pick select {
@@ -214,17 +242,18 @@ mark { background: none; color: inherit; }
 .mode-switch button + button { border-left: 1px solid var(--ink-2); }
 .mode-switch button[aria-pressed="true"] { background: var(--ink); color: var(--page); font-weight: 700; }
 
+/* A copy control is a word, underlined: no box beside the value it copies. */
 .copy-btn {
   min-height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
   font-size: var(--t-label);
-  line-height: 22px;
+  line-height: 24px;
   color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
   white-space: nowrap;
 }
-.copy-btn:hover { border-color: var(--ink-2); }
+.copy-btn:hover { color: var(--ink); }
 
 /* ---- Panes */
 
@@ -235,27 +264,29 @@ mark { background: none; color: inherit; }
 
 /* ---- Left rail: the walkthrough, the run control and the stepper */
 
-/* Each act is its own card, ruled all around and set apart from the next,
-   so the three read as three things; the chosen one is ruled heavier. */
-.scenes { display: flex; flex-direction: column; gap: 12px; }
+/* Each act is its own card, framed all around and set apart from the next,
+   so the three read as three things; the chosen one is ruled 2px more,
+   inside its frame. A card that cannot run yet keeps its frame and sets its
+   words in the muted ink. */
+.scenes { display: flex; flex-direction: column; gap: 16px; }
 .scene {
   display: grid;
-  grid-template-columns: var(--num) minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   column-gap: 8px;
   align-items: start;
-  padding: 12px 12px 12px 8px;
-  border: 1px solid var(--ink);
+  padding: 14px;
+  border: 2px solid var(--rule-strong);
 }
-.scene[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
-.scene-num { font-size: var(--t-label); line-height: var(--l-value); color: var(--muted); }
+.scene[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--rule-strong); }
+.scene[aria-pressed="true"][aria-disabled="true"] { box-shadow: inset 0 0 0 2px var(--muted); }
+.scene-num { line-height: var(--l-value); color: var(--muted); }
 .scene-words { display: flex; flex-direction: column; min-width: 0; }
-.scene-title { font-weight: 700; color: var(--ink-2); }
-.scene[aria-pressed="true"] .scene-title { color: var(--ink); }
-.scene-text { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+.scene-title { font-weight: 700; color: var(--ink); }
+.scene-text { margin-top: 4px; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); }
 .scene-done { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-label); line-height: var(--l-value); color: var(--green); font-weight: 700; }
 .scene-done[hidden] { display: none; }
 .scene-done-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.scene[aria-disabled="true"] .scene-title { color: var(--muted); }
+.scene[aria-disabled="true"] .scene-title, .scene[aria-disabled="true"] .scene-text { color: var(--muted); }
 
 .run-block { display: flex; flex-direction: column; gap: 8px; }
 .run-control { width: 100%; }
@@ -278,13 +309,17 @@ mark { background: none; color: inherit; }
 
 /* ---- Tabs of the middle pane */
 
-.tabs { display: flex; gap: 24px; padding: 0 var(--gut); border-bottom: 1px solid var(--rule); flex: none; }
-.tab { min-height: 44px; padding: 0 4px; font-size: var(--t-value); color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs { display: flex; gap: 32px; padding: 0 var(--gut); border-bottom: 1px solid var(--rule); flex: none; }
+.tab { min-height: 44px; padding: 0 4px; font-size: var(--t-value); color: var(--ink-2); border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tab[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
 .tab:hover { color: var(--ink); }
-.tab:focus-visible { outline-offset: -2px; }
+.tab:focus-visible { outline-offset: -3px; }
 .tab-panel { flex: 1; min-height: 0; padding: 12px var(--gut) 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
 .tab-panel[hidden] { display: none; }
+/* A panel takes the focus when its tab is shown or the audit ends, so the
+   keys act on it. It is not a stop of the keyboard path, and it draws no
+   ring around the whole pane. */
+.tab-panel:focus-visible { outline: none; }
 
 /* ---- Orientation: before any run */
 
@@ -324,7 +359,7 @@ mark { background: none; color: inherit; }
    stays in sight on every tab while the steps scroll, and the hidden text
    of a poisoned invoice highlighted */
 
-.invoice { flex: none; display: flex; flex-direction: column; gap: 10px; margin: 16px var(--gut) 12px; padding: 12px 16px; border: 2px solid var(--ink); background: var(--paper); }
+.invoice { flex: none; display: flex; flex-direction: column; gap: 8px; margin: 16px var(--gut) 12px; padding: 12px 16px; border: 2px solid var(--rule-strong); background: var(--paper); }
 .invoice[hidden] { display: none; }
 .task-told { font-size: var(--t-head); line-height: var(--l-head); color: var(--ink); }
 .task-told .mono { font-weight: 700; }
@@ -343,7 +378,7 @@ mark { background: none; color: inherit; }
   align-content: start;
 }
 .lanes-head, .rows { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; }
-.lanes-head { grid-template-rows: auto auto; padding-bottom: 4px; border-bottom: 1px solid var(--rule); }
+.lanes-head { grid-template-rows: auto auto; padding-bottom: 8px; border-bottom: 2px solid var(--rule-strong); }
 /* The lane heads stay in sight while the steps scroll under them, and a
    step brought into sight stops below them, not behind them. */
 .lanes-head { position: sticky; top: -12px; z-index: 3; padding-top: 8px; background: var(--page); }
@@ -356,22 +391,27 @@ mark { background: none; color: inherit; }
 .rows { position: relative; }
 .lifeline-col { grid-row: 1 / -1; border-left: 1px solid var(--rule); pointer-events: none; }
 
+/* A row is its number, its title and its state. The selected row adds the
+   sentence of the reader chosen in View as, and its line of detail. */
 .row {
   display: grid;
   grid-template-columns: subgrid;
   grid-column: 1 / -1;
-  grid-template-rows: auto 28px auto auto;
-  padding: 6px 0;
+  grid-template-rows: auto 24px auto auto;
+  padding: var(--row-pad) 0;
   border-bottom: 1px solid var(--rule);
 }
-.lifeline { grid-row: 1 / -1; margin-block: -6px; border-left: 1px solid var(--rule); pointer-events: none; }
+.lifeline { grid-row: 1 / -1; margin-block: calc(-1 * var(--row-pad)); border-left: 1px solid var(--rule); pointer-events: none; }
+/* With the outcome's rule under the steps, the last step needs no rule of
+   its own: two rules with nothing between them read as one mistake. */
+.pane-flow:has(> .outcome:not([hidden])) .rows > .row:last-child { border-bottom-color: transparent; }
 .lane[data-origin="yes"] ~ .lane .lane-line { color: inherit; }
 
-.row-num { grid-column: 1; grid-row: 1; font-size: var(--t-label); line-height: var(--l-value); color: var(--muted); padding-left: 4px; border-left: 3px solid transparent; }
+.row-num { grid-column: 1; grid-row: 1; line-height: var(--l-value); color: var(--muted); padding-left: 4px; border-left: 3px solid transparent; }
 .row-head { grid-row: 1; display: flex; min-width: 0; padding-left: 8px; }
-.row-title { min-width: 0; color: var(--ink-2); background: var(--page); padding-right: 8px; }
-.row[aria-current="step"] .row-num { color: var(--ink); font-weight: 700; border-left-color: var(--ink); }
-.row[aria-current="step"] .row-title { color: var(--ink); font-weight: 700; }
+.row-title { min-width: 0; color: var(--ink); background: var(--page); padding-right: 8px; }
+.row[aria-current="step"] .row-num { color: var(--ink); border-left-color: var(--ink); }
+.row[aria-current="step"] .row-title { font-weight: 700; }
 .row[data-status="pending"] .row-title, .row[data-status="not-reached"] .row-title { color: var(--muted); }
 
 .arrow { grid-row: 2; display: flex; align-items: center; min-width: 0; color: var(--part, var(--ink-2)); }
@@ -405,8 +445,11 @@ mark { background: none; color: inherit; }
 .rec-mark[data-state="failed"] .mark-page { fill: currentColor; }
 .rec-mark .mark-sign { fill: none; stroke: var(--page); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-.row-lens { grid-row: 3; grid-column: 2 / -1; justify-self: start; padding: 0 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); background: var(--page); }
-.row-detail { grid-row: 4; grid-column: 2 / -1; justify-self: start; margin-top: 4px; padding: 0 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); background: var(--page); }
+/* The sentence and the line of detail stand on the page's ground across the
+   lanes, so no lifeline shows between them. */
+.row-lens { grid-row: 3; grid-column: 2 / -1; margin-top: 8px; padding: 0 8px; color: var(--ink-2); background: var(--page); }
+.row:not([aria-current="step"]) > .row-lens { display: none; }
+.row-detail { grid-row: 4; grid-column: 2 / -1; padding: 4px 8px 0; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); background: var(--page); }
 .row[data-status="blocked"] .row-detail { color: var(--red); }
 
 /* ---- State: an icon and a word in its ink */
@@ -436,6 +479,8 @@ mark { background: none; color: inherit; }
 }
 .row[data-status="blocked"] .chip .icon { width: calc(var(--t-stamp) * 0.7); height: calc(var(--t-stamp) * 0.7); margin-top: -3px; }
 .row[data-status="blocked"] { grid-template-rows: auto 52px auto; row-gap: 4px; }
+.row[data-status="blocked"] > .row-lens { margin-top: 4px; }
+.row[data-status="blocked"] > .row-detail { padding-top: 0; }
 
 .countdown { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); background: var(--page); white-space: nowrap; padding-right: 4px; }
 .countdown-track { width: 64px; height: 4px; background: var(--rule); }
@@ -453,33 +498,40 @@ mark { background: none; color: inherit; }
 .outcome-chip { display: inline-flex; align-items: center; gap: 8px; flex: none; font-weight: 700; white-space: nowrap; }
 .outcome-chip[data-tone="ok"] { color: var(--green); }
 .outcome-chip[data-tone="stop"] { color: var(--red); }
-.outcome-text { color: var(--ink-2); max-width: 40em; }
+.outcome-text { color: var(--ink); max-width: 40em; }
 .outcome-actions { flex: none; display: flex; gap: 12px; }
 .outcome[data-outcome="paid"] .outcome-chip .icon { width: calc(var(--t-stamp) * 0.7); height: calc(var(--t-stamp) * 0.7); margin-top: -3px; }
 
 /* ---- Records tab: the run's packages as one ledger */
 
-.records-tab { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
-.records-empty { color: var(--muted); padding-top: 8px; }
+/* The tab's box reaches 8px into the gutter on each side, so a focus ring at
+   its edge is not cut; what it holds stays on the pane's edge. */
+.records-tab { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 8px; }
+.records-empty { color: var(--ink-2); padding-top: 8px; }
 .records-head { display: flex; align-items: center; gap: 24px; min-height: 44px; }
 .records-count { font-weight: 700; }
 .records-count + .records-count { font-weight: 400; color: var(--ink-2); }
 .records-facts .kv { max-width: 48em; }
-.ledger { display: grid; grid-template-columns: minmax(0, 1fr) max-content max-content; column-gap: 24px; border-top: 2px solid var(--rule-strong); }
-.ledger-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; border-bottom: 1px solid var(--rule); }
-.ledger-head { font-size: var(--t-label); color: var(--muted); }
-.ledger-col, .ledger-cell { padding: 8px 0; min-width: 0; }
+.ledger { display: grid; grid-template-columns: minmax(0, 1fr) max-content max-content; column-gap: 24px; }
+.ledger-row { position: relative; display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--rule); }
+.ledger-head { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); border-bottom: 2px solid var(--rule-strong); }
+.ledger-cell { padding: var(--row-pad) 0; min-width: 0; }
+.ledger-col { padding: 0 0 8px; min-width: 0; }
 .ledger-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: var(--t-label); line-height: var(--l-label); }
-.ledger-file { flex-direction: column; align-items: flex-start; gap: 0; }
+.ledger-file { flex-direction: column; align-items: flex-start; gap: 4px; }
 .ledger-cell[data-verdict-for] { flex-direction: column; align-items: flex-start; gap: 0; }
 .ledger .record-file { white-space: nowrap; }
 .ledger-step-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ledger-step { max-width: 100%; }
-.ledger-lens { color: var(--muted); }
-.ledger-cell .record-file { font-size: 0.95em; }
-.ledger-step { display: inline-flex; gap: 8px; text-align: left; color: var(--ink-2); }
+.ledger-lens { color: var(--ink-2); }
+.ledger-row:not([data-selected="yes"]) .ledger-lens { display: none; }
+.ledger-step { display: inline-flex; gap: 8px; text-align: left; color: var(--ink); }
+.ledger-step .num { color: var(--muted); }
 .ledger-step:hover span:last-child { text-decoration: underline; text-underline-offset: 3px; }
-.ledger-row[data-selected="yes"] .ledger-step { color: var(--ink); font-weight: 700; }
+/* The record of the selected step: a bar at the row's start, its title bold. */
+.ledger-row[data-selected="yes"]::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: var(--ink); }
+.ledger-row[data-selected="yes"] .ledger-step-title { font-weight: 700; }
+.ledger-row[data-selected="yes"] .ledger-step .num { color: var(--ink); }
 .record-flag { font-size: var(--t-label); color: var(--muted); }
 .records-limits summary, .insp-section-head { cursor: pointer; }
 .records-limits { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); padding-bottom: 16px; }
@@ -497,25 +549,38 @@ mark { background: none; color: inherit; }
 .insp { display: flex; flex-direction: column; gap: 16px; }
 .insp-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding-bottom: 12px; border-bottom: 2px solid var(--rule-strong); }
 .insp-title { font-size: var(--t-head); line-height: var(--l-head); font-weight: 700; }
+/* "Step n" is the panel's title on a step: the title's own size and ink, and
+   no room kept for a selection bar. */
+.insp-title .row-num { font: inherit; color: inherit; padding-left: 0; border-left: 0; }
 .insp-head .chip { margin-left: auto; }
 .part-mark { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-label); line-height: var(--l-label); font-weight: 700; }
 .part-mark .swatch { width: 10px; height: 10px; background: var(--part, var(--ink)); }
 .insp-lens { color: var(--ink); }
+/* On a step the sentence stands on the selected row, not here a second time. */
+.insp-head[data-status] + .insp-lens { display: none; }
 .insp-summary { display: flex; flex-direction: column; gap: 4px; }
 
 .insp-section { border-bottom: 1px solid var(--rule); }
-.insp-section-head { display: flex; align-items: center; gap: 8px; min-height: 40px; list-style: none; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); font-weight: 700; }
+.insp-section-head { display: flex; align-items: center; gap: 8px; min-height: 40px; list-style: none; color: var(--ink); font-weight: 700; }
+body[data-size="story"] .insp-section-head { min-height: 48px; }
 .insp-section-head::-webkit-details-marker { display: none; }
-.insp-section-head::before { content: ""; width: 0; height: 0; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
-.insp-section[open] > .insp-section-head::before { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; border-bottom: 0; }
+/* The marker keeps one 8px box, closed or open, so the heads start together. */
+.insp-section-head::before { content: ""; flex: none; width: 0; height: 0; margin-right: 3px; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.insp-section[open] > .insp-section-head::before { margin-right: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; border-bottom: 0; }
 .insp-section-body { display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
 .insp-text { color: var(--ink); }
 .insp-note { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 
-.kv { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr); border-top: 1px solid var(--rule); }
-.kv-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; column-gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+/* A list inside a section: hairlines between its rows, none above the first
+   and none under the last, where the section's own rule follows. The key
+   column is as wide as its longest key, up to a field name of 24 letters,
+   so a key is never cut one letter short of its end. */
+.kv { display: grid; grid-template-columns: fit-content(calc(var(--mono-label) * 14.6)) minmax(0, 1fr); column-gap: 16px; }
+.kv-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.kv-row:last-child { border-bottom: 0; }
 .kv-key { font-size: var(--t-label); line-height: var(--l-value); color: var(--muted); overflow-wrap: anywhere; }
-.kv-key.mono { font-size: max(12px, calc(var(--t-label) * 0.88)); }
+/* In a list every value in the monospace face is data, at one size. */
+.kv-key.mono, .kv-value .mono { font-size: var(--mono-label); }
 .kv-value { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .kv-list { display: flex; flex-direction: column; }
 
@@ -523,36 +588,44 @@ mark { background: none; color: inherit; }
 .compare-call { display: flex; flex-direction: column; gap: 4px; }
 .compare-title { display: flex; align-items: baseline; gap: 8px; }
 .compare-title .meta { font-size: var(--t-label); }
-/* Each field of the comparison: its name on a line of its own, then the
-   declared value beside the tool call's, under the two column heads. */
-.compare-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
-.compare-grid .col-pad { display: none; }
-.compare-grid .field { grid-column: 1 / -1; flex-direction: row; gap: 8px; padding-bottom: 0; border-bottom: 0; }
-.compare-args { display: grid; grid-template-columns: minmax(0, 7em) minmax(0, 1fr); column-gap: 12px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
-.compare-grid .mono, .compare-args .mono { font-size: 0.95em; overflow-wrap: normal; white-space: nowrap; }
-.compare-args { grid-template-columns: minmax(0, 8.5em) minmax(0, 1fr); }
-.compare-grid > *, .compare-args > * { padding: 4px 0; border-bottom: 1px solid var(--rule); min-width: 0; }
-.col-head { font-size: var(--t-label); color: var(--muted); }
-.field { display: flex; flex-direction: column; font-size: var(--t-label); color: var(--muted); font-family: var(--mono); }
-.differs-word { font-family: var(--serif); font-weight: 700; color: var(--red); }
+/* The comparison is a list: a field's name, then its value. A field that
+   differs takes the whole width: its name and the word that says so, then
+   two labelled lines, the declared intent's value and the tool call's, each
+   with whose account it is under the value. */
+.compare-grid, .compare-args { display: grid; grid-template-columns: fit-content(calc(var(--mono-label) * 9 + 16px)) minmax(0, 1fr); font-size: var(--t-label); line-height: var(--l-label); }
+/* The room between a name and its value is the name's own padding, so the
+   rule under a row runs unbroken across both. */
+.compare-grid > *, .compare-args > * { padding: 8px 0; border-bottom: 1px solid var(--rule); min-width: 0; }
+.compare-grid > .field, .compare-args > .field { padding-right: 16px; }
+.compare-grid > :nth-last-child(-n+2), .compare-args > :nth-last-child(-n+2) { border-bottom: 0; }
+.compare-grid .mono, .compare-args .mono { overflow-wrap: normal; white-space: nowrap; }
+.field { display: flex; flex-direction: column; font-size: var(--mono-label); color: var(--muted); font-family: var(--mono); }
+.compare-grid .field[data-differs="yes"] { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 12px; padding-bottom: 0; border-bottom: 0; }
+.differs-word { font-family: var(--serif); font-size: var(--t-label); font-weight: 700; color: var(--red); }
+.cell-pair { grid-column: 1 / -1; display: grid; grid-template-columns: fit-content(12em) minmax(0, 1fr); column-gap: 16px; row-gap: 4px; align-items: baseline; }
+.pair-label { color: var(--ink-2); }
+.pair-value { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.pair-who { color: var(--ink-2); }
 .diff[data-differs="yes"] { background: var(--highlight); color: var(--highlight-ink); padding: 0 2px; margin-left: -2px; }
 .compare-verdict { display: flex; gap: 8px; align-items: baseline; }
 .compare-none { font-weight: 700; color: var(--red); }
-.compare-why { font-size: var(--t-label); color: var(--muted); }
+.compare-why { font-size: var(--t-label); color: var(--ink-2); }
 
-.checks { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
-.check { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.checks { display: flex; flex-direction: column; }
+.check { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.check:last-child { border-bottom: 0; }
 .check .verdict { grid-row: 1 / span 2; align-self: start; font-size: var(--t-label); }
 .check-name { font-size: var(--t-label); }
 .check-claim { grid-column: 2; font-size: var(--t-label); line-height: var(--l-label); color: var(--ink-2); }
 
-.records { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
-.insp .record { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
+.records { display: flex; flex-direction: column; }
+.insp .record { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); }
+.insp .record:last-child { border-bottom: 0; }
 .records .record .verdict { margin-left: auto; }
-.record-file { font-size: 0.95em; }
 
-.parts-list { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+.parts-list { display: flex; flex-direction: column; }
 .insp-part { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.insp-part:last-child { border-bottom: 0; }
 .insp-part-line { display: flex; align-items: center; gap: 8px; }
 
 .invoice-card { display: flex; flex-direction: column; gap: 8px; }
@@ -562,9 +635,9 @@ mark { background: none; color: inherit; }
 
 .artifacts { display: flex; flex-direction: column; gap: 12px; }
 .artifact { display: flex; flex-direction: column; gap: 4px; }
-.artifact-path { font-family: var(--mono); font-size: var(--t-label); }
+.artifact-path { font-family: var(--mono); font-size: var(--mono-label); }
 .artifact .meta { font-size: var(--t-label); }
-.artifact-body { font-family: var(--mono); font-size: 12px; line-height: 18px; padding: 8px 12px; border-left: 2px solid var(--rule); overflow-x: auto; white-space: pre; color: var(--ink-2); }
+.artifact-body { font-family: var(--mono); font-size: var(--mono-label); line-height: 18px; padding: 8px 12px; border-left: 2px solid var(--rule); overflow-x: auto; white-space: pre; color: var(--ink-2); }
 
 [data-highlight="yes"] { outline: 2px solid var(--ink); outline-offset: 4px; }
 
@@ -593,11 +666,12 @@ mark { background: none; color: inherit; }
 @media (min-width: 1920px) { .trace-grid { --t-gutter: 56px; --t-start: 112px; --t-dur: 112px; --t-lane: 320px; --t-gap: 16px; } }
 body[data-size="story"] .trace-grid { --t-state: 184px; }
 
-.trace-head { flex: none; }
+/* The head: the note on what a trace is, then the column heads on their rule. */
+.trace-head { flex: none; display: flex; flex-direction: column; }
 .trace-body { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: auto; }
-.trace-cols { display: grid; grid-template-columns: var(--t-cols); column-gap: var(--t-gap); padding: 0 var(--t-px) 4px; border-bottom: 2px solid var(--rule-strong); }
+.trace-cols { display: grid; grid-template-columns: var(--t-cols); column-gap: var(--t-gap); padding: 0 var(--t-px) 8px; border-bottom: 2px solid var(--rule-strong); }
 .trace-col { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
-.trace-note { display: block; padding: 4px var(--t-px); }
+.trace-note { order: -1; display: block; padding: 0 var(--t-px) 12px; }
 .trace-shape { display: block; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 
 .trace-row {
@@ -611,19 +685,24 @@ body[data-size="story"] .trace-grid { --t-state: 184px; }
   border-bottom: 1px solid var(--rule);
 }
 .trace-grid[data-run="yes"] .trace-row { cursor: pointer; }
-.trace-row:focus-visible { outline-offset: -2px; }
+.trace-row:focus-visible { outline-offset: -3px; }
 .trace-row > .trace-step { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; column-gap: 8px; min-width: 0; }
 .trace-row > .trace-start { grid-column: 2; grid-row: 2; }
 .trace-row > .trace-dur { grid-column: 3; grid-row: 2; }
 .trace-row > .trace-state { grid-column: 4; grid-row: 2; display: flex; align-items: center; min-width: 0; }
 .trace-row > .trace-time { grid-column: 5; grid-row: 2; min-width: 0; }
-.trace-row > .trace-stop { grid-column: 1 / -1; grid-row: 3; display: block; padding: 0 0 2px 32px; }
-.trace-row > .trace-lens { grid-column: 1 / -1; grid-row: 4; display: block; padding: 0 0 2px 32px; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+/* The stop's headline and the selected step's sentence start where the
+   step's title starts, on the Start column. */
+.trace-row > .trace-stop { grid-column: 1 / -1; grid-row: 3; display: block; padding: 0 0 0 calc(var(--t-gutter) + var(--t-gap)); }
+.trace-row > .trace-lens { grid-column: 1 / -1; grid-row: 4; display: block; padding: 4px 0 0 calc(var(--t-gutter) + var(--t-gap)); color: var(--ink-2); }
+.trace-row:not([data-current="yes"]) > .trace-lens { display: none; }
+.trace-row[aria-level="1"] { padding-block: var(--row-pad); }
 
 .trace-toggle { flex: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; color: var(--ink-2); }
 .trace-toggle[hidden] { display: inline-flex; visibility: hidden; }
 .trace-chevron { display: block; width: 16px; height: 16px; }
-.trace-num { flex: none; min-width: 1ch; font-size: var(--t-value); line-height: var(--l-value); color: var(--muted); }
+.trace-num { flex: none; min-width: max(1ch, calc(var(--t-gutter) + var(--t-gap) - 40px)); text-align: right; font-size: var(--t-value); line-height: var(--l-value); color: var(--muted); }
+.trace-row[data-current="yes"] .trace-num { color: var(--ink); }
 .trace-num[hidden] { display: none; }
 .trace-title { min-width: 0; font-size: var(--t-value); line-height: var(--l-value); color: var(--ink); }
 .trace-row[data-tone="muted"] .trace-title { color: var(--muted); }
@@ -661,7 +740,7 @@ body[data-size="story"] .trace-grid { --t-state: 184px; }
 .trace-nested.trace-timed > [role="gridcell"] { margin-inline-end: 0; }
 .trace-why { font-weight: 700; color: var(--red); white-space: nowrap; }
 .trace-pill { display: inline-block; padding: 0 8px; border: 1px solid var(--red); border-radius: 3px; color: var(--red); font-size: var(--t-label); font-weight: 700; line-height: 22px; white-space: nowrap; }
-.trace-count { flex: none; padding: 4px var(--t-px) 8px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+.trace-count { flex: none; padding: 8px var(--t-px); font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 
 body[data-size="story"] .trace-row[aria-level="1"] { min-height: 48px; }
 /* In Story the outcome line under the pane says the run's sentence; the
@@ -701,7 +780,7 @@ body[data-size="story"] .trace-stop-text { display: none; }
 .keys-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 12px; }
 .keys-title { font-size: var(--t-head); line-height: var(--l-head); font-weight: 700; }
 .keys-list { grid-template-columns: minmax(0, 8em) minmax(0, 1fr); }
-kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px solid var(--rule); border-radius: 3px; color: var(--ink); }
+kbd { font-family: var(--mono); font-size: max(13px, 0.88em); padding: 0 6px; border: 1px solid var(--rule); border-radius: 3px; color: var(--ink); }
 
 /* ---- Motion: a change of state, the request travelling, the countdown, the trace bars */
 
@@ -739,10 +818,11 @@ kbd { font-family: var(--mono); font-size: 0.9em; padding: 0 6px; border: 1px so
 .ledger .checks, .insp .records .checks { flex-basis: 100%; font-size: var(--t-label); }
 .ledger .checks .kv, .insp .records .checks .kv { grid-template-columns: minmax(0, 7em) minmax(0, 1fr); }
 
-/* Inspect is the dense mode: tighter rows. A run of more than six steps
-   takes the tighter rows in either mode, so its steps stay on screen. */
-body[data-size="inspect"] .row, .flow[data-many="yes"] .row { padding: 4px 0; grid-template-rows: auto 24px auto; }
-body[data-size="inspect"] .lifeline, .flow[data-many="yes"] .lifeline { margin-block: -4px; }
+/* Inspect is the dense mode: its stop is stamped smaller. A run of more than
+   six steps takes tight rows and the sentence at label size in either mode,
+   so its steps stay on screen. */
+.flow[data-many="yes"] { --row-pad: 4px; }
+.flow[data-many="yes"] .row-lens { font-size: var(--t-label); line-height: var(--l-label); }
 body[data-size="inspect"] .row[data-status="blocked"], .flow[data-many="yes"] .row[data-status="blocked"] { grid-template-rows: auto 44px auto; row-gap: 2px; }
 
 /* When the panes stack, a wide piece scrolls inside its own box, never the page. */
@@ -755,7 +835,7 @@ body[data-size="inspect"] .row[data-status="blocked"], .flow[data-many="yes"] .r
 }
 
 /* A step of the sequence that holds the focus: the ring inside its rules. */
-.row:focus-visible { outline-offset: -2px; }
+.row:focus-visible { outline-offset: -3px; }
 
 /* From 1024 to 1199 px the inspector stands under the middle pane, so the
    sequence keeps the width of five lanes; the page scrolls. */
@@ -773,14 +853,19 @@ body[data-size="inspect"] .row[data-status="blocked"], .flow[data-many="yes"] .r
 }
 
 /* A short window (a 1280x720 window leaves a 577 px page) keeps the box of
-   what you told the agent in sight but smaller, and trims the tabs and the outcome, so the step
-   selected still fits whole between the lanes and the outcome. Last in the
-   file, so it wins over the rules it adjusts. */
-@media (max-height: 640px) {
+   what you told the agent in sight but smaller, trims the tabs and the
+   outcome, sets the cards closer and takes tight rows with the sentence at
+   label size, so the step selected still fits whole between the lanes and
+   the outcome. Last in the file, so it wins over the rules it adjusts. */
+@media (max-height: 700px) {
   .invoice { gap: 6px; margin: 8px var(--gut); padding: 8px 12px; }
   .task-told { font-size: var(--t-value); line-height: 22px; }
   .task-hidden { font-size: var(--t-label); line-height: var(--l-label); }
-  .lanes-head { padding-top: 2px; }
+  .lanes-head { padding-top: 2px; padding-bottom: 4px; }
   .tab { min-height: 36px; }
   .outcome { padding: 6px 0; }
+  .scenes { gap: 8px; }
+  .scene { padding: 10px 14px; }
+  .flow { --row-pad: 4px; }
+  .row-lens { font-size: var(--t-label); line-height: var(--l-label); }
 }

@@ -51,7 +51,7 @@ test('the stopped run in Inspect: six step rows in order with their states; the 
     assert.equal(grid.readonly, 'true');
     assert.deepEqual(grid.headers.map((h) => h.text), HEADERS);
     assert.equal(grid.shape, COPY['trace.shape']);
-    assert.equal(grid.shapeUnderHeaders, true, 'the line on the shape stands under the column headers');
+    assert.equal(grid.shapeOverHeaders, true, 'the line on the shape stands over the column headers, which stand on their rule');
     assert.equal(grid.shapeSize, 13);
 
     const rows = await traceRows(page);

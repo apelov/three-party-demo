@@ -10,14 +10,14 @@
     "supplier": "Supplier",
     "domainA": "Payments agent's domain",
     "domainB": "Supplier's bank's domain",
-    "rawIdentifiersNote": "Test identifiers, used by nothing outside this demo."
+    "rawIdentifiersNote": "Test identifiers, made up for this demo."
   },
   "invoice": {
-    "invoiceId": "DEMO-INV-2201",
+    "invoiceId": "INV-2201",
     "from": "Northwind Office Supply",
     "amount": "148.20",
     "currency": "USD",
-    "payTo": { "name": "Northwind Office Supply", "account": "DEMO-0000-2201" },
+    "payTo": { "name": "Northwind Office Supply", "account": "0000-2201" },
     "lines": ["Printer paper, 20 cases", "Amount due: $148.20"],
     "hidden": null
   },
@@ -34,7 +34,7 @@
     "ttlSeconds": 60,
     "scope": "payment:billpay",
     "maximumIndividualAmount": { "amount": "250.00", "currency": "USD" },
-    "creditorAccounts": ["DEMO-0000-1180", "DEMO-0000-2201"],
+    "creditorAccounts": ["0000-1180", "0000-2201"],
     "tokenType": "Bearer"
   },
   "steps": [
@@ -49,12 +49,12 @@
       "actionFile": "actions/03-crossing.action.json", "recordFile": "records/03-crossing.aep" },
     { "id": "intent", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Apply the intent rule to each tool call", "status": "passed", "startedAt": "2026-11-15T12:00:30Z", "endedAt": "2026-11-15T12:00:31Z",
       "detail": { "rule": "Every argument of a tool call must equal the same field of the declared intent. A call with no declared intent is blocked.",
-        "declared": { "action": "pay", "invoiceId": "DEMO-INV-2201", "payeeAccount": "DEMO-0000-2201", "amount": "148.20", "currency": "USD" },
-        "calls": [ { "tool": "bank.payments.create", "args": { "invoiceId": "DEMO-INV-2201", "payeeAccount": "DEMO-0000-2201", "amount": "148.20", "currency": "USD" }, "declaredFor": "pay", "match": true, "fieldsDiffering": [] } ],
+        "declared": { "action": "pay", "invoiceId": "INV-2201", "payeeAccount": "0000-2201", "amount": "148.20", "currency": "USD" },
+        "calls": [ { "tool": "bank.payments.create", "args": { "invoiceId": "INV-2201", "payeeAccount": "0000-2201", "amount": "148.20", "currency": "USD" }, "declaredFor": "pay", "match": true, "fieldsDiffering": [] } ],
         "result": "match" },
       "actionFile": "actions/04-intent.action.json", "recordFile": "records/04-intent.aep" },
     { "id": "pay", "part": "bank", "partLabel": "Supplier's bank", "standIn": false, "standInNote": null, "title": "Pay the invoice under the grant", "status": "passed", "startedAt": "2026-11-15T12:00:40Z", "endedAt": "2026-11-15T12:00:41Z",
-      "detail": { "endpoint": "/payments", "httpStatus": 201, "paymentId": "DEMO-PAY-000031", "amount": "148.20", "currency": "USD", "payeeAccount": "DEMO-0000-2201", "recordedByBank": true },
+      "detail": { "endpoint": "/payments", "httpStatus": 201, "paymentId": "PAY-000031", "amount": "148.20", "currency": "USD", "payeeAccount": "0000-2201", "recordedByBank": true },
       "actionFile": "actions/05-pay.action.json", "recordFile": "records/05-pay.aep" },
     { "id": "record", "part": "record", "partLabel": "AEP", "standIn": false, "standInNote": null, "title": "Write one signed Action Evidence Package per action", "status": "written", "startedAt": "2026-11-15T12:00:50Z", "endedAt": "2026-11-15T12:00:52Z",
       "detail": { "written": 5, "format": "docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6", "signer": "test key generated for this run", "credentialCitedBy": "sha256 over the credential's exact bytes", "timestampEntry": "stand-in: no timestamp authority" },

@@ -28,6 +28,44 @@
 // the menu has; position, an item's own place in the menu).
 // Nothing here invents a word: a line whose fill has no value is not built.
 
+// Where a name, a path, an id or a hash set in the monospace face may break
+// when its column is too narrow for it: after a slash; at the hump of a
+// camel-cased name; after a dot, a colon or an underscore between letters;
+// and after every sixteenth digit of a long hash. Never within four
+// characters of either end, so no line holds a letter or two alone. Without
+// these a browser breaks such a token only after a hyphen, or wherever the
+// line happens to end.
+function breakPoints(text) {
+  if (/^[0-9a-f]{32,}$/i.test(text)) {
+    const at = [];
+    for (let i = 16; i < text.length; i += 16) at.push(i);
+    return at;
+  }
+  const at = [];
+  for (let i = 4; i <= text.length - 4; i += 1) {
+    const before = text[i - 1];
+    const after = text[i];
+    if (before === '/') at.push(i);
+    else if (/[a-z0-9]/.test(before) && /[A-Z]/.test(after)) at.push(i);
+    else if (/[.:_]/.test(before) && /[A-Za-z]/.test(after) && /[A-Za-z]/.test(text[i - 2])) at.push(i);
+  }
+  return at;
+}
+
+// The text of an element. One unspaced token in the monospace face takes a
+// break opportunity at each of its break points; its text is unchanged.
+function setText(node, value, cls) {
+  const text = String(value);
+  const breaks = /(^| )(mono|artifact-path)( |$)/.test(cls ?? '') && text.length >= 12 && !/\s/.test(text) ? breakPoints(text) : [];
+  if (breaks.length === 0) { node.textContent = text; return; }
+  let from = 0;
+  for (const at of breaks) {
+    node.append(text.slice(from, at), document.createElement('wbr'));
+    from = at;
+  }
+  node.append(text.slice(from));
+}
+
 export function el(tag, props, ...kids) {
   const node = document.createElement(tag);
   if (props) {
@@ -35,7 +73,7 @@ export function el(tag, props, ...kids) {
       if (value === null || value === undefined || value === false) continue;
       if (key === 'class') node.className = value;
       else if (key === 'src') node.dataset.src = value;
-      else if (key === 'text') node.textContent = value;
+      else if (key === 'text') setText(node, value, props.class);
       else if (key === 'data') Object.assign(node.dataset, value);
       // Styles are set as properties: the page's policy refuses a style attribute.
       else if (key === 'style') Object.assign(node.style, value);

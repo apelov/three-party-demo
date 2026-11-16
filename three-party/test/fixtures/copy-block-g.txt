@@ -1,0 +1,3 @@
+intent.onInvoice = Your supplier's account
+intent.fromHidden = Named in the hidden text
+crossing.noChain = This step checked a recording of one signed request, so chainFile, hops, standIn and hopFile are null; a delegation chain is checked only by the stand-in, which runs when a recording file is missing or changed.

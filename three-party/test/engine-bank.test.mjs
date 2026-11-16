@@ -12,7 +12,7 @@ import { TOKEN_WITHHELD, grantIssuer, loopbackUrl } from '../src/engine/grant.mj
 import { REPO_ROOT, request } from './support/engine-helpers.mjs';
 
 const atx = JSON.parse(fs.readFileSync(new URL('../../fixtures/agents/billpay-agent.atx.json', import.meta.url), 'utf8'));
-const added = [{ name: 'Northwind Office Supply', account: 'DEMO-0000-2201' }];
+const added = [{ name: 'Northwind Office Supply', account: '0000-2201' }];
 const clock = () => new Date();
 const operation = { method: 'POST', path: PAYMENTS_PATH };
 const payment = (account, amount) => ({ method: 'POST', path: PAYMENTS_PATH, body: { creditorAccount: account, amount: { amount, currency: 'USD' } } });
@@ -44,19 +44,19 @@ test('the bank listens on 127.0.0.1, on two ports the system picked, and keeps i
 });
 
 test('the consent of a run is the bill pay terms with the two payee accounts after its own, and the grant binding lives 60 seconds', () => {
-  const terms = consentTerms([{ name: 'A', account: 'DEMO-0000-2201' }, { name: 'B', account: 'DEMO-0000-2202' }]);
-  assert.deepEqual(terms.creditorAccounts, [...BILLPAY_CONSENT_TERMS.creditorAccounts, 'DEMO-0000-2201', 'DEMO-0000-2202']);
+  const terms = consentTerms([{ name: 'A', account: '0000-2201' }, { name: 'B', account: '0000-2202' }]);
+  assert.deepEqual(terms.creditorAccounts, [...BILLPAY_CONSENT_TERMS.creditorAccounts, '0000-2201', '0000-2202']);
   assert.deepEqual(terms.permissions, ['payment:billpay']);
   assert.deepEqual(terms.maximumIndividualAmount, { amount: '250.00', currency: 'USD' });
   assert.equal(terms.validToDateTime, BILLPAY_CONSENT_TERMS.validToDateTime);
-  assert.equal(terms.creditorAccounts.includes('DEMO-0000-9931'), false);
+  assert.equal(terms.creditorAccounts.includes('0000-9931'), false);
   // The terms of the repository are left as they were.
-  assert.equal(BILLPAY_CONSENT_TERMS.creditorAccounts.includes('DEMO-0000-2201'), false);
+  assert.equal(BILLPAY_CONSENT_TERMS.creditorAccounts.includes('0000-2201'), false);
 
   assert.equal(PERMISSION, 'payment:billpay');
   assert.equal(consent.record.agentDid, atx.agentDid);
   assert.equal(consent.record.status, 'active');
-  assert.deepEqual(consent.record.terms.creditorAccounts, [...BILLPAY_CONSENT_TERMS.creditorAccounts, 'DEMO-0000-2201']);
+  assert.deepEqual(consent.record.terms.creditorAccounts, [...BILLPAY_CONSENT_TERMS.creditorAccounts, '0000-2201']);
   assert.match(consent.binding.grant, /^grant:\/\/g-[0-9a-f]{24}$/);
   assert.deepEqual(consent.binding.match, { trustClass: 'payment:billpay' });
   assert.equal(consent.binding.resolve.ttlSeconds, GRANT_TTL_SECONDS);
@@ -87,19 +87,19 @@ test('a grant is issued by a real token exchange, lives 60 seconds, pays once in
   assert.deepEqual(Object.keys(issued.held), [], 'the held grant shows no member');
   assert.equal(issued.held.spent, false);
 
-  const answer = await issued.held.spend(payment('DEMO-0000-2201', '148.20'));
+  const answer = await issued.held.spend(payment('0000-2201', '148.20'));
   assert.equal(answer.status, 200);
   assert.equal(answer.body.status, 'accepted');
   assert.equal(answer.raw.toString('utf8'), JSON.stringify({ status: 'accepted', paymentId: answer.body.paymentId }), 'the exact bytes the bank answered');
   const row = bank.ledgerRow(answer.body.paymentId);
-  assert.deepEqual({ payeeName: row.payeeName, payeeAccount: row.payeeAccount, amountCents: row.amountCents, currency: row.currency }, { payeeName: 'Northwind Office Supply', payeeAccount: 'DEMO-0000-2201', amountCents: 14820, currency: 'USD' });
+  assert.deepEqual({ payeeName: row.payeeName, payeeAccount: row.payeeAccount, amountCents: row.amountCents, currency: row.currency }, { payeeName: 'Northwind Office Supply', payeeAccount: '0000-2201', amountCents: 14820, currency: 'USD' });
   assert.equal(row.agentDid, atx.agentDid, "the bank's ledger names the agent, not a customer password session");
   assert.equal(issued.held.spent, true);
-  await assert.rejects(issued.held.spend(payment('DEMO-0000-2201', '1.00')), /already used/);
+  await assert.rejects(issued.held.spend(payment('0000-2201', '1.00')), /already used/);
 });
 
 test('the bank decides each payment against the consent: an account the consent does not name, and an amount above its limit, are refused', async () => {
-  for (const [account, amount] of [['DEMO-0000-9931', '212.75'], ['DEMO-0000-2201', '250.01']]) {
+  for (const [account, amount] of [['0000-9931', '212.75'], ['0000-2201', '250.01']]) {
     const issued = await issuer.issue({ atx, grant: consent.binding.grant, operation });
     assert.equal(issued.ok, true);
     const decisionsBefore = bank.decisions().length;
@@ -115,11 +115,11 @@ test('the bank decides each payment against the consent: an account the consent 
 
 test('an access token is good for one request: the bank refuses the same token a second time, a request with no token, and a token that was never issued', async () => {
   const headers = { 'Content-Type': 'application/json' };
-  const body = { creditorAccount: 'DEMO-0000-2201', amount: { amount: '1.00', currency: 'USD' } };
+  const body = { creditorAccount: '0000-2201', amount: { amount: '1.00', currency: 'USD' } };
   const issued = await issuer.issue({ atx, grant: consent.binding.grant, operation });
   // The test's witness holds the value the bank issued; the engine keeps none outside the held grant.
   const token = witness.at(-1);
-  const paid = await issued.held.spend(payment('DEMO-0000-2201', '1.00'));
+  const paid = await issued.held.spend(payment('0000-2201', '1.00'));
   assert.equal(paid.status, 200);
   const again = await request({ port: bank.ports.resource, method: 'POST', path: PAYMENTS_PATH, headers: { ...headers, Authorization: `Bearer ${token}` }, body });
   assert.equal(again.status, 401, 'the token was spent by the payment above');

@@ -92,9 +92,9 @@ test('a clean run: the agent, the credential hash, the grant and each step detai
   assert.equal(state.grant.scope, 'payment:billpay');
   assert.equal(state.grant.tokenType, 'Bearer');
   assert.deepEqual(state.grant.maximumIndividualAmount, { amount: '250.00', currency: 'USD' });
-  assert.ok(state.grant.creditorAccounts.includes('DEMO-0000-2201'));
-  assert.ok(state.grant.creditorAccounts.includes('DEMO-0000-2202'));
-  assert.equal(state.grant.creditorAccounts.includes('DEMO-0000-9931'), false, 'the account the hidden text names is in no consent');
+  assert.ok(state.grant.creditorAccounts.includes('0000-2201'));
+  assert.ok(state.grant.creditorAccounts.includes('0000-2202'));
+  assert.equal(state.grant.creditorAccounts.includes('0000-9931'), false, 'the account the hidden text names is in no consent');
   assert.equal((Date.parse(state.grant.expiresAt) - Date.parse(state.grant.issuedAt)) / 1000, 60);
 
   const detail = (id) => stepOf(state, id).detail;
@@ -116,7 +116,7 @@ test('a clean run: the agent, the credential hash, the grant and each step detai
   assert.match(detail('pay').paymentId, /^led_[0-9a-f]{16}$/);
   assert.equal(detail('pay').amount, '148.20');
   assert.equal(detail('pay').currency, 'USD');
-  assert.equal(detail('pay').payeeAccount, 'DEMO-0000-2201');
+  assert.equal(detail('pay').payeeAccount, '0000-2201');
   assert.equal(detail('pay').recordedByBank, true);
 });
 
@@ -753,14 +753,14 @@ test('a run refuses a kind or a pace it does not know before it writes anything'
 
 test('the reason of a run the intent rule stops: the set sentence for a secret asked for and a changed payee, and other words for any other mismatch', () => {
   const secret = { tool: 'secrets.read', args: { name: 'bank-api-key' }, declaredFor: null, match: false, fieldsDiffering: ['no declared intent for this call'] };
-  const pay = (fieldsDiffering, args = {}) => ({ tool: 'bank.payments.create', args: { invoiceId: 'DEMO-INV-2202', payeeAccount: 'DEMO-0000-9931', amount: '212.75', currency: 'USD', ...args }, declaredFor: 'pay', match: fieldsDiffering.length === 0, fieldsDiffering });
-  const declared = { action: 'pay', invoiceId: 'DEMO-INV-2202', payeeAccount: 'DEMO-0000-2202', amount: '212.75', currency: 'USD' };
+  const pay = (fieldsDiffering, args = {}) => ({ tool: 'bank.payments.create', args: { invoiceId: 'INV-2202', payeeAccount: '0000-9931', amount: '212.75', currency: 'USD', ...args }, declaredFor: 'pay', match: fieldsDiffering.length === 0, fieldsDiffering });
+  const declared = { action: 'pay', invoiceId: 'INV-2202', payeeAccount: '0000-2202', amount: '212.75', currency: 'USD' };
   const set = 'The credential and the grant were valid, but the agent asked for a secret and changed the payee, which its declared intent does not allow.';
   assert.equal(intentReason({ declared, calls: [secret, pay(['payeeAccount'])], result: 'mismatch' }), set);
-  const amount = intentReason({ declared, calls: [pay(['amount'], { payeeAccount: 'DEMO-0000-2202', amount: '999.00' })], result: 'mismatch' });
+  const amount = intentReason({ declared, calls: [pay(['amount'], { payeeAccount: '0000-2202', amount: '999.00' })], result: 'mismatch' });
   assert.notEqual(amount, set);
   assert.match(amount, /^The credential and the grant were valid, but a tool call did not equal the declared intent: bank\.payments\.create differs in amount \(declared 212\.75, called with 999\.00\)\.$/);
-  const alone = intentReason({ declared, calls: [secret, pay([], { payeeAccount: 'DEMO-0000-2202' })], result: 'undeclared-call' });
+  const alone = intentReason({ declared, calls: [secret, pay([], { payeeAccount: '0000-2202' })], result: 'undeclared-call' });
   assert.notEqual(alone, set);
   assert.match(alone, /secrets\.read has no declared intent/);
 });

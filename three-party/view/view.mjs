@@ -269,10 +269,30 @@ function revealSelected() {
     app.shown = key;
     // The lane heads stay at the top while the steps scroll: a step brought
     // into sight stops just below them, at their height as drawn now.
-    panel.style.scrollPaddingTop = `${$('lanes-head')?.offsetHeight ?? 0}px`;
+    const head = $('lanes-head');
+    const rows = $('rows');
+    panel.style.scrollPaddingTop = `${head?.offsetHeight ?? 0}px`;
+    rows.style.paddingBottom = '';
     // Whichever scrolls, the sequence or (with the inspector under the
     // middle pane) the page: nearest moves nothing when the step is in sight.
-    $('rows').querySelector('[aria-current="step"]')?.scrollIntoView({ block: 'nearest' });
+    const selected = rows.querySelector('[aria-current="step"]');
+    selected?.scrollIntoView({ block: 'nearest' });
+    // A step left part of the way under the lane heads would show its state
+    // with its title cut off, so it goes out of sight whole. Where the
+    // sequence cannot scroll that far, room is added under the last step.
+    if (selected && head && panel.scrollHeight > panel.clientHeight + 1) {
+      const edge = head.getBoundingClientRect().bottom;
+      const cut = [...rows.querySelectorAll(':scope > .row')].find((row) => { const r = row.getBoundingClientRect(); return r.top < edge - 1 && r.bottom > edge + 1; });
+      if (cut && cut !== selected) {
+        const more = cut.getBoundingClientRect().bottom - edge;
+        const room = panel.scrollHeight - panel.clientHeight - panel.scrollTop;
+        if (more > room) rows.style.paddingBottom = `${Math.ceil(more - room)}px`;
+        panel.scrollTop += more;
+      }
+    }
+    // The room added is this function's own: the next call compares the
+    // sequence's height as it stands now.
+    app.shown = `seq|${app.runId}|${JSON.stringify(app.selection)}|${panel.scrollHeight}`;
     return;
   }
   if (app.tab !== 'trace') {

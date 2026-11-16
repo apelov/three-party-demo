@@ -16,7 +16,7 @@
     "supplier": "Supplier",
     "domainA": "Payments agent's domain",
     "domainB": "Supplier's bank's domain",
-    "rawIdentifiersNote": "Test identifiers, used by nothing outside this demo."
+    "rawIdentifiersNote": "Test identifiers, made up for this demo."
   },
   "timestamp": {
     "standInNote": "Placeholder: no timestamp authority.",

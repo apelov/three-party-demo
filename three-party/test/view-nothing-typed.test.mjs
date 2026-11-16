@@ -52,20 +52,27 @@ const SCREENS_BLOCK = 'copy-block-e.txt';
 // poisoned invoice hides for the assistant.
 const TASK_BLOCK = 'copy-block-f.txt';
 
-test('copy.json holds the 100 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 116 of the block for the rebuilt screens, then the two of the block for the task: each key and value byte for byte, and nothing else', () => {
+// After it, the block for the side panel's comparison and for the crossing
+// as the run state holds it: whose account each value of a differing field
+// is, and why a crossing that checked the recording holds no chain.
+const WHOSE_BLOCK = 'copy-block-g.txt';
+
+test('copy.json holds the 100 lines of the staged copy deck and, after them, the lines of the block for the menu, the trace and the invoice a viewer edits, then the two of the block for a network denial that was not measured, then the 116 of the block for the rebuilt screens, then the two of the block for the task, then the three of the block for the comparison and the crossing: each key and value byte for byte, and nothing else', () => {
   const deck = blockLines('copy-block-b.txt');
   const added = blockLines('copy-block-c.txt');
   const notMeasured = blockLines(NOT_MEASURED_BLOCK);
   const screens = blockLines(SCREENS_BLOCK);
   const task = blockLines(TASK_BLOCK);
+  const whose = blockLines(WHOSE_BLOCK);
   assert.equal(deck.length, 100);
   assert.equal(added.length, 68 - LEFT_OUT.length);
   assert.equal(notMeasured.length, 2);
   assert.equal(screens.length, 116);
   assert.equal(task.length, 2);
-  const lines = [...deck, ...added, ...notMeasured, ...screens, ...task];
-  const members = 100 + added.length + notMeasured.length + screens.length + task.length;
-  assert.equal(members, 284);
+  assert.equal(whose.length, 3);
+  const lines = [...deck, ...added, ...notMeasured, ...screens, ...task, ...whose];
+  const members = 100 + added.length + notMeasured.length + screens.length + task.length + whose.length;
+  assert.equal(members, 287);
   for (const key of LEFT_OUT) assert.equal(Object.hasOwn(COPY, key), false, `${key} is not in the deck`);
   const keys = Object.keys(COPY);
   assert.equal(keys.length, members);
@@ -170,14 +177,19 @@ test('every text node names its source, and each text equals that source: start,
 });
 
 test('every hash, id, DID and amount in an inspector pane is a part of what the run API served for that run', async () => {
-  const token = /[0-9a-f]{16,64}|DEMO-[A-Z]+-\d+|did:web:\S+|\b\d+\.\d{2}\b/g;
+  // An account is four digits, a hyphen and four digits; an invoice or a
+  // payment is INV- or PAY- and its digits. Neither carries a word before it.
+  const identifier = /(?<![A-Z0-9-])(?:\d{4}-\d{4}|(?:INV|PAY)-\d+)\b/g;
+  const token = new RegExp(`[0-9a-f]{16,64}|${identifier.source}|did:web:\\S+|\\b\\d+\\.\\d{2}\\b`, 'g');
   const view = await openView(browser);
   try {
     for (const [kind, outcome] of [['clean', 'paid'], ['poisoned', 'blocked']]) {
       let tokens = 0;
+      let identifiers = 0;
       await walk(view, kind, outcome, async (label, docs, runId) => {
         const text = await view.page.evaluate(() => document.getElementById('pane-inspector').innerText);
         const servedAll = servedText(view.served, runId);
+        identifiers += (text.match(identifier) ?? []).length;
         for (const found of text.match(token) ?? []) {
           tokens += 1;
           assert.ok(servedAll.includes(found), `${label}: ${found} is not in what the server sent for ${runId}`);
@@ -185,8 +197,11 @@ test('every hash, id, DID and amount in an inspector pane is a part of what the 
         return 0;
       });
       // Story keeps the sections it does not lead with closed, so their
-      // values are read in Inspect, where every section is open.
-      assert.ok(tokens > 40, `${kind}: ${tokens} tokens read`);
+      // values are read in Inspect, where every section is open. The
+      // comparison shows a value once where the invoice and the tool call
+      // agree, so a stopped run reads fewer than a paid one.
+      assert.ok(tokens > 30, `${kind}: ${tokens} tokens read`);
+      assert.ok(identifiers >= 6, `${kind}: ${identifiers} accounts and invoices read in the form the run carries them`);
     }
   } finally {
     await view.close();

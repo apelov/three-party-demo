@@ -194,15 +194,18 @@ export function tickCountdowns(app, root = document) {
 // ---- The intent rule's comparison
 
 // The comparison the intent rule made: for each tool call, its arguments
-// beside the declared intent, field by field. A field the run lists as
-// differing is marked and its value highlighted; a call with no declared
-// intent says so in place of the declared column, with the run's own words
-// beside it.
+// against the declared intent, field by field. A field that is the same in
+// both shows its one value. A field the run lists as differing is marked and
+// shows two labelled lines, the declared intent's value and the tool call's,
+// the second highlighted; for the payee's account each line also says whose
+// account it is, where the run says. A call with no declared intent says so,
+// with the run's own words beside it.
 export function compare(app, stepIndex) {
   const base = `steps[${stepIndex}].detail`;
   const detail = at(app.run, base);
   if (!detail || !Array.isArray(detail.calls)) return null;
   const declared = detail.declared && typeof detail.declared === 'object' ? detail.declared : null;
+  const invoice = app.run.invoice && typeof app.run.invoice === 'object' ? app.run.invoice : null;
   const root = el('div', { class: 'compare' });
   detail.calls.forEach((call, c) => {
     const callBase = `${base}.calls[${c}]`;
@@ -223,22 +226,31 @@ export function compare(app, stepIndex) {
       block.append(list, el('div', { class: 'compare-verdict' },
         put('span', 'compare-none', app.w.chosen('intent.undeclared', from.run(`${callBase}.declaredFor`)))));
     } else {
-      const grid = el('div', { class: 'compare-grid' },
-        el('span', { class: 'col-head col-pad' }),
-        put('span', 'col-head', app.w.word('intent.declared')),
-        put('span', 'col-head', app.w.word('intent.call')));
+      const grid = el('div', { class: 'compare-grid' });
       const keys = [...Object.keys(declared), ...Object.keys(args).filter((k) => !(k in declared))];
       for (const key of keys) {
         const inDeclared = key in declared;
         const inArgs = key in args;
         const differs = differing.indexOf(key);
-        grid.append(
-          el('span', { class: 'field', data: differs >= 0 ? { field: key, differs: 'yes' } : { field: key } },
-            put('span', null, fieldName(app.run, inDeclared ? `${base}.declared.${key}` : `${callBase}.args.${key}`)),
-            differs >= 0 ? put('span', 'differs-word', app.w.chosen('intent.differs', from.run(`${callBase}.fieldsDiffering[${differs}]`))) : null),
-          el('span', { class: 'cell' }, inDeclared ? put('span', 'mono', value(app.run, `${base}.declared.${key}`)) : null),
-          el('span', { class: 'cell' },
-            inArgs ? put('span', 'mono diff', value(app.run, `${callBase}.args.${key}`), { 'data-differs': differs >= 0 ? 'yes' : 'no' }) : null));
+        const name = el('span', { class: 'field', data: differs >= 0 ? { field: key, differs: 'yes' } : { field: key } },
+          put('span', null, fieldName(app.run, inDeclared ? `${base}.declared.${key}` : `${callBase}.args.${key}`)),
+          differs >= 0 ? put('span', 'differs-word', app.w.chosen('intent.differs', from.run(`${callBase}.fieldsDiffering[${differs}]`))) : null);
+        const asked = inArgs ? put('span', 'mono diff', value(app.run, `${callBase}.args.${key}`), { 'data-differs': differs >= 0 ? 'yes' : 'no' }) : null;
+        if (differs < 0) {
+          grid.append(name, el('span', { class: 'cell' }, asked ?? put('span', 'mono', value(app.run, `${base}.declared.${key}`))));
+          continue;
+        }
+        // Whose account each value is, where the run says: the account the
+        // invoice names, and the account the hidden text names. Every invoice
+        // here is one of the run's own two; a screen that lets a viewer
+        // change the invoice must leave the first note out.
+        const payee = key === 'payeeAccount' && inDeclared && invoice?.payTo && declared[key] === invoice.payTo.account ? put('span', 'pair-who', app.w.chosen('intent.onInvoice', from.run('invoice.payTo.account'))) : null;
+        const hidden = key === 'payeeAccount' && inArgs && invoice?.hidden && args[key] === invoice.hidden.payToAccount ? put('span', 'pair-who', app.w.chosen('intent.fromHidden', from.run('invoice.hidden.payToAccount'))) : null;
+        grid.append(name, el('span', { class: 'cell cell-pair' },
+          inDeclared ? put('span', 'pair-label', app.w.word('intent.declared')) : null,
+          inDeclared ? el('span', { class: 'pair-value' }, put('span', 'mono', value(app.run, `${base}.declared.${key}`)), payee) : null,
+          inArgs ? put('span', 'pair-label', app.w.word('intent.call')) : null,
+          inArgs ? el('span', { class: 'pair-value' }, asked, hidden) : null));
       }
       block.append(grid);
     }

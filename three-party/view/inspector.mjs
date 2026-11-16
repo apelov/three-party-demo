@@ -89,9 +89,14 @@ function stateExcerpt(app, i) {
   if (app.mode !== 'inspect') return null;
   const detail = app.run.steps[i].detail;
   if (detail === null || detail === undefined) return null;
+  // The crossing that checked the recording holds no chain: one line says
+  // why its chain members read null below.
+  const noChain = app.run.steps[i].id === 'crossing' && detail.capture?.used === true
+    ? put('p', 'insp-note', app.w.chosen('crossing.noChain', from.run(`steps[${i}].detail.capture.used`))) : null;
   return el('div', { class: 'artifact', data: { file: 'state' } },
     el('a', { class: 'artifact-path', href: `/api/runs/${encodeURIComponent(app.runId)}`, src: from.run(`steps[${i}].id`), text: String(app.run.steps[i].id), data: { focusKey: `state:${i}` } }),
     put('span', 'meta', app.w.label('parties.rawIdentifiersNote')),
+    noChain,
     el('pre', { class: 'artifact-body', tabindex: '0', src: from.run(`steps[${i}].detail`, 'json'), text: JSON.stringify(detail, null, 2), data: { focusKey: `statebody:${i}` } }));
 }
 

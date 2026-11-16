@@ -11,8 +11,8 @@ const fixtures = JSON.parse(fs.readFileSync(new URL('../fixtures/invoices.json',
 const example = (name) => JSON.parse(fs.readFileSync(new URL(`../examples/${name}`, import.meta.url), 'utf8'));
 const intentDetail = (state) => state.steps.find((s) => s.id === 'intent').detail;
 
-const DECLARED = Object.freeze({ action: 'pay', invoiceId: 'DEMO-INV-2201', payeeAccount: 'DEMO-0000-2201', amount: '148.20', currency: 'USD' });
-const payCall = (over = {}) => ({ tool: 'bank.payments.create', args: { invoiceId: 'DEMO-INV-2201', payeeAccount: 'DEMO-0000-2201', amount: '148.20', currency: 'USD', ...over } });
+const DECLARED = Object.freeze({ action: 'pay', invoiceId: 'INV-2201', payeeAccount: '0000-2201', amount: '148.20', currency: 'USD' });
+const payCall = (over = {}) => ({ tool: 'bank.payments.create', args: { invoiceId: 'INV-2201', payeeAccount: '0000-2201', amount: '148.20', currency: 'USD', ...over } });
 
 test('match: a call that carries every declared field with its declared value passes', () => {
   const r = applyIntentRule(DECLARED, [payCall()]);
@@ -24,7 +24,7 @@ test('match: a call that carries every declared field with its declared value pa
 });
 
 test('payee differs: the call is held against the declared intent and names payeeAccount', () => {
-  const r = applyIntentRule(DECLARED, [payCall({ payeeAccount: 'DEMO-0000-9931' })]);
+  const r = applyIntentRule(DECLARED, [payCall({ payeeAccount: '0000-9931' })]);
   assert.equal(r.result, 'mismatch');
   assert.equal(intentAllows(r), false);
   assert.equal(r.calls[0].declaredFor, 'pay');
@@ -48,13 +48,13 @@ test('undeclared call: a call for a tool no declared intent names is blocked, wi
 });
 
 test('an undeclared call beside a call that differs reads mismatch, as the contract example does', () => {
-  const r = applyIntentRule(DECLARED, [{ tool: 'secrets.read', args: { name: 'bank-api-key' } }, payCall({ payeeAccount: 'DEMO-0000-9931' })]);
+  const r = applyIntentRule(DECLARED, [{ tool: 'secrets.read', args: { name: 'bank-api-key' } }, payCall({ payeeAccount: '0000-9931' })]);
   assert.equal(r.result, 'mismatch');
   assert.deepEqual(r.calls.map((c) => c.match), [false, false]);
 });
 
 test('every field counts: several differing fields are named in declared order, then an argument the intent does not declare', () => {
-  const r = applyIntentRule(DECLARED, [payCall({ currency: 'EUR', invoiceId: 'DEMO-INV-9999', memo: 'urgent' })]);
+  const r = applyIntentRule(DECLARED, [payCall({ currency: 'EUR', invoiceId: 'INV-9999', memo: 'urgent' })]);
   assert.deepEqual(r.calls[0].fieldsDiffering, ['invoiceId', 'currency', 'memo']);
   assert.equal(r.result, 'mismatch');
 });
@@ -74,7 +74,7 @@ test('a declared intent covers one call: a second call for it has no declared in
 
 test('the rule is a pure function: it leaves its inputs as they were and gives the same result twice', () => {
   const declared = { ...DECLARED };
-  const calls = [{ tool: 'secrets.read', args: { name: 'bank-api-key' } }, payCall({ payeeAccount: 'DEMO-0000-9931' })];
+  const calls = [{ tool: 'secrets.read', args: { name: 'bank-api-key' } }, payCall({ payeeAccount: '0000-9931' })];
   const before = JSON.stringify({ declared, calls });
   const once = applyIntentRule(declared, calls);
   const twice = applyIntentRule(declared, calls);
@@ -94,7 +94,7 @@ test('the rule refuses inputs it cannot hold a call against', () => {
 test('the declared intent comes from the structured fields: the hidden text and the lines change nothing', () => {
   const poisoned = fixtures.invoices.poisoned;
   const declared = declareIntent(poisoned);
-  assert.deepEqual(declared, { action: 'pay', invoiceId: 'DEMO-INV-2202', payeeAccount: 'DEMO-0000-2202', amount: '212.75', currency: 'USD' });
+  assert.deepEqual(declared, { action: 'pay', invoiceId: 'INV-2202', payeeAccount: '0000-2202', amount: '212.75', currency: 'USD' });
   const bare = { ...poisoned, hidden: null, lines: [] };
   assert.deepEqual(declareIntent(bare), declared);
   assert.equal(JSON.stringify(declared).includes('9931'), false);

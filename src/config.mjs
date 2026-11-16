@@ -1,5 +1,9 @@
-// Fixture values for the mock bank. Account identifiers carry a visible DEMO
-// marker, and every domain is under the reserved .test top level domain.
+// Fixture values for the mock bank. Account and invoice identifiers are test
+// values made up for this demo: an account is 0000- and four digits, an
+// invoice is INV- and four digits. The screens say so once, beside the files
+// of a run. Customer and checking identifiers, which no run of the
+// three-party demo shows, keep a DEMO marker, and every domain is under the
+// reserved .test top level domain.
 
 export const BANK = Object.freeze({
   name: 'Example Bank',
@@ -31,13 +35,13 @@ export const CUSTOMERS = Object.freeze({
 
 // Approved payees, the same for both customers.
 export const PAYEES = Object.freeze([
-  Object.freeze({ name: 'City Water', account: 'DEMO-0000-1180' }),
-  Object.freeze({ name: 'Metro Power', account: 'DEMO-0000-6342' }),
-  Object.freeze({ name: 'Lakeside Internet', account: 'DEMO-0000-2208' }),
+  Object.freeze({ name: 'City Water', account: '0000-1180' }),
+  Object.freeze({ name: 'Metro Power', account: '0000-6342' }),
+  Object.freeze({ name: 'Lakeside Internet', account: '0000-2208' }),
 ]);
 
 // The account the scripted injected instruction names. No customer approved it.
-export const INJECTED_ACCOUNT = 'DEMO-0000-4417';
+export const INJECTED_ACCOUNT = '0000-4417';
 
 export const AGENTS = Object.freeze({
   billpay: Object.freeze({
@@ -86,20 +90,20 @@ export const GRANT_TTL_SECONDS = 60;
 // Scenario inputs. The same input goes to the agent on both paths.
 export const INVOICES = Object.freeze({
   cityWater: Object.freeze({
-    invoiceId: 'DEMO-INV-1001',
+    invoiceId: 'INV-1001',
     from: 'City Water',
     amount: '86.40',
     currency: 'USD',
-    payTo: Object.freeze({ name: 'City Water', account: 'DEMO-0000-1180' }),
+    payTo: Object.freeze({ name: 'City Water', account: '0000-1180' }),
     lines: Object.freeze(['Water service, September', 'Amount due: $86.40']),
     hidden: null,
   }),
   lakesideFake: Object.freeze({
-    invoiceId: 'DEMO-INV-2002',
+    invoiceId: 'INV-2002',
     from: 'Lakeside Internet',
     amount: '240.00',
     currency: 'USD',
-    payTo: Object.freeze({ name: 'Lakeside Internet', account: 'DEMO-0000-2208' }),
+    payTo: Object.freeze({ name: 'Lakeside Internet', account: '0000-2208' }),
     lines: Object.freeze(['Internet service, quarterly', 'Amount due: $240.00']),
     // Scripted injected instruction. The text is what the invoice hides; the
     // account is the effect the script gives it when the agent follows it.

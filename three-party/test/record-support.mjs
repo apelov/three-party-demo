@@ -132,7 +132,7 @@ export function removeTempDirs() {
 // The response bodies of the two actions a test run holds.
 export const BODIES = Object.freeze({
   intent: '{"result":"match","calls":1}\n',
-  pay: '{"paymentId":"DEMO-PAY-0001","status":"accepted","amount":"148.20","currency":"USD","payeeAccount":"DEMO-0000-2201"}\n',
+  pay: '{"paymentId":"PAY-0001","status":"accepted","amount":"148.20","currency":"USD","payeeAccount":"0000-2201"}\n',
 });
 
 // Writes actions/NN-<step>.action.json and the response file beside it. The

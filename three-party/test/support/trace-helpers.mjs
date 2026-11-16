@@ -80,7 +80,7 @@ export const traceGrid = (page) => page.evaluate(() => {
     headers: [...grid.querySelectorAll('.trace-cols [role="columnheader"]')].map((h) => ({ text: h.textContent, left: h.getBoundingClientRect().left })),
     shape: shape.textContent,
     shapeSize: parseFloat(getComputedStyle(shape).fontSize),
-    shapeUnderHeaders: shape.getBoundingClientRect().top >= grid.querySelector('.trace-cols').getBoundingClientRect().bottom - 0.5,
+    shapeOverHeaders: shape.getBoundingClientRect().bottom <= grid.querySelector('.trace-cols').getBoundingClientRect().top + 0.5,
     count: document.getElementById('trace-count').textContent,
     grid: [grid.scrollHeight, grid.clientHeight],
     body: [body.scrollHeight, body.clientHeight],

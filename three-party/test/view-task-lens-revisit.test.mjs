@@ -2,8 +2,9 @@
 // tabs, one boxed sentence says what you told your AI assistant to pay, from
 // the run's own invoice, and a poisoned invoice adds the line it hides for
 // the assistant; the box stays in sight on every tab. View as rewrites the
-// sentence under every step on the Sequence, Trace and Records tabs, not one
-// line of the side panel alone. The menu's three acts are three ruled cards.
+// sentence of every step on the Sequence, Trace and Records tabs; the page
+// shows one of them at a time, on the selected step, and the side panel does
+// not say it again. The menu's three acts are three ruled cards.
 // A finished act chosen again in the menu shows its own run, and the audit
 // shows the run it checked. Every press here is a real click or a real key.
 import { test, before, after } from 'node:test';
@@ -165,6 +166,65 @@ test('a finished act chosen again in the menu shows its own run, the audit shows
     assert.ok(await page.evaluate(() => document.querySelectorAll('#records-tab [data-verdict-for] .verdict').length >= 4), 'with its verdicts');
 
     assert.equal(posts, started, 'choosing in the menu started no run');
+    assert.deepEqual(view.errors, []);
+  } finally {
+    await view.close();
+  }
+});
+
+// What a tab shows of the readers' sentences: each one on display, the row
+// it stands on, and its ink.
+const sentences = (page) => page.evaluate(() => {
+  const shown = (n) => n.checkVisibility({ checkVisibilityCSS: true });
+  const of = (selector, rowSelector, mark) => [...document.querySelectorAll(selector)].filter(shown).map((n) => { const row = n.closest(rowSelector); return { text: n.innerText.trim(), selected: row?.matches(mark) ?? false, colour: getComputedStyle(n).color }; });
+  const probe = document.createElement('span');
+  probe.style.color = 'var(--ink-2)';
+  document.body.append(probe);
+  const second = getComputedStyle(probe).color;
+  probe.remove();
+  return {
+    second,
+    sequence: of('#rows .row > .row-lens', '.row', '[aria-current="step"]'),
+    trace: of('#trace-body .trace-row > .trace-lens', '.trace-row', '[data-current="yes"]'),
+    records: of('#records-tab .ledger-lens', '.ledger-row', '[data-selected="yes"]'),
+    panel: [...document.querySelectorAll('#pane-inspector .insp-lens')].filter(shown).map((n) => n.innerText.trim()),
+  };
+});
+
+test('one sentence at a time: with a step selected, the Sequence and the Trace show the reader\'s sentence on the selected step alone, the Records tab on that step\'s record, in the second ink, and the side panel does not say it again; the four readers read four sentences; with no step selected none is shown', async () => {
+  const view = await openView(browser, { width: 1440, height: 900 });
+  const { page } = view;
+  try {
+    await runScene(page, 'poisoned');
+    await runIs(page, 'blocked');
+    await view.settle();
+    await page.keyboard.press('2');
+    await view.settle();
+    const read = {};
+    for (const lens of LENSES) {
+      await page.selectOption('#lens-select', lens);
+      await view.settle();
+      const line = lensLine(lens, 'grant');
+      for (const tab of ['sequence', 'trace', 'records']) {
+        await page.click(`#tab-${tab}`);
+        await view.settle();
+        const seen = await sentences(page);
+        assert.deepEqual(seen[tab], [{ text: line, selected: true, colour: seen.second }], `${lens}, ${tab}: one sentence, on the selected step, in the second ink`);
+        assert.deepEqual(seen.panel, [], `${lens}, ${tab}: the side panel of a step does not say the sentence again`);
+      }
+      read[lens] = line;
+    }
+    assert.equal(new Set(Object.values(read)).size, LENSES.length, 'each reader reads a different sentence');
+
+    // The overview of the run: no step is selected, and no step's sentence shows.
+    await page.keyboard.press('0');
+    await view.settle();
+    for (const tab of ['sequence', 'trace', 'records']) {
+      await page.click(`#tab-${tab}`);
+      await view.settle();
+      const seen = await sentences(page);
+      assert.deepEqual(seen[tab], [], `no step selected, ${tab}: no sentence`);
+    }
     assert.deepEqual(view.errors, []);
   } finally {
     await view.close();

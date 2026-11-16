@@ -23,7 +23,7 @@ const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file
 
 // The label map, by the SHA-256 of the file as it stands here: a change of a
 // label, a stand-in note or a party role is a deliberate edit of this line too.
-const STAGED_LABEL_MAP = '112be08d12e18a6f8d9dbfd554390a9bc138cc3d3297cb86818dd4c4c0161b04';
+const STAGED_LABEL_MAP = '78af376b86cdc24d208c77b4a8633f3f6d353ec7e8f34840e722d76ac40fc998';
 const V1_LABELS = [j('Ou', 'rs'), j('Crossing (stand-in ', 'for AI2II)'), j('Record (our writer, ', 'his format)')];
 
 // A file is text unless a NUL byte sits in its leading 8000 bytes, the rule
@@ -75,7 +75,7 @@ test('the label source is one: outside labels.json, CONTRACT.md, examples/ and t
   const map = labelMap();
   const strings = partAndPartyStrings(map);
   assert.equal(strings.length, 13, 'four part labels, one stand-in note, the fallback crossing\'s fetch note, five party strings beside the bank\'s label, two timestamp notes');
-  for (const label of ['OpenA2A · ATX · AAP', 'WIMSE · AI2II', 'AEP', "Supplier's bank", 'Payments agent', 'Supplier', "Payments agent's domain", "Supplier's bank's domain", 'Test identifiers, used by nothing outside this demo.']) {
+  for (const label of ['OpenA2A · ATX · AAP', 'WIMSE · AI2II', 'AEP', "Supplier's bank", 'Payments agent', 'Supplier', "Payments agent's domain", "Supplier's bank's domain", 'Test identifiers, made up for this demo.']) {
     assert.ok(strings.includes(label), label);
   }
   const files = treeFiles().filter((f) => !LABEL_SOURCE_EXEMPT(f));

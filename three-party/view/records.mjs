@@ -58,7 +58,9 @@ export function renderRecords(app, host, actions) {
       const check = Array.isArray(offline?.[kind]) ? offline[kind].findIndex((r) => r.file === item.file) : -1;
       const cSource = (p, shape) => oSource(`${kind}[${check}].${p}`, shape);
       const selection = tampered ? { kind: 'offline', item: { kind: 'tampered', n } } : i >= 0 ? { kind: 'step', index: i, item: { kind: 'record', n: 0 } } : null;
-      const selected = selection && JSON.stringify(app.selection) === JSON.stringify(selection);
+      // A row is marked when its record is selected, and also when the step
+      // it records is selected on another tab: the same step, the same mark.
+      const selected = selection && (JSON.stringify(app.selection) === JSON.stringify(selection) || (!tampered && app.selection?.kind === 'step' && app.selection.index === i));
       rows.push(el('div', { class: 'ledger-row record', role: 'row', data: { file: String(item.file), kind, selected: selected ? 'yes' : 'no' } },
         el('span', { class: 'ledger-cell ledger-file', role: 'gridcell' },
           el('a', { class: 'record-file mono', href: fileUrl(app.runId, item.file), src: source(`${kind}[${n}].file`), text: String(item.file), data: { focusKey: `link:${item.file}` } }),

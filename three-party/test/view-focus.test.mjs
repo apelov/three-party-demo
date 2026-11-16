@@ -56,6 +56,10 @@ const stop = (page) => page.evaluate(() => {
     over,
     cut,
     ring: style.outlineStyle !== 'none' && style.outlineWidth !== '0px',
+    // The ring as drawn, and the first ink it must be drawn in.
+    ringSpec: `${style.outlineWidth} ${style.outlineStyle} ${style.outlineColor}`,
+    ringOffset: style.outlineOffset,
+    ink: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--ink)'; document.body.append(probe); const colour = getComputedStyle(probe).color; probe.remove(); return colour; })(),
   };
 });
 
@@ -65,6 +69,10 @@ function assertInSight(s, where) {
   assert.deepEqual(s.over, [], `${where}: nothing that stays in place lies over ${s.kind}`);
   assert.deepEqual(s.cut, [], `${where}: no pane cuts ${s.kind} off`);
   assert.equal(s.ring, true, `${where}: ${s.kind} shows its ring`);
+  // One ring for every stop: 2 px, dotted, in the first ink, 3 px outside
+  // the control, or 3 px inside a row or a tab that fills its place.
+  assert.equal(s.ringSpec, `2px dotted ${s.ink}`, `${where}: the ring of ${s.kind}`);
+  assert.ok(['3px', '-3px'].includes(s.ringOffset), `${where}: the ring of ${s.kind} stands 3 px from its edge (${s.ringOffset})`);
 }
 
 // A stopped run by the keyboard alone, from the orientation (Tab to the

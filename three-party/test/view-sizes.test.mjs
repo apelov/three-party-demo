@@ -66,12 +66,12 @@ const measure = (page) => page.evaluate(() => {
   };
 });
 
-// Each row carries the sentence of the reader chosen in View as, and the box
-// of what you told the agent stands above the tabs (owner feedback,
-// 2026-11-16), so the sequence may scroll under its pinned lane heads. The
-// page and the middle pane never scroll, the lane heads and the box stay in
-// sight, and the step selected lies whole between the lane heads and the
-// bottom of the sequence.
+// The selected row carries the sentence of the reader chosen in View as, and
+// the box of what you told the agent stands above the tabs, so in a smaller
+// window the sequence may scroll under its pinned lane heads. The page and
+// the middle pane never scroll, the lane heads and the box stay in sight,
+// and the step selected lies whole between the lane heads and the bottom of
+// the sequence.
 function assertFits(m, label) {
   assert.ok(m.docWidth[0] <= m.docWidth[1], `${label}: the document is as wide as the window (${m.docWidth})`);
   assert.ok(m.docHeight[0] <= m.docHeight[1], `${label}: the document is as high as the window (${m.docHeight})`);
@@ -93,14 +93,14 @@ function assertFloors(m, mode, label) {
   const f = m.floors;
   const story = mode === 'story' && m.size === 'story';
   const [labelPx, valuePx, headPx, stampPx] = story ? [15, 18, 20, 30] : [13, 15, 18, 24];
-  assert.ok(f.smallest >= 12, `${label}: no text under 12 px (${f.smallest})`);
+  assert.ok(f.smallest >= 13, `${label}: no text under 13 px (${f.smallest})`);
   if (f.labels !== null) assert.ok(f.labels >= labelPx, `${label}: labels at least ${labelPx} px (${f.labels})`);
   if (f.values !== null) assert.ok(f.values >= valuePx, `${label}: values at least ${valuePx} px (${f.values})`);
   if (f.titles !== null) assert.ok(f.titles >= valuePx, `${label}: step titles at least ${valuePx} px (${f.titles})`);
   if (f.words !== null) assert.ok(f.words >= labelPx, `${label}: state words at least ${labelPx} px (${f.words})`);
   if (f.selectedTitle !== null) assert.equal(f.selectedTitle, f.titles, `${label}: the selected title at the size of the others`);
   if (f.stamp !== null) assert.equal(f.stamp, stampPx, `${label}: the stop stamped at ${stampPx} px`);
-  if (f.mono !== null) assert.ok(f.mono >= Math.max(12, Math.floor(labelPx * 0.88)), `${label}: monospace values at least ${Math.max(12, Math.floor(labelPx * 0.88))} px (${f.mono})`);
+  if (f.mono !== null) assert.ok(f.mono >= Math.max(13, Math.floor(labelPx * 0.88)), `${label}: monospace values at least ${Math.max(13, Math.floor(labelPx * 0.88))} px (${f.mono})`);
   assert.equal(f.inspectorHeading, headPx, `${label}: the inspector heading at ${headPx} px`);
 }
 
@@ -264,6 +264,115 @@ test('under 1024 px wide the three panes stack in order and nothing overflows si
       assert.ok(m.doc[0] <= m.doc[1], `${width}: no sideways scroll (${m.doc})`);
       assert.ok(m.widest <= width + 0.5, `${width}: nothing reaches past the window (${m.widest})`);
       assert.deepEqual([...m.order].sort((a, b) => a - b), m.order, `${width}: left, middle, right, footer`);
+    } finally {
+      await view.close();
+    }
+  }
+});
+
+// Room is paid for by showing one sentence at a time, not by scrolling: the
+// rows have air above and below, and the steps of a run still fit.
+const room = (page) => page.evaluate(() => {
+  const pad = (selector) => [...new Set([...document.querySelectorAll(selector)].map((n) => { const cs = getComputedStyle(n); return `${cs.paddingTop} ${cs.paddingBottom}`; }))];
+  const panel = document.getElementById('panel-sequence');
+  const body = document.getElementById('trace-body');
+  const head = document.getElementById('lanes-head').getBoundingClientRect();
+  const box = panel.getBoundingClientRect();
+  return {
+    rows: pad('#rows .row'),
+    traceRows: pad('#trace-body .trace-row[aria-level="1"]'),
+    cells: pad('#records-tab .ledger-row.record .ledger-cell'),
+    unselected: [...new Set([...document.querySelectorAll('#rows .row:not([aria-current="step"])')].map((n) => n.getBoundingClientRect().height))],
+    sequence: [panel.scrollHeight, panel.clientHeight],
+    trace: body ? [body.scrollHeight, body.clientHeight] : null,
+    whole: [...document.querySelectorAll('#rows .row')].map((n) => { const r = n.getBoundingClientRect(); return r.top >= head.bottom - 0.5 && r.bottom <= box.bottom + 0.5; }),
+  };
+});
+
+test('a row of the sequence, a step row of the trace and a cell of the ledger have 12 px above and below in Story and 8 px in Inspect; a Story step that is not selected is 77 px high', async () => {
+  for (const [mode, px] of [['story', 12], ['inspect', 8]]) {
+    const view = await openView(browser, { width: 1440, height: 900, hash: `#${mode}` });
+    try {
+      await runAndWait(view, 'clean', 'paid');
+      await view.page.keyboard.press('2');
+      // Each tab builds its rows when it is shown.
+      const on = async (tab) => { await view.page.click(`#tab-${tab}`); await view.settle(60); return room(view.page); };
+      assert.deepEqual((await on('trace')).traceRows, [`${px}px ${px}px`], `${mode}: a step row of the trace`);
+      assert.deepEqual((await on('records')).cells, [`${px}px ${px}px`], `${mode}: a cell of the ledger`);
+      const m = await on('sequence');
+      assert.deepEqual(m.rows, [`${px}px ${px}px`], `${mode}: a row of the sequence`);
+      if (mode === 'story') assert.deepEqual(m.unselected, [77], 'a Story step that is not selected: 12 + 28 + 24 + 12 and its rule');
+    } finally {
+      await view.close();
+    }
+  }
+});
+
+test('1728x996 in Story: the six steps of a finished normal payment fit on the sequence and on the trace without scrolling, whichever step is selected', async (t) => {
+  const view = await openView(browser, { width: 1728, height: 996, hash: '#story' });
+  try {
+    await runAndWait(view, 'clean', 'paid');
+    for (const key of ['0', '1', '2', '3', '4', '5', '6']) {
+      await view.page.keyboard.press(key);
+      await view.page.click('#tab-sequence');
+      await view.settle(60);
+      const onSequence = await room(view.page);
+      assert.ok(onSequence.sequence[0] <= onSequence.sequence[1] + 1, `key ${key}: the sequence does not scroll (${onSequence.sequence})`);
+      assert.deepEqual(onSequence.whole, [true, true, true, true, true, true], `key ${key}: every step is whole`);
+      await view.page.click('#tab-trace');
+      await view.settle(60);
+      const onTrace = await room(view.page);
+      assert.ok(onTrace.trace[0] <= onTrace.trace[1] + 1, `key ${key}: the trace does not scroll (${onTrace.trace})`);
+      if (key === '2') t.diagnostic(`fit at 1728x996, step 2 selected: sequence ${onSequence.sequence[0]} of ${onSequence.sequence[1]} px, trace ${onTrace.trace[0]} of ${onTrace.trace[1]} px`);
+    }
+  } finally {
+    await view.close();
+  }
+});
+
+test('1440x900 in Story: the six steps of a run in progress are whole under the lane heads', async () => {
+  const view = await openView(browser, { width: 1440, height: 900, hash: '#story', server: { examples: examplesWith({ omit: ['state-clean-done.json'] }) } });
+  try {
+    await runScene(view.page, 'clean');
+    await runIs(view.page, 'running');
+    await view.settle();
+    const m = await room(view.page);
+    assert.deepEqual(m.whole, [true, true, true, true, true, true], `the sequence is ${m.sequence[0]} px in ${m.sequence[1]}`);
+  } finally {
+    await view.close();
+  }
+});
+
+// A step scrolled part of the way under the pinned lane heads shows its
+// state with its title cut off. In a window too short for six steps the
+// sequence scrolls a whole step at a time under them.
+test('1440x900 and 1280x800: after each run, whichever step is selected, no step is left part of the way under the lane heads, and the step selected is whole', async () => {
+  for (const [width, height, mode] of [[1440, 900, 'story'], [1440, 900, 'inspect'], [1280, 800, 'inspect']]) {
+    const view = await openView(browser, { width, height, hash: `#${mode}` });
+    try {
+      let scrolled = 0;
+      for (const [kind, end] of [['clean', 'paid'], ['poisoned', 'blocked']]) {
+        await runAndWait(view, kind, end);
+        for (const key of ['1', '2', '3', '4', '5', '6', '3', '1', '6']) {
+          await view.page.keyboard.press(key);
+          await view.settle(60);
+          const m = await view.page.evaluate(() => {
+            const edge = document.getElementById('lanes-head').getBoundingClientRect().bottom;
+            const panel = document.getElementById('panel-sequence');
+            const box = panel.getBoundingClientRect();
+            const selected = document.querySelector('#rows .row[aria-current="step"]').getBoundingClientRect();
+            return {
+              cut: [...document.querySelectorAll('#rows .row')].filter((row) => { const r = row.getBoundingClientRect(); return r.top < edge - 1 && r.bottom > edge + 1; }).map((row) => row.dataset.step),
+              whole: selected.top >= edge - 0.5 && selected.bottom <= box.bottom + 0.5,
+              scrollTop: panel.scrollTop,
+            };
+          });
+          if (m.scrollTop > 0) scrolled += 1;
+          assert.deepEqual(m.cut, [], `${width}x${height} ${mode}, ${kind}, key ${key}: no step under the edge of the lane heads`);
+          assert.equal(m.whole, true, `${width}x${height} ${mode}, ${kind}, key ${key}: the step selected is whole`);
+        }
+      }
+      if (mode === 'story') assert.ok(scrolled > 0, 'the sequence scrolled in this window, so the rule was put to the test');
     } finally {
       await view.close();
     }

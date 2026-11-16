@@ -10,14 +10,14 @@
     "supplier": "Supplier",
     "domainA": "Payments agent's domain",
     "domainB": "Supplier's bank's domain",
-    "rawIdentifiersNote": "Test identifiers, used by nothing outside this demo."
+    "rawIdentifiersNote": "Test identifiers, made up for this demo."
   },
   "invoice": {
-    "invoiceId": "DEMO-INV-2201",
+    "invoiceId": "INV-2201",
     "from": "Northwind Office Supply",
     "amount": "148.20",
     "currency": "USD",
-    "payTo": { "name": "Northwind Office Supply", "account": "DEMO-0000-2201" },
+    "payTo": { "name": "Northwind Office Supply", "account": "0000-2201" },
     "lines": ["Printer paper, 20 cases", "Amount due: $148.20"],
     "hidden": null
   },
