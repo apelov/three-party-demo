@@ -27,11 +27,11 @@ const STAGED_LABEL_MAP = '7b90202bf7cf003ddd8993a0fb69ab9ccf0788207ced814567edf9
 const V1_EXAMPLES = {
   'action-05-pay.action.json': '7a459b88cdb0c730ed551a66d8f127e9a864fe8acc77d7c73c4363b6d55bb6c8',
   'hop-03-crossing.hop.json': 'a80fe78d64cd107f11b2dc27b48d9a85a4d624e13e34bd5984c6c905cc44bc33',
-  'manifest.json': 'bafb613a333d667e4f08b3a2c19bce19470b94a3c15852e9de5af5fb69a3382f',
-  'offline-check.json': '7cd67ed13e19fa60349eb9393e565826b4afd3cafec0fad541a4f4d2335911cc',
-  'state-clean-done.json': '1fc531e4e0fe9b08d815e086a14ad7b5cb91671d09ddf4999cf16e8e283800dd',
+  'manifest.json': '4425a773170e92c21b01da44195cf789174304f4e019ab890478495d1934f3e8',
+  'offline-check.json': '30004f2b9f76ed3bd59313bf9cf9743d1b54aeb167b8786ba4ec94f0fdecfda5',
+  'state-clean-done.json': '06e27f01b68ca369511f2a2707d0f657be2fb9ec0a2ff3e5aa231e24b9b8f196',
   'state-clean-running.json': '2cc372594c2ee663a7119673fdc40bcb4bb1831099bf25d86bbf973315adba7f',
-  'state-poisoned-blocked.json': 'aa04fec5f5d1cbef40d0a75c247273f909a44ca4a66611b5b46109c9453d025d',
+  'state-poisoned-blocked.json': 'a9a808f9c5785cf0f156fc9882ce0de0fbebd4da50844d813c7d5874fb4d2973',
 };
 const V1_LABELS = [j('Ou', 'rs'), j('Crossing (stand-in ', 'for AI2II)'), j('Record (our writer, ', 'his format)')];
 

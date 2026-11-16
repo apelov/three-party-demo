@@ -1,1 +1,1 @@
-Format source: docs/aep-format.md in eatf-verifier, read as text (sha256 63039093c8bd562ae065af10f131f3393e0c521b19a643456229ade04dcbb7c7); the verifier in three-party/src/verifier/ was written from that text, steps 1 to 6; no code of that repository is used.
+Format source: docs/aep-format.md in eatf-verifier, read as text (sha256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5); the verifier in three-party/src/verifier/ was written from that text, steps 1 to 6; no code of that repository is used.

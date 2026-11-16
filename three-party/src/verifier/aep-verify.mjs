@@ -1,6 +1,7 @@
 // aep-verify: checks one Action Evidence Package, a ZIP archive that records
 // one agent action, against steps 1 to 6 of the format's ordered
-// verification.
+// verification. The format is the text three-party/FORMAT-SOURCE.txt names;
+// this file was written from that text.
 //
 //   node three-party/src/verifier/aep-verify.mjs <package.aep> --pin <public key PEM file>
 //
@@ -14,25 +15,82 @@
 // and exits 0 on pass-1-6 and 1 on reject. A wrong argument, or a pin that
 // cannot be read, ends it with exit 2, one line on standard error and no
 // verdict line. A package that cannot be read is rejected at step 1, with
-// null in the place of its hash.
+// null in the place of its hash; so is a package file of more than 64 MiB,
+// which is not read. A pin that is read and is not one PEM block labelled
+// PUBLIC KEY matches no key: a package that reaches step 5 is rejected
+// there.
 //
 // The steps, in the order the format gives them:
 //
-//   1. Parse the ZIP and require the seven required entries.
-//   2. Parse metadata.json as a JSON object.
+//   1. Parse the ZIP and require the seven required entries. The archive is
+//      rejected when it repeats an entry name, when an entry name holds /,
+//      \ or NUL, and past the format's safety limits: 64 MiB of archive, 32
+//      entries, 16 MiB for one entry, 32 MiB expanded. Names are compared
+//      exactly, byte for byte, at the root of the archive.
+//   2. Parse metadata.json as an RFC 8259 JSON object: UTF-8 with no byte
+//      order mark, no member name twice within one object (the names
+//      compared after their escapes are decoded), no NaN or Infinity, and no
+//      nesting of more than 64 objects and arrays. A failure of this step is
+//      METADATA_INVALID_JSON.
 //   3. Rebuild response.txt, LF, JCS(metadata) and require canonical.bin to
-//      equal it. The early form, canonical.bin equal to response.txt alone,
-//      is recognized, and the answer remarks on it.
+//      equal it. Metadata outside the profile's domain (an integer-valued
+//      number outside [-(2^53 - 1), 2^53 - 1], a number that is not finite,
+//      an unpaired surrogate) is METADATA_NOT_CANONICALIZABLE. The early
+//      form, canonical.bin equal to response.txt alone, is recognized, and
+//      the answer remarks on it.
 //   4. Require SHA-256(canonical.bin) to equal hash.sha256.
-//   5. Require public_key.pem to equal the pin, byte for byte. The pin is
-//      the trusted signer key the caller supplies.
-//   6. Verify signature.sig over canonical.bin as RSASSA-PKCS1-v1_5 with
-//      SHA-256, against the embedded public_key.pem.
+//   5. Read public_key.pem as the format's entry table gives it: exactly one
+//      PEM block labelled PUBLIC KEY whose body is the DER
+//      SubjectPublicKeyInfo of an RSA key with nothing after it, and that
+//      DER the encoding of the key it holds (RSA_VERIFY_ERROR otherwise).
+//      Then require the DER to equal, byte for byte, the DER in the pin, the
+//      trusted signer key the caller supplies, read by the same PEM rules.
+//   6. Verify signature.sig over the bytes of canonical.bin as
+//      RSASSA-PKCS1-v1_5 with SHA-256, with the key step 5 read.
 //
 // Steps 7 to 10 of the format (the receipt, the second signature and the
 // timestamp) are not run, and the last note of every answer says so. A
 // verdict of pass-1-6 says nothing about the timestamp entry beyond its
 // presence.
+//
+// How this file reads the text where it leaves room. Where a clause can be
+// read two ways, it takes the stricter reading that still accepts what the
+// text says is allowed.
+//
+//   - A MiB is 1,048,576 bytes, and a size exceeds a limit when it is above
+//     it: an archive of exactly 64 MiB is read.
+//   - The name rule, the count of entries and the expanded total take in
+//     every entry of the central directory, those the format lists and
+//     those it does not. Every entry is also read and checked as a ZIP entry
+//     (its method, sizes and CRC-32); an entry the format does not list is
+//     ignored in that nothing else is done with its bytes.
+//   - "16 MiB for one entry" bounds both sizes of an entry: the bytes it
+//     expands to and the bytes it is stored in. "32 MiB expanded" is the sum
+//     of the bytes all the entries expand to.
+//   - The base64 of signature.sig and of a PEM block must be the canonical
+//     encoding of RFC 4648 section 3.5: pad bits that are not zero are
+//     refused, as that section lets a decoder do. Base64 that is empty once
+//     the ignored bytes are out is zero bytes, which do not verify.
+//   - The nesting of step 2 counts the object at the top: 64 objects and
+//     arrays, one inside another, pass, and 65 do not. Every failure of step
+//     2 is METADATA_INVALID_JSON: bytes that are not UTF-8, a byte order
+//     mark, text that is not JSON, and JSON that is not an object as well.
+//   - In a PEM block, "whitespace around the block" is TAB, LF, VT, FF, CR
+//     and space before the BEGIN line and after the END line. "Any line
+//     layout inside it" is read as line breaks, CR and LF, anywhere between
+//     the BEGIN line and the END line, as many as there are and none at all;
+//     nothing else stands inside the block beside the base64 characters (no
+//     space, no tab, no header line). The two lines are exactly the BEGIN
+//     and END lines of the label PUBLIC KEY, with five dashes on each side.
+//   - "An RSA key" is a key of the rsaEncryption algorithm; an RSASSA-PSS
+//     key is not one.
+//   - The pin is read by the same PEM rules, and its DER is compared byte for
+//     byte. It is not read as a key of its own: only DER equal to that of
+//     public_key.pem, which step 5 has read as an RSA key, can match.
+//   - The format describes one legacy encoded block for step 6 (full-length
+//     padding, then a DigestInfo with the parameters absent) that its own
+//     verifiers accept for packages of an older signer, and says another
+//     implementation need not accept it. This verifier does not accept it.
 //
 // Each step is one function, step1 to step6. A step returns null, or its
 // note: a remark on a step that passed, or what made the step fail. A step
@@ -49,10 +107,21 @@ const REJECT = 'reject';
 const NOT_RUN = 'steps 7 to 10 not run by this verifier';
 const EARLY_FORM = 'step 3: early response form (response.txt alone); metadata is not signature-bound';
 
-// What this verifier reads. A larger package, entry or pin is refused, not
-// read in part.
-const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
-const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
+// The names the format gives to the failures of steps 2, 3 and 5.
+const METADATA_INVALID_JSON = 'METADATA_INVALID_JSON';
+const METADATA_NOT_CANONICALIZABLE = 'METADATA_NOT_CANONICALIZABLE';
+const RSA_VERIFY_ERROR = 'RSA_VERIFY_ERROR';
+
+// The safety limits of step 1, as the format gives them, and the deepest
+// nesting of objects and arrays step 2 accepts.
+const MIB = 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 64 * MIB;
+const MAX_ENTRIES = 32;
+const MAX_ENTRY_BYTES = 16 * MIB;
+const MAX_EXPANDED_BYTES = 32 * MIB;
+const MAX_NESTING = 64;
+// What this verifier reads of a pin. A larger pin is refused, not read in
+// part.
 const MAX_PIN_BYTES = 64 * 1024;
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -60,6 +129,8 @@ const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex'
 const shown = (text) => String(text).replace(/[^\x20-\x7e]/g, '?').slice(0, 80);
 // Text with the ASCII whitespace around it removed.
 const trimmed = (text) => text.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, '');
+// A note that ends in the name the format gives to the failure.
+const named = (why, name) => `${why} (${name})`;
 
 // Marks the package as rejected at a step and gives that step's note.
 function reject(pkg, step, why) {
@@ -82,12 +153,19 @@ const ENCRYPTED = 0x0001 | 0x0040 | 0x2000;
 // Bit 3: the sizes and the CRC-32 follow the data, and the local header
 // holds zero in their place.
 const DEFERRED = 0x0008;
+// The bytes an entry name may not hold: /, \ and NUL.
+const SLASH = 0x2f;
+const BACKSLASH = 0x5c;
+const NUL = 0x00;
 
 // What the reader found wrong with an archive, in words step 1 reports.
 class Unreadable extends Error {}
 function unreadable(why) {
   throw new Unreadable(why);
 }
+
+// The note of step 1 on an archive larger than the format allows.
+const archiveTooLarge = (size) => `the archive is ${size} bytes, more than the 64 MiB (${MAX_ARCHIVE_BYTES} bytes) the format allows`;
 
 // Where the end of central directory record starts, or -1. The record is 22
 // bytes followed by a comment, and the length it states for the comment
@@ -111,9 +189,11 @@ function hasZip64Block(extra) {
 // Reads the archive and gives a map from entry name to entry bytes for the
 // names in `wanted`. Every entry of the archive is read and checked, wanted
 // or not. The method, the sizes, the CRC-32 and the offset of an entry are
-// taken from the central directory. The local header is read to find where
-// the data starts, and it must agree with the central directory on the
-// name and the method, and on the sizes and the CRC-32 where it states them.
+// taken from the central directory, and the limits of the format are held
+// against those sizes before the entry is inflated. The local header is
+// read to find where the data starts, and it must agree with the central
+// directory on the name and the method, and on the sizes and the CRC-32
+// where it states them.
 function readZip(bytes, wanted) {
   const end = endRecordAt(bytes);
   if (end === -1) {
@@ -135,10 +215,12 @@ function readZip(bytes, wanted) {
   if (directoryAt + directorySize !== end) {
     unreadable('a damaged archive: the central directory does not end where the end of central directory record begins');
   }
+  if (count > MAX_ENTRIES) unreadable(`the archive holds ${count} entries, more than the ${MAX_ENTRIES} the format allows`);
 
   const entries = new Map();
   const names = new Set();
   const spans = [];
+  let expanded = 0;
   let at = directoryAt;
   for (let n = 1; n <= count; n += 1) {
     if (at + 46 > end || bytes.readUInt32LE(at) !== CENTRAL_RECORD) {
@@ -165,6 +247,7 @@ function readZip(bytes, wanted) {
 
     if (names.has(name)) unreadable(`a duplicate entry name: ${shown(name)}`);
     names.add(name);
+    if (nameBytes.includes(SLASH) || nameBytes.includes(BACKSLASH) || nameBytes.includes(NUL)) unreadable(`an entry name that holds /, \\ or NUL: ${shown(name)}`);
     if (packedSize === 0xffffffff || size === 0xffffffff || headerAt === 0xffffffff || disk === 0xffff || hasZip64Block(extra)) {
       unreadable(`a ZIP64 record: ${entry} defers to one`);
     }
@@ -173,7 +256,10 @@ function readZip(bytes, wanted) {
     if (method !== STORED && method !== DEFLATE) {
       unreadable(`${entry} uses compression method ${method}; this verifier reads method 0 (stored) and method 8 (deflate)`);
     }
-    if (size > MAX_ENTRY_BYTES) unreadable(`${entry} is ${size} bytes, more than this verifier reads`);
+    if (size > MAX_ENTRY_BYTES) unreadable(`${entry} expands to ${size} bytes, more than the 16 MiB (${MAX_ENTRY_BYTES} bytes) the format allows for one entry`);
+    if (packedSize > MAX_ENTRY_BYTES) unreadable(`${entry} is stored in ${packedSize} bytes, more than the 16 MiB (${MAX_ENTRY_BYTES} bytes) the format allows for one entry`);
+    expanded += size;
+    if (expanded > MAX_EXPANDED_BYTES) unreadable(`the entries expand to more than the 32 MiB (${MAX_EXPANDED_BYTES} bytes) the format allows in all, at ${entry}`);
 
     if (headerAt + 30 > directoryAt || bytes.readUInt32LE(headerAt) !== LOCAL_HEADER) {
       unreadable(`a damaged archive: ${entry} has no local header at the offset the central directory gives`);
@@ -218,6 +304,123 @@ function readZip(bytes, wanted) {
   return entries;
 }
 
+// ---- The JSON reader of step 2 (RFC 8259)
+
+// What step 2 found wrong with the text of metadata.json, in words its note
+// gives after the name of the entry.
+class InvalidJson extends Error {}
+const NOT_JSON = 'is not JSON';
+
+// Checks that `text` is one JSON text by the grammar of RFC 8259, with no
+// member name twice within one object and no nesting of more than
+// MAX_NESTING objects and arrays, and throws InvalidJson when it is not.
+// The whitespace between tokens is RFC 8259's four characters: space, TAB,
+// LF and CR. Names are compared once their escapes are decoded, UTF-16 code
+// unit for code unit. The value itself is then the one JSON.parse gives: a
+// text with no name twice in one object has one reading.
+function checkJson(text) {
+  let at = 0;
+  const fail = (why = NOT_JSON) => {
+    throw new InvalidJson(why);
+  };
+  const digit = (c) => c !== undefined && c >= '0' && c <= '9';
+  const space = () => {
+    while (at < text.length && (text[at] === ' ' || text[at] === '\t' || text[at] === '\n' || text[at] === '\r')) at += 1;
+  };
+  // A string, from its opening quote. It gives the string decoded when
+  // `decoded` is true, and null otherwise.
+  const string = (decoded) => {
+    const from = at;
+    at += 1;
+    for (;;) {
+      if (at >= text.length) fail();
+      const code = text.charCodeAt(at);
+      if (code === 0x22) break;
+      if (code < 0x20) fail();
+      if (code !== 0x5c) {
+        at += 1;
+        continue;
+      }
+      const escape = text[at + 1];
+      if (escape === 'u' && /^[0-9A-Fa-f]{4}$/.test(text.slice(at + 2, at + 6))) at += 6;
+      else if (escape !== undefined && '"\\/bfnrt'.includes(escape)) at += 2;
+      else fail();
+    }
+    at += 1;
+    return decoded ? JSON.parse(text.slice(from, at)) : null;
+  };
+  const number = () => {
+    if (text[at] === '-') at += 1;
+    if (text[at] === '0') {
+      at += 1;
+    } else {
+      if (!digit(text[at])) fail();
+      while (digit(text[at])) at += 1;
+    }
+    if (text[at] === '.') {
+      at += 1;
+      if (!digit(text[at])) fail();
+      while (digit(text[at])) at += 1;
+    }
+    if (text[at] === 'e' || text[at] === 'E') {
+      at += 1;
+      if (text[at] === '+' || text[at] === '-') at += 1;
+      if (!digit(text[at])) fail();
+      while (digit(text[at])) at += 1;
+    }
+  };
+  const literal = (word) => {
+    if (!text.startsWith(word, at)) fail();
+    at += word.length;
+  };
+  // A value that starts at `at`, inside `depth` objects and arrays.
+  const value = (depth) => {
+    const c = text[at];
+    if (c === '{' || c === '[') {
+      if (depth >= MAX_NESTING) fail(`nests more than ${MAX_NESTING} objects and arrays`);
+      const close = c === '{' ? '}' : ']';
+      const names = c === '{' ? new Set() : null;
+      at += 1;
+      space();
+      if (text[at] === close) {
+        at += 1;
+        return;
+      }
+      for (;;) {
+        if (names !== null) {
+          if (text[at] !== '"') fail();
+          const name = string(true);
+          if (names.has(name)) fail(`repeats the member name ${shown(JSON.stringify(name))} within one object`);
+          names.add(name);
+          space();
+          if (text[at] !== ':') fail();
+          at += 1;
+          space();
+        }
+        value(depth + 1);
+        space();
+        if (text[at] === close) {
+          at += 1;
+          return;
+        }
+        if (text[at] !== ',') fail();
+        at += 1;
+        space();
+      }
+    }
+    if (c === '"') string(false);
+    else if (c === 't') literal('true');
+    else if (c === 'f') literal('false');
+    else if (c === 'n') literal('null');
+    else if (c === '-' || digit(c)) number();
+    else fail();
+  };
+  space();
+  value(0);
+  space();
+  if (at !== text.length) fail();
+}
+
 // ---- The canonical form of step 3 (RFC 8785, the JSON Canonicalization Scheme)
 
 // A value the scheme, as the format's metadata profile bounds it, does not
@@ -227,15 +430,17 @@ class NotCanonical extends Error {}
 // The canonical text of a parsed JSON value: the members of an object
 // sorted by the UTF-16 code units of their names, no whitespace, a string
 // escaped as JSON.stringify escapes it, a number as ECMAScript prints it.
-// The profile refuses a number that is not finite, an integer outside the
-// safe range, and a string that holds an unpaired surrogate.
+// The profile refuses a number that is not finite, an integer-valued number
+// outside the safe range (a double whose value is whole, 1e300 among them),
+// and a string that holds an unpaired surrogate. Step 2 bounds the nesting,
+// so the recursion here is at most that deep.
 function canonicalJson(value) {
   if (value === null) return 'null';
   if (value === true) return 'true';
   if (value === false) return 'false';
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) throw new NotCanonical('a number that is not finite');
-    if (Number.isInteger(value) && !Number.isSafeInteger(value)) throw new NotCanonical('an integer outside the safe range');
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) throw new NotCanonical('an integer-valued number outside [-9007199254740991, 9007199254740991]');
     return JSON.stringify(value);
   }
   if (typeof value === 'string') {
@@ -248,10 +453,41 @@ function canonicalJson(value) {
   return `{${names.map((name) => `${canonicalJson(name)}:${canonicalJson(value[name])}`).join(',')}}`;
 }
 
+// ---- The PEM block of step 5, and the base64 of steps 5 and 6
+
+// The armor lines of a PEM block labelled PUBLIC KEY, put together from
+// parts. The block: whitespace around it, and inside it the characters of
+// base64 with line breaks among them.
+const DASHES = '-'.repeat(5);
+const PUBLIC_KEY_BLOCK = new RegExp(`^[\\t\\n\\v\\f\\r ]*${DASHES}BEGIN PUBLIC KEY${DASHES}([A-Za-z0-9+/=\\r\\n]*)${DASHES}END PUBLIC KEY${DASHES}[\\t\\n\\v\\f\\r ]*$`);
+// Base64 characters of the standard alphabet, then at most two of padding.
+const BASE64_TEXT = /^[A-Za-z0-9+/]*={0,2}$/;
+// The bytes the format's base64 rule ignores wherever they occur: TAB, LF,
+// VT, FF, CR and space.
+const BASE64_IGNORED = /[\t\n\v\f\r ]/g;
+
+// The bytes that `text` encodes when it is base64 in the standard alphabet,
+// padded to a multiple of four characters and written as RFC 4648 section
+// 3.5 gives the canonical encoding, or null. Empty text is zero bytes.
+function base64Bytes(text) {
+  if (text.length % 4 !== 0 || !BASE64_TEXT.test(text)) return null;
+  const bytes = Buffer.from(text, 'base64');
+  return bytes.toString('base64') === text ? bytes : null;
+}
+
+// The DER in a text that is one PEM block labelled PUBLIC KEY by the rules
+// of the format's entry table, or null.
+function publicKeyDer(bytes) {
+  const block = PUBLIC_KEY_BLOCK.exec(bytes.toString('latin1'));
+  return block === null ? null : base64Bytes(block[1].replace(/[\r\n]/g, ''));
+}
+
 // ---- The steps
 
-// 1. Parse ZIP and require all required entries.
+// 1. Parse ZIP and require all required entries, within the format's
+//    limits.
 function step1(pkg) {
+  if (pkg.bytes.length > MAX_ARCHIVE_BYTES) return reject(pkg, 1, archiveTooLarge(pkg.bytes.length));
   let entries = null;
   try {
     entries = readZip(pkg.bytes, REQUIRED);
@@ -265,25 +501,31 @@ function step1(pkg) {
   return null;
 }
 
-// 2. Parse metadata.json as an object. The text is UTF-8 with no byte
-//    order mark. A member name that the text repeats is read as JSON.parse
-//    reads it: the last one stands.
+// 2. Parse metadata.json as an RFC 8259 JSON object: UTF-8 without a byte
+//    order mark, no member name twice within one object, no nesting of more
+//    than 64 objects and arrays.
 function step2(pkg) {
+  const bytes = pkg.entries.get('metadata.json');
+  const invalid = (why) => reject(pkg, 2, named(`metadata.json ${why}`, METADATA_INVALID_JSON));
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return invalid('starts with a byte order mark');
   let text = null;
   try {
-    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(pkg.entries.get('metadata.json'));
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    return reject(pkg, 2, 'metadata.json is not UTF-8 text');
+    return invalid('is not UTF-8 text');
   }
   let value = null;
   try {
+    checkJson(text);
     value = JSON.parse(text);
-  } catch {
-    return reject(pkg, 2, 'metadata.json is not JSON');
+  } catch (error) {
+    if (error instanceof InvalidJson) return invalid(error.message);
+    if (error instanceof SyntaxError) return invalid(NOT_JSON);
+    throw error;
   }
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     const kind = value === null ? 'null' : Array.isArray(value) ? 'an array' : `a ${typeof value}`;
-    return reject(pkg, 2, `metadata.json is ${kind}, and it must be a JSON object`);
+    return invalid(`is ${kind}, and it must be a JSON object`);
   }
   pkg.metadata = value;
   return null;
@@ -299,8 +541,7 @@ function step3(pkg) {
   try {
     canonicalMetadata = canonicalJson(pkg.metadata);
   } catch (error) {
-    if (error instanceof NotCanonical) return reject(pkg, 3, `metadata.json holds ${error.message}, which the metadata profile does not canonicalize`);
-    if (error instanceof RangeError) return reject(pkg, 3, 'metadata.json is nested too deeply for this verifier to canonicalize');
+    if (error instanceof NotCanonical) return reject(pkg, 3, named(`metadata.json holds ${error.message}, which the metadata profile does not canonicalize`, METADATA_NOT_CANONICALIZABLE));
     throw error;
   }
   const response = pkg.entries.get('response.txt');
@@ -319,44 +560,47 @@ function step4(pkg) {
   return null;
 }
 
-// 5. Require public_key.pem to match the trusted signer PEM the caller
-//    supplied (the pin) exactly: the same bytes.
+// 5. Read public_key.pem as the entry table gives it, and require its DER
+//    SubjectPublicKeyInfo to equal the DER in the trusted signer PEM the
+//    caller supplied (the pin), byte for byte.
 function step5(pkg) {
-  if (!pkg.entries.get('public_key.pem').equals(pkg.pin)) return reject(pkg, 5, 'public_key.pem differs from the pin, the trusted signer key the caller supplied');
-  return null;
-}
-
-// The armor lines of an SPKI public key in PEM, put together from parts.
-const DASHES = '-'.repeat(5);
-const PUBLIC_KEY_PEM = new RegExp(`^${DASHES}BEGIN PUBLIC KEY${DASHES}[\\t\\n\\r ]+([A-Za-z0-9+/=\\t\\n\\r ]+)${DASHES}END PUBLIC KEY${DASHES}[\\t\\n\\r ]*$`);
-// Padded base64 in the standard alphabet, with no whitespace inside it.
-const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-
-// 6. Verify signature.sig over canonical.bin as RSASSA-PKCS1-v1_5 with
-//    SHA-256. signature.sig is base64, and the whitespace around it is
-//    ignored. public_key.pem is one PEM block that holds an RSA key as a
-//    SubjectPublicKeyInfo.
-//
-//    The encoded block that is accepted is the one RFC 8017 section 9.2
-//    gives, whose DigestInfo carries NULL algorithm parameters. The format
-//    also describes one legacy block (full-length padding, then a
-//    DigestInfo with the parameters absent) that its own verifiers accept
-//    for packages of an older signer, and it says another implementation
-//    need not accept it. This verifier does not accept it.
-function step6(pkg) {
-  const encoded = trimmed(pkg.entries.get('signature.sig').toString('latin1'));
-  if (!BASE64.test(encoded)) return reject(pkg, 6, 'signature.sig is not base64');
-  const armored = PUBLIC_KEY_PEM.exec(pkg.entries.get('public_key.pem').toString('latin1'));
+  const unreadableKey = (why) => reject(pkg, 5, named(why, RSA_VERIFY_ERROR));
+  const der = publicKeyDer(pkg.entries.get('public_key.pem'));
+  if (der === null) return unreadableKey('public_key.pem is not one PEM block labelled PUBLIC KEY as the format\'s entry table gives it');
   let key = null;
   try {
-    key = armored ? crypto.createPublicKey({ key: Buffer.from(armored[1].replace(/[\t\n\r ]+/g, ''), 'base64'), format: 'der', type: 'spki' }) : null;
+    key = crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
   } catch {
     key = null;
   }
-  if (key === null || key.asymmetricKeyType !== 'rsa') return reject(pkg, 6, 'public_key.pem is not one RSA public key as a SubjectPublicKeyInfo in PEM');
+  if (key === null || key.asymmetricKeyType !== 'rsa') return unreadableKey('the body of public_key.pem is not the DER SubjectPublicKeyInfo of an RSA key');
+  // node:crypto reads some DER that is not the encoding of the key it
+  // gives (a byte after it, parameters left out, a long form length): the
+  // key written out again must be the same bytes.
+  if (!key.export({ type: 'spki', format: 'der' }).equals(der)) return unreadableKey('the DER in public_key.pem is not the encoding of the RSA key it holds');
+  const pinned = publicKeyDer(pkg.pin);
+  if (pinned === null) return reject(pkg, 5, 'the pin, the trusted signer key the caller supplied, is not one PEM block labelled PUBLIC KEY, so it matches no key');
+  if (!pinned.equals(der)) return reject(pkg, 5, 'the DER SubjectPublicKeyInfo in public_key.pem differs from the DER in the pin, the trusted signer key the caller supplied');
+  pkg.key = key;
+  return null;
+}
+
+// 6. Verify signature.sig over the bytes of canonical.bin as
+//    RSASSA-PKCS1-v1_5 with SHA-256 (RFC 8017 section 8.2), with the key
+//    step 5 read. signature.sig is base64 by the format's rule: TAB, LF,
+//    VT, FF, CR and space are ignored wherever they occur, and the rest is
+//    padded base64 in the standard alphabet.
+//
+//    The encoded block that is accepted is the one RFC 8017 section 9.2
+//    gives, whose DigestInfo carries NULL algorithm parameters, which is
+//    the block node:crypto checks for. The legacy block is not accepted
+//    (see the readings above).
+function step6(pkg) {
+  const signature = base64Bytes(pkg.entries.get('signature.sig').toString('latin1').replace(BASE64_IGNORED, ''));
+  if (signature === null) return reject(pkg, 6, 'signature.sig is not padded base64 in the standard alphabet once TAB, LF, VT, FF, CR and space are taken out');
   let verified = false;
   try {
-    verified = crypto.verify('sha256', pkg.entries.get('canonical.bin'), { key, padding: crypto.constants.RSA_PKCS1_PADDING }, Buffer.from(encoded, 'base64'));
+    verified = crypto.verify('sha256', pkg.entries.get('canonical.bin'), { key: pkg.key, padding: crypto.constants.RSA_PKCS1_PADDING }, signature);
   } catch {
     verified = false;
   }
@@ -370,7 +614,7 @@ const STEPS = Object.freeze([step1, step2, step3, step4, step5, step6]);
 // answer. A step that ends on an error of this program is a failed step:
 // nothing is reported as passing that was not checked.
 function verify(file, bytes, pin) {
-  const pkg = { bytes, pin, entries: null, metadata: null, failedStep: null };
+  const pkg = { bytes, pin, entries: null, metadata: null, key: null, failedStep: null };
   const notes = [];
   for (const [index, step] of STEPS.entries()) {
     let note = null;
@@ -400,11 +644,21 @@ function readArguments(argv) {
   return pin === '' || file === '' || file.startsWith('--') ? null : { file, pin };
 }
 
-// The bytes of a regular file of at most `limit` bytes.
+// A file larger than the reader takes, and its size.
+class TooLarge extends Error {
+  constructor(size, limit) {
+    super('too large');
+    this.size = size;
+    this.code = `larger than ${limit} bytes`;
+  }
+}
+
+// The bytes of a regular file of at most `limit` bytes. A larger file is
+// not read.
 function readFile(file, limit) {
   const stat = fs.statSync(file);
   if (!stat.isFile()) throw Object.assign(new Error('not a regular file'), { code: 'not a regular file' });
-  if (stat.size > limit) throw Object.assign(new Error('too large'), { code: `larger than ${limit} bytes` });
+  if (stat.size > limit) throw new TooLarge(stat.size, limit);
   return fs.readFileSync(file);
 }
 const reasonOf = (error) => shown(error?.code ?? 'error');
@@ -425,9 +679,12 @@ if (asked === null) {
     let bytes = null;
     let answer = null;
     try {
-      bytes = readFile(asked.file, MAX_PACKAGE_BYTES);
+      // The file is not read past the format's 64 MiB; step 1 holds the
+      // same limit against the bytes that were read.
+      bytes = readFile(asked.file, MAX_ARCHIVE_BYTES);
     } catch (error) {
-      answer = { file: asked.file, sha256: null, verdict: REJECT, firstFailingStep: 1, notes: [`step 1: the package cannot be read (${reasonOf(error)})`, NOT_RUN] };
+      const why = error instanceof TooLarge ? `${archiveTooLarge(error.size)}; it was not read` : `the package cannot be read (${reasonOf(error)})`;
+      answer = { file: asked.file, sha256: null, verdict: REJECT, firstFailingStep: 1, notes: [`step 1: ${why}`, NOT_RUN] };
     }
     if (bytes !== null) answer = verify(asked.file, bytes, pin);
     process.stdout.write(`${JSON.stringify(answer)}\n`);

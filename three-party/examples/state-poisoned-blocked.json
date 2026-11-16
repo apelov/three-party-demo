@@ -58,7 +58,7 @@
       "actionFile": "actions/04-intent.action.json", "recordFile": "records/04-intent.aep" },
     { "id": "pay", "part": "bank", "partLabel": "Supplier's bank", "standIn": false, "standInNote": null, "title": "Pay the invoice under the grant", "status": "not-reached", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
     { "id": "record", "part": "record", "partLabel": "AEP", "standIn": true, "standInNote": "Our writer, in the AEP format. Stand-in label until the format is confirmed.", "title": "Write one signed Action Evidence Package per action", "status": "written", "startedAt": "2026-11-15T12:03:40Z", "endedAt": "2026-11-15T12:03:42Z",
-      "detail": { "written": 4, "format": "docs/aep-format.md in eatf-verifier, text SHA-256 63039093c8bd562ae065af10f131f3393e0c521b19a643456229ade04dcbb7c7, steps 1 to 6", "signer": "test key generated for this run", "credentialCitedBy": "sha256 over the credential's exact bytes", "timestampEntry": "stand-in: no timestamp authority" },
+      "detail": { "written": 4, "format": "docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6", "signer": "test key generated for this run", "credentialCitedBy": "sha256 over the credential's exact bytes", "timestampEntry": "stand-in: no timestamp authority" },
       "actionFile": null, "recordFile": "records/manifest.json" }
   ],
   "outcome": "blocked",

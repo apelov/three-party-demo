@@ -30,7 +30,7 @@ import { canonicalize } from './jcs.mjs';
 import { generateTestKey, isTestKey, liveTestKey, PUBLIC_KEY_FILE } from './testkey.mjs';
 import { storeZip } from './zip.mjs';
 
-export const FORMAT = 'docs/aep-format.md in eatf-verifier, text SHA-256 63039093c8bd562ae065af10f131f3393e0c521b19a643456229ade04dcbb7c7, steps 1 to 6';
+export const FORMAT = 'docs/aep-format.md in eatf-verifier, text SHA-256 cdf6954ab0fbd4f9c272821ee4379063dc9d396511459fef6c398a6df75827a5, steps 1 to 6';
 export const PROFILE = 'opena2a-three-party-demo/1';
 export const WRITER = 'our writer, AEP format';
 export const TIMESTAMP_ENTRY = 'stand-in: no timestamp authority';
