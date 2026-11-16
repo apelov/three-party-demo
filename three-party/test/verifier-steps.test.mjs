@@ -22,6 +22,9 @@ after(removeTempDirs);
 
 const LIMIT = { timeout: 120000 };
 const ZIP = '/usr/bin/zip';
+// The test of an archive made by another program needs the zip command of
+// Info-ZIP, which macOS has and some Linux images (node:22-bookworm) do not.
+const HAS_ZIP = fs.existsSync(ZIP) ? {} : { skip: `needs ${ZIP} (Info-ZIP zip), the program other than this tree's that makes the archive; it is not installed here` };
 
 let signer = null;
 let other = null;
@@ -103,7 +106,7 @@ test('on a run written by the tree\'s writer, every record passes steps 1 to 6 w
   assert.deepEqual({ status: wrongPin.status, verdict: wrongPin.answer.verdict, firstFailingStep: wrongPin.answer.firstFailingStep }, { status: 1, verdict: 'reject', firstFailingStep: 5 });
 });
 
-test('a package built here passes steps 1 to 6: stored by the tree\'s writer, stored and deflated by the builder of these tests, and zipped by /usr/bin/zip', { ...LIMIT }, () => {
+test('a package built here passes steps 1 to 6: stored by the tree\'s writer, and stored and deflated by the builder of these tests', { ...LIMIT }, () => {
   const entries = entriesOf(signer);
   passes(verdictOn(stored(entries)));
 
@@ -119,9 +122,10 @@ test('a package built here passes steps 1 to 6: stored by the tree\'s writer, st
   const builderFile = fileOf(deflated, 'built.zip');
   assert.match(execFileSync(UNZIP, ['-t', builderFile], { encoding: 'utf8' }), /No errors detected/);
   assert.ok(execFileSync(UNZIP, ['-p', builderFile, 'response.txt']).equals(long.get('response.txt')));
+});
 
-  // The same entries zipped by another program, which deflates the long
-  // one and adds extra fields of its own to each header.
+test('a package zipped by /usr/bin/zip passes steps 1 to 6: another program, which deflates the long entry and adds extra fields of its own to each header', { ...HAS_ZIP, ...LIMIT }, () => {
+  const long = entriesOf(signer, { response: `${'{"line":"a response that deflates"}\n'.repeat(200)}` });
   const dir = tempDir();
   for (const [name, data] of long) fs.writeFileSync(path.join(dir, name), data);
   const zipped = path.join(tempDir(), 'zipped.aep');
