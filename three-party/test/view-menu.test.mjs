@@ -30,7 +30,9 @@ const controls = (page) => page.evaluate(() => {
     run: { disabled: run.disabled, ariaDisabled: run.getAttribute('aria-disabled'), label: run.getAttribute('aria-label'), text: run.textContent },
     paneContent: pane.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
     pane: [pane.scrollHeight, pane.clientHeight],
-    buttons: [...group.children].map((b) => {
+    of: (() => { const o = document.getElementById('step-of'); const r = o.getBoundingClientRect(); return { text: o.textContent, src: o.dataset.src ?? null, left: r.left, top: r.top }; })(),
+    group: (() => { const g = getComputedStyle(group); return `${g.borderTopWidth} ${g.borderTopStyle} ${g.borderTopColor}|${g.borderTopLeftRadius}`; })(),
+    buttons: [...group.querySelectorAll('button')].map((b) => {
       const r = b.getBoundingClientRect();
       const s = getComputedStyle(b);
       return { id: b.id, tag: b.tagName, type: b.type, text: b.textContent, label: b.getAttribute('aria-label'), title: b.getAttribute('title'), disabled: b.disabled, left: r.left, top: r.top, width: r.width, height: r.height, color: s.color, background: s.backgroundColor, border: `${s.borderTopWidth} ${s.borderTopStyle} ${s.borderTopColor}`, radius: s.borderTopLeftRadius, inPane: r.left >= pane.getBoundingClientRect().left && r.right <= pane.getBoundingClientRect().right };
@@ -43,10 +45,10 @@ const banner = (page) => page.evaluate(() => {
   const pane = document.getElementById('pane-flow').getBoundingClientRect();
   const flow = document.getElementById('flow');
   const box = end.getBoundingClientRect();
-  return { hidden: end.hidden, text: end.hidden ? null : end.textContent, part: end.querySelector('[data-outcome-part]')?.dataset.outcomePart ?? null, inPane: end.hidden || (box.top >= pane.top && box.bottom <= pane.bottom + 0.5 && box.height > 0), flow: [flow.scrollHeight, flow.clientHeight], replay: flow.dataset.replay };
+  return { hidden: end.hidden, text: end.hidden ? null : end.textContent, part: end.querySelector('[data-outcome-part]')?.dataset.outcomePart ?? null, inPane: end.hidden || (box.top >= pane.top && box.bottom <= pane.bottom + 0.5 && box.height > 0), flow: [flow.scrollHeight, flow.clientHeight], replay: end.dataset.outcome === 'replay' ? 'yes' : 'no', outcome: end.dataset.outcome ?? null };
 });
 
-const inspector = (page) => page.evaluate(() => ({ panel: document.querySelector('#pane-inspector .insp').dataset.panel, number: document.querySelector('#inspector-heading .row-num')?.textContent ?? null }));
+const inspector = (page) => page.evaluate(() => ({ panel: document.querySelector('#pane-inspector .insp').dataset.panel, number: document.querySelector('#inspector-heading .row-num')?.textContent.match(/\d+/)?.[0] ?? null }));
 const live = (page) => page.evaluate(() => document.getElementById('live').textContent);
 const token = (page, name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 const hex = (rgb) => {
@@ -71,21 +73,25 @@ test('with no run the three step controls are not available and the run control 
     assert.deepEqual([start.run.disabled, start.run.ariaDisabled], [false, 'false'], 'the run control is available');
     assert.equal(start.run.label, filled('button.runName', { scene: LABELS.scenes[0].title }));
 
-    // The secondary style: the text colour on the neutral tile, a 1 px
-    // border, the one corner radius; a control that is not available takes
-    // the second text colour.
-    const colour = Object.fromEntries(await Promise.all(['--fg', '--fg-2', '--tile-neutral', '--border'].map(async (n) => [n, await token(page, n)])));
+    // Between Back and Forward the group says where the run stands: no step yet.
+    assert.equal(start.of.src, 'copy:ui.stepNone');
+    // One control: the group carries the one outline (1 px, the second ink,
+    // the corner radius of the buttons), the buttons sit inside it with no
+    // tile of their own; a control that is not available takes the muted ink.
+    const colour = Object.fromEntries(await Promise.all(['--ink', '--ink-2', '--muted', '--page'].map(async (n) => [n, await token(page, n)])));
+    const [border, radius] = start.group.split('|');
+    assert.equal(border.replace(/rgb.*/, (c) => hex(c)), `1px solid ${colour['--ink-2']}`);
+    assert.equal(radius, '3px');
     for (const b of start.buttons) {
-      assert.equal(hex(b.color), colour['--fg-2'], `${b.id}: not available`);
-      assert.equal(hex(b.background), colour['--tile-neutral']);
-      assert.equal(b.border.replace(/rgb.*/, (c) => hex(c)), `1px solid ${colour['--border']}`);
-      assert.equal(b.radius, '6px');
+      assert.equal(hex(b.color), colour['--muted'], `${b.id}: not available`);
+      assert.equal(b.background, 'rgba(0, 0, 0, 0)', `${b.id}: no tile`);
     }
 
     await runAndWait(view, 'poisoned', 'blocked');
     const after = await controls(page);
     assert.deepEqual(after.buttons.map((b) => b.disabled), [false, false, false]);
-    for (const b of after.buttons) assert.equal(hex(b.color), colour['--fg'], `${b.id}: available`);
+    for (const b of after.buttons) assert.equal(hex(b.color), colour['--ink'], `${b.id}: available`);
+    assert.equal(after.of.text, COPY['ui.stepOf'].replace('{n}', '4').replace('{total}', String(6)), 'the group says the step selected and how many there are');
     assert.deepEqual(view.errors, []);
   } finally {
     await view.close();
@@ -93,13 +99,15 @@ test('with no run the three step controls are not available and the run control 
 });
 
 for (const [width, height, mode] of [[1280, 800, 'inspect'], [1440, 900, 'story'], [1920, 1080, 'story']]) {
-  test(`${width}x${height}: the three step controls stand in one row, each at least 36 px high, inside the left pane, and the left pane does not scroll before a run or after one`, async (t) => {
+  test(`${width}x${height}: Back, the step it stands at and Forward stand in one row with Replay under them, each control at least 36 px high, inside the left pane, and the left pane does not scroll before a run or after one`, async (t) => {
     const view = await openView(browser, { width, height, hash: `#${mode}` });
     const { page } = view;
     try {
       const check = (m, what) => {
-        assert.equal(new Set(m.buttons.map((b) => Math.round(b.top))).size, 1, `${what}: one row`);
-        assert.ok(m.buttons[0].left < m.buttons[1].left && m.buttons[1].left < m.buttons[2].left, `${what}: left to right`);
+        const [back, forward, replay] = m.buttons;
+        assert.equal(Math.round(back.top), Math.round(forward.top), `${what}: Back and Forward on one row`);
+        assert.ok(back.left < m.of.left && m.of.left < forward.left, `${what}: Back, the step, Forward, left to right`);
+        assert.ok(replay.top >= back.top + back.height - 1, `${what}: Replay under them`);
         for (const b of m.buttons) {
           assert.ok(b.height >= 36, `${what}: ${b.id} is at least 36 px high (${b.height})`);
           assert.ok(b.width >= 48, `${what}: ${b.id} is at least 48 px wide (${b.width})`);
@@ -109,11 +117,6 @@ for (const [width, height, mode] of [[1280, 800, 'inspect'], [1440, 900, 'story'
       };
       const start = await controls(page);
       check(start, 'start');
-      // Three controls of 88 px with two gaps of 8 px need 280 px. The left
-      // pane has less than that for its content at every one of these
-      // windows, so a row of three cannot hold controls 88 px wide: each
-      // takes the width its word needs and a share of what is left.
-      assert.ok(start.paneContent < 3 * 88 + 2 * 8, `the left pane holds ${start.paneContent} px of content`);
       t.diagnostic(`step controls: ${width}x${height} | pane content ${start.paneContent} px | ${start.buttons.map((b) => `${b.text} ${Math.round(b.width)} by ${Math.round(b.height)}`).join(', ')}`);
       for (const [kind, outcome] of [['poisoned', 'blocked'], ['clean', 'paid']]) {
         await runAndWait(view, kind, outcome);
@@ -166,10 +169,10 @@ test('Back and Forward move the selection as the Left and Right keys do, and the
   try {
     const { page } = running;
     await page.keyboard.press('r');
-    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="credential"]').dataset.status === 'passed', null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="credential"]')?.dataset.status === 'passed', null, { timeout: 15000 });
     await page.click('#step-back');
     const held = await selectedStep(page);
-    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="crossing"]').dataset.status === 'passed', null, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="crossing"]')?.dataset.status === 'passed', null, { timeout: 30000 });
     assert.equal(await selectedStep(page), held, 'after Back the selection stays while the run goes on');
     await page.keyboard.press('6');
     assert.equal(await selectedStep(page), 6);
@@ -179,7 +182,7 @@ test('Back and Forward move the selection as the Left and Right keys do, and the
       const row = document.querySelector('#rows .row[aria-current="step"]');
       return row && ['running', 'passed'].includes(row.dataset.status) && Number(row.dataset.index) < 5;
     }, null, { timeout: 30000 });
-    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="record"]').dataset.status === 'written', null, { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector('#rows .row[data-step="record"]')?.dataset.status === 'written', null, { timeout: 60000 });
     assert.equal(await selectedStep(page), 6, 'and it ends on the last step with the run');
   } finally {
     await running.close();
@@ -199,18 +202,18 @@ test('Replay walks a finished run step by step: the P key or a click stands it a
     const recorded = WORDS(POISONED);
     assert.deepEqual((await rowsOf(page)).map((r) => r.word), recorded);
     assert.equal(started, 1);
-    assert.deepEqual(await banner(page).then((b) => [b.hidden, b.replay]), [true, 'no'], 'a stopped run has no banner at the pane\'s foot');
+    assert.deepEqual(await banner(page).then((b) => [b.hidden, b.replay, b.outcome]), [false, 'no', 'blocked'], 'a stopped run has its outcome line at the pane\'s foot');
 
     await page.click('#step-replay');
     assert.equal(await selectedStep(page), 0);
     assert.equal((await inspector(page)).panel, 'overview');
     let b = await banner(page);
     assert.equal(b.text, filled('menu.replaying', { runId: POISONED.runId, n: 0 }));
-    assert.deepEqual([b.hidden, b.part, b.inPane, b.replay], [false, 'replay', true, 'stopped']);
+    assert.deepEqual([b.hidden, b.part, b.inPane, b.replay], [false, 'replay', true, 'yes']);
     let rows = await rowsOf(page);
     assert.deepEqual(rows.map((r) => r.word), Array(6).fill(PENDING), 'no step is shown yet');
     assert.deepEqual(rows.map((r) => r.detail), Array(6).fill(null));
-    assert.equal(await page.evaluate(() => document.querySelector('#rows .outcome-head, #rows .stop-sentence, #rows .countdown')), null, 'no headline, no sentence, no countdown');
+    assert.equal(await page.evaluate(() => document.querySelector('#rows [data-outcome="blocked"], #rows .countdown')), null, 'no stop, no countdown');
     assert.equal(await page.evaluate(() => document.body.dataset.run), 'blocked', 'the run itself is as it was: nothing runs again');
 
     for (let n = 1; n <= 5; n += 1) {
@@ -226,8 +229,10 @@ test('Replay walks a finished run step by step: the P key or a click stands it a
       assert.ok(said.startsWith(`${n} ${recorded[n - 1]}`), `the step is said: ${said}`);
       if (n === 4) {
         assert.ok(said.includes(POISONED.reason), 'the stopped step is said with the run\'s sentence');
-        const stopped = await page.evaluate(() => ({ headline: document.querySelector('#rows .outcome-head').textContent, sentence: document.querySelector('#rows .stop-sentence').textContent }));
-        assert.deepEqual(stopped, { headline: COPY['outcome.stoppedIntent'], sentence: POISONED.reason });
+        // The stopped step arrives stamped, with the one line of what differed.
+        const stopped = await page.evaluate(() => { const row = document.querySelector('#rows .row[data-outcome="blocked"]'); return { word: row.querySelector('.chip-word').textContent, detail: row.querySelector('.row-detail').dataset.src }; });
+        assert.equal(stopped.word, COPY['state.stopped']);
+        assert.match(stopped.detail, /^copy:detail\.intentStop;/);
       }
     }
 
@@ -239,9 +244,9 @@ test('Replay walks a finished run step by step: the P key or a click stands it a
     assert.equal(await selectedStep(page), 6);
     assert.ok((await live(page)).endsWith(COPY['menu.replayDone']));
 
-    // The next move leaves the replay behind: the banner goes, as a stopped run has none.
+    // The next move leaves the replay behind: the outcome line returns.
     await page.click('#step-back');
-    assert.deepEqual(await banner(page).then((x) => [x.hidden, x.replay]), [true, 'no']);
+    assert.deepEqual(await banner(page).then((x) => [x.hidden, x.replay, x.outcome]), [false, 'no', 'blocked']);
     assert.equal(await selectedStep(page), 5);
 
     // The P key starts it; Back moves back; a digit stands it at that step; 0 ends it.
@@ -258,7 +263,7 @@ test('Replay walks a finished run step by step: the P key or a click stands it a
     assert.equal((await banner(page)).text, filled('menu.replaying', { runId: POISONED.runId, n: 0 }), 'Back stops at step 0');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('0');
-    assert.deepEqual(await banner(page).then((x) => [x.hidden, x.replay]), [true, 'no'], 'key 0 ends the replay');
+    assert.deepEqual(await banner(page).then((x) => [x.hidden, x.replay, x.outcome]), [false, 'no', 'blocked'], 'key 0 ends the replay');
     assert.deepEqual((await rowsOf(page)).map((r) => r.word), recorded);
     assert.equal(await selectedStep(page), 0);
     assert.equal(started, 1, 'two replays started no run');
@@ -338,10 +343,12 @@ test('the run control runs the scene again once its run has ended: its name says
     assert.equal(await page.evaluate(() => document.getElementById('run-control').textContent), scene.button, 'the visible word stays the scene\'s button');
     assert.equal(await page.evaluate(() => document.body.dataset.run), 'paid');
 
-    // Another scene chosen: the control would run that scene, not this run again.
-    await page.click('.scene[data-kind="poisoned"]');
+    // Another item chosen with the arrow keys (a click would run it): the
+    // control would run that one, not this run again.
+    await page.focus('.scene[data-kind="clean"]');
+    await page.keyboard.press('ArrowDown');
     assert.equal(await name(), filled('button.runName', { scene: LABELS.scenes.find((s) => s.kind === 'poisoned').title }));
-    await page.click('.scene[data-kind="clean"]');
+    await page.keyboard.press('ArrowUp');
     assert.equal(await name(), filled('menu.runAgainName', { scene: scene.title }));
 
     // Run ids are stamped to the second: the next run starts in a later one.

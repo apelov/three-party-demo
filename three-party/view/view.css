@@ -588,9 +588,9 @@ body[data-size="story"] .trace-grid { --t-state: 184px; }
 
 .trace-head { flex: none; }
 .trace-body { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: auto; }
-.trace-cols { display: grid; grid-template-columns: var(--t-cols); column-gap: var(--t-gap); padding: 0 calc(var(--t-px) + 2px) 4px; border-bottom: 2px solid var(--rule-strong); }
+.trace-cols { display: grid; grid-template-columns: var(--t-cols); column-gap: var(--t-gap); padding: 0 var(--t-px) 4px; border-bottom: 2px solid var(--rule-strong); }
 .trace-col { font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
-.trace-note { display: block; padding: 4px calc(var(--t-px) + 2px) 4px; }
+.trace-note { display: block; padding: 4px var(--t-px); }
 .trace-shape { display: block; font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 
 .trace-row {
@@ -653,9 +653,12 @@ body[data-size="story"] .trace-grid { --t-state: 184px; }
 .trace-nested.trace-timed > [role="gridcell"] { margin-inline-end: 0; }
 .trace-why { font-weight: 700; color: var(--red); white-space: nowrap; }
 .trace-pill { display: inline-block; padding: 0 8px; border: 1px solid var(--red); border-radius: 3px; color: var(--red); font-size: var(--t-label); font-weight: 700; line-height: 22px; white-space: nowrap; }
-.trace-count { flex: none; padding: 4px calc(var(--t-px) + 2px) 8px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
+.trace-count { flex: none; padding: 4px var(--t-px) 8px; border-top: 1px solid var(--rule); font-size: var(--t-label); line-height: var(--l-label); color: var(--muted); }
 
 body[data-size="story"] .trace-row[aria-level="1"] { min-height: 48px; }
+/* In Story the outcome line under the pane says the run's sentence; the
+   stopped row keeps its headline. */
+body[data-size="story"] .trace-stop-text { display: none; }
 
 @media (max-width: 1023px) {
   .trace-grid { --t-lane: 96px; }

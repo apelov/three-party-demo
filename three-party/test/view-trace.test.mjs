@@ -251,9 +251,11 @@ for (const [width, height] of [[1440, 900], [1920, 1080]]) {
         assert.equal(m.rowsInView, true, `${what}: every step row is inside the window`);
         assert.equal(m.countInView, true, `${what}: the line that closes the grid is inside the window`);
         for (const h of m.heights) assert.ok(h >= 48, `${what}: a step row is at least 48 px high (${h})`);
-        assert.ok(m.names >= 22, `${what}: step names at least 22 px (${m.names})`);
-        assert.ok(m.words >= 18 && m.times >= 18, `${what}: state words and times at least 18 px (${m.words}, ${m.times})`);
-        assert.equal(m.shape, 16, `${what}: the line on the shape at 16 px`);
+        // One type scale: Story's value size for the names, its label size for
+        // the words, the times and the line on the shape.
+        assert.ok(m.names >= 18, `${what}: step names at least 18 px (${m.names})`);
+        assert.ok(m.words >= 15 && m.times >= 15, `${what}: state words and times at least 15 px (${m.words}, ${m.times})`);
+        assert.equal(m.shape, 15, `${what}: the line on the shape at 15 px`);
         assert.ok(m.smallest >= 13, `${what}: no text under 13 px (${m.smallest})`);
       };
 
@@ -264,12 +266,14 @@ for (const [width, height] of [[1440, 900], [1920, 1080]]) {
       assert.equal(rows.filter((r) => r.selected === 'true').map((r) => r.span).join(), 'intent', 'follow rests on the stopped step');
       const stopped = await measure();
       fits(stopped, 'stopped');
-      assert.equal(stopped.sentenceInView, true, 'the run\'s sentence is inside the window');
-      assert.ok(stopped.currentName >= 32, `the selected step's name at least 32 px (${stopped.currentName})`);
-      assert.ok(stopped.currentWord >= 24, `its state word at least 24 px (${stopped.currentWord})`);
-      assert.ok(stopped.sentence >= 24 && stopped.headline >= 24, `the headline and the sentence at least 24 px (${stopped.headline}, ${stopped.sentence})`);
-      assert.deepEqual(stopped.nested, [18, 18, 18], 'the rows inside a step at 18 px');
-      assert.equal(stopped.pill, 18, 'the mark at 18 px');
+      // The selected step is set apart by weight, not by a larger size; in
+      // Story the run's sentence is the outcome line's, under the pane.
+      assert.ok(stopped.currentName >= 18, `the selected step's name at least 18 px (${stopped.currentName})`);
+      assert.ok(stopped.currentWord >= 15, `its state word at least 15 px (${stopped.currentWord})`);
+      assert.ok(stopped.headline >= 18, `the headline at least 18 px (${stopped.headline})`);
+      assert.equal(await page.evaluate(() => document.querySelector('#outcome-end [data-outcome-part="text"]') !== null), true, 'the outcome line carries the sentence');
+      assert.deepEqual(stopped.nested, [15, 15, 15], 'the rows inside a step at 15 px');
+      assert.equal(stopped.pill, 15, 'the mark at 15 px');
 
       // Every selection of the stopped run still fits.
       for (const key of ['1', '2', '3', '5', '6', '0', '4']) {
@@ -344,12 +348,14 @@ for (const [width, height, lane, mode] of [[1280, 800, 200, 'inspect'], [1440, 9
       for (const [w, h] of m.toggles) assert.ok(w >= 24 && h >= 24, `the control that opens a step is at least 24 by 24 px (${w} by ${h})`);
       if (mode === 'inspect') {
         for (const h of m.heights) assert.ok(h >= 40, `a step row is at least 40 px high (${h})`);
-        assert.deepEqual([...new Set(m.names)], [18], 'step names at 18 px');
-        assert.deepEqual([...new Set(m.words)], [18], 'state words at 18 px');
-        assert.deepEqual([...new Set(m.times)], [16], 'times at 16 px');
-        assert.deepEqual([...new Set(m.nested)], [16], 'the rows inside a step at 16 px');
-        assert.equal(m.sentence, 18, 'the run\'s sentence at 18 px');
-        assert.equal(m.pill, 15, 'the mark at 15 px');
+        // Inspect's scale: value 15 for the names, label 13 for the words,
+        // the times, the rows inside a step, the sentence and the mark.
+        assert.deepEqual([...new Set(m.names)], [15], 'step names at 15 px');
+        assert.deepEqual([...new Set(m.words)], [13], 'state words at 13 px');
+        assert.deepEqual([...new Set(m.times)], [13], 'times at 13 px');
+        assert.deepEqual([...new Set(m.nested)], [13], 'the rows inside a step at 13 px');
+        assert.equal(m.sentence, 13, 'the run\'s sentence at 13 px');
+        assert.equal(m.pill, 13, 'the mark at 13 px');
       }
       assert.deepEqual(view.errors, []);
     } finally {
@@ -387,7 +393,10 @@ test('the offline check is a row of its own after the steps: its start is the ti
   const { page } = view;
   try {
     await runAndWait(view, 'clean', 'paid');
+    // The audit opens the Records tab; T brings the trace back with its row.
     await page.keyboard.press('o');
+    await page.waitForFunction(() => document.body.dataset.tab === 'records');
+    await page.keyboard.press('t');
     await page.waitForFunction(() => document.querySelector('#trace-body [data-span="offline-check"]') !== null);
     await view.settle();
     const rows = await traceRows(page);
