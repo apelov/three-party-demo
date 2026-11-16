@@ -21,20 +21,9 @@ const REPO = path.resolve(THREE_PARTY, '..');
 const j = (...parts) => parts.join('');
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-// The staged label map, and the seven example files of contract revision 1,
-// by the SHA-256 of each file as it stands here.
-// The staged map with the two variants of the crossing added (the AI2II capture
-// check, and the fallback to the delegation chain check with its fetch note).
-const STAGED_LABEL_MAP = 'cc47650c0b00aea8d0042e066bb683c902a4a8c83044692b9f3df83be1631de0';
-const V1_EXAMPLES = {
-  'action-05-pay.action.json': '7a459b88cdb0c730ed551a66d8f127e9a864fe8acc77d7c73c4363b6d55bb6c8',
-  'hop-03-crossing.hop.json': 'a80fe78d64cd107f11b2dc27b48d9a85a4d624e13e34bd5984c6c905cc44bc33',
-  'manifest.json': '4425a773170e92c21b01da44195cf789174304f4e019ab890478495d1934f3e8',
-  'offline-check.json': '30004f2b9f76ed3bd59313bf9cf9743d1b54aeb167b8786ba4ec94f0fdecfda5',
-  'state-clean-done.json': '06e27f01b68ca369511f2a2707d0f657be2fb9ec0a2ff3e5aa231e24b9b8f196',
-  'state-clean-running.json': '2cc372594c2ee663a7119673fdc40bcb4bb1831099bf25d86bbf973315adba7f',
-  'state-poisoned-blocked.json': 'a9a808f9c5785cf0f156fc9882ce0de0fbebd4da50844d813c7d5874fb4d2973',
-};
+// The label map, by the SHA-256 of the file as it stands here: a change of a
+// label, a stand-in note or a party role is a deliberate edit of this line too.
+const STAGED_LABEL_MAP = '2736306b70b777bba5aaf407ca667c39e18ad1cec5f25d4bd096fa8465982eb3';
 const V1_LABELS = [j('Ou', 'rs'), j('Crossing (stand-in ', 'for AI2II)'), j('Record (our writer, ', 'his format)')];
 
 // A file is text unless a NUL byte sits in its leading 8000 bytes, the rule
@@ -77,24 +66,16 @@ function linesHolding(file, text, needle) {
 
 const LABEL_SOURCE_EXEMPT = (f) => f === 'three-party/labels.json' || f === 'three-party/CONTRACT.md' || f.startsWith('three-party/examples/') || f.startsWith('three-party/test/');
 
-test('three-party/labels.json is the staged label map byte for byte, and the examples of contract revision 1 stand byte for byte under examples/v1/', () => {
+test('three-party/labels.json is the label map byte for byte, and no example of an earlier revision is kept', () => {
   assert.equal(sha256(LABEL_MAP_FILE), STAGED_LABEL_MAP);
-  const dir = path.join(THREE_PARTY, 'examples', 'v1');
-  assert.deepEqual(fs.readdirSync(dir).sort(), Object.keys(V1_EXAMPLES).sort());
-  for (const [name, hash] of Object.entries(V1_EXAMPLES)) assert.equal(sha256(path.join(dir, name)), hash, name);
-  // The three state examples beside them carry revision 2: they differ from
-  // the kept files, and the four other examples do not.
-  for (const name of Object.keys(V1_EXAMPLES)) {
-    const same = sha256(path.join(THREE_PARTY, 'examples', name)) === V1_EXAMPLES[name];
-    assert.equal(same, !name.startsWith('state-'), name);
-  }
+  assert.equal(fs.existsSync(path.join(THREE_PARTY, 'examples', 'v1')), false);
 });
 
 test('the label source is one: outside labels.json, CONTRACT.md, examples/ and test/, no file under three-party/ holds a part or party string of the map', () => {
   const map = labelMap();
   const strings = partAndPartyStrings(map);
-  assert.equal(strings.length, 14, 'four part labels, two stand-in notes, the fallback crossing\'s fetch note, five party strings beside the bank\'s label, two timestamp notes');
-  for (const label of ['OpenA2A · ATX · AAP', 'WIMSE · AI2II', 'AEP', "Supplier's bank", 'Payments agent', 'Supplier', "Payments agent's domain", "Supplier's bank's domain", 'Fictional test identifiers.']) {
+  assert.equal(strings.length, 13, 'four part labels, one stand-in note, the fallback crossing\'s fetch note, five party strings beside the bank\'s label, two timestamp notes');
+  for (const label of ['OpenA2A · ATX · AAP', 'WIMSE · AI2II', 'AEP', "Supplier's bank", 'Payments agent', 'Supplier', "Payments agent's domain", "Supplier's bank's domain", 'Test identifiers, used by nothing outside this demo.']) {
     assert.ok(strings.includes(label), label);
   }
   const files = treeFiles().filter((f) => !LABEL_SOURCE_EXEMPT(f));
@@ -136,39 +117,27 @@ test('the label source is one: outside labels.json, CONTRACT.md, examples/ and t
   assert.equal(deckLines, 1, 'the one deck line that holds a label of two words inside its stand-in cell');
 });
 
-test('the copy deck\'s two text mode cells are what text mode prints for the stand-in parts of the map', () => {
+test('the copy deck\'s text mode cell is what text mode prints for the stand-in part of the map', () => {
   const map = labelMap();
   const deck = JSON.parse(fs.readFileSync(path.join(THREE_PARTY, 'view', 'copy.json'), 'utf8'));
   const cellOf = (name) => partCell({ partLabel: map.parts[name].label, standIn: map.parts[name].standIn });
   assert.equal(cellOf('crossing'), deck['text.partCrossing']);
-  assert.equal(cellOf('record'), deck['text.partRecord']);
+  assert.equal(Object.hasOwn(deck, 'text.partRecord'), false, 'the record is not a stand-in, so the deck holds no stand-in cell for it');
   // A part that is not a stand-in prints its label alone.
   assert.equal(cellOf('checkpoint'), map.parts.checkpoint.label);
   assert.equal(cellOf('bank'), map.parts.bank.label);
-  assert.deepEqual(Object.entries(map.parts).filter(([, part]) => part.standIn).map(([name]) => name), ['crossing', 'record']);
+  assert.deepEqual(Object.entries(map.parts).filter(([, part]) => part.standIn).map(([name]) => name), ['crossing']);
 });
 
-test('no file under three-party/ holds a label of contract revision 1 as a quoted string, outside examples/v1/ and the contract\'s revision section', () => {
-  const files = treeFiles().filter((f) => !f.startsWith('three-party/examples/v1/'));
+test('no file under three-party/ holds a label of contract revision 1 as a quoted string', () => {
+  const files = treeFiles();
   assert.ok(files.includes('three-party/CONTRACT.md') && files.includes('three-party/labels.json') && files.includes('three-party/test/engine-text.test.mjs'));
   const found = [];
-  let revisionSection = null;
   for (const f of files) {
-    let text = fs.readFileSync(path.join(REPO, f), 'utf8');
-    if (f === 'three-party/CONTRACT.md') {
-      const at = text.indexOf('\n## Revision 2\n');
-      assert.ok(at > 0, 'the contract has its revision section');
-      revisionSection = text.slice(at);
-      text = text.slice(0, at);
-    }
+    const text = fs.readFileSync(path.join(REPO, f), 'utf8');
     for (const label of V1_LABELS) for (const form of quotedForms(label)) found.push(...linesHolding(f, text, form).map((at) => `${at} holds ${form}`));
   }
   assert.deepEqual(found, []);
-  // The revision section is where the contract names them, and it does.
-  for (const label of V1_LABELS) assert.ok(revisionSection.includes(`\`${label}\``), label);
-  // The kept examples of revision 1 carry them, as they did.
-  const kept = fs.readFileSync(path.join(THREE_PARTY, 'examples', 'v1', 'state-clean-done.json'), 'utf8');
-  for (const label of V1_LABELS) assert.ok(kept.includes(JSON.stringify(label)), label);
 });
 
 test('the check finds what it looks for: a file that holds a label as a quoted string, or a label of two words in a line, is reported', () => {

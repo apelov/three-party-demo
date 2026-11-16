@@ -47,12 +47,12 @@ function fixtureIdentifiers(states) {
 
 // What a step must carry, written out here from the map's own words.
 const EXPECTED = {
-  credential: { part: 'ours', partLabel: 'OpenA2A · ATX · AAP', standIn: false, standInNote: null },
-  grant: { part: 'ours', partLabel: 'OpenA2A · ATX · AAP', standIn: false, standInNote: null },
-  crossing: { part: 'crossing', partLabel: 'WIMSE · AI2II', standIn: true, standInNote: 'Stand-in: our delegation-chain check runs here until the AI2II part is supplied.' },
-  intent: { part: 'ours', partLabel: 'OpenA2A · ATX · AAP', standIn: false, standInNote: null },
+  credential: { part: 'checkpoint', partLabel: 'OpenA2A · ATX · AAP', standIn: false, standInNote: null },
+  grant: { part: 'checkpoint', partLabel: 'OpenA2A · ATX · AAP', standIn: false, standInNote: null },
+  crossing: { part: 'crossing', partLabel: 'WIMSE · AI2II', standIn: true, standInNote: 'Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.' },
+  intent: { part: 'checkpoint', partLabel: 'OpenA2A · ATX · AAP', standIn: false, standInNote: null },
   pay: { part: 'bank', partLabel: "Supplier's bank", standIn: false, standInNote: null },
-  record: { part: 'record', partLabel: 'AEP', standIn: true, standInNote: 'Our writer, in the AEP format. Stand-in label until the format is confirmed.' },
+  record: { part: 'record', partLabel: 'AEP', standIn: false, standInNote: null },
 };
 
 test('the map the engine holds is three-party/labels.json, read once and frozen', () => {
@@ -100,7 +100,7 @@ test('a clean run and a poisoned run: every step of state.json carries the label
     assert.deepEqual(state.parties, map.parties, 'the parties by role, copied from the map');
     assert.deepEqual(Object.keys(state.parties), ['agent', 'bank', 'supplier', 'domainA', 'domainB', 'rawIdentifiersNote']);
     // The values the files of the run carry are the fixtures' own, as before.
-    assert.equal(state.steps.find((s) => s.id === 'crossing').detail.standIn, 'AI2II interop: stand-in; the real piece replaces the hop file, not code');
+    assert.equal(state.steps.find((s) => s.id === 'crossing').detail.standIn, 'Stand-in for the AI2II capture check, which runs here once its files are fetched');
     assert.equal(state.agent.domain, 'payments.acme-demo.test');
   }
 });
@@ -114,12 +114,12 @@ test('text mode: a stand-in part is marked after its label, the line of a stand-
     const cells = Object.fromEntries(state.steps.map((s) => [s.id, partCell(s)]));
     assert.deepEqual(cells, {
       credential: 'OpenA2A · ATX · AAP', grant: 'OpenA2A · ATX · AAP', crossing: 'WIMSE · AI2II (stand-in)',
-      intent: 'OpenA2A · ATX · AAP', pay: "Supplier's bank", record: 'AEP (stand-in)',
+      intent: 'OpenA2A · ATX · AAP', pay: "Supplier's bank", record: 'AEP',
     });
     // The fallback crossing also says where the AI2II capture comes from and how it is fetched.
     assert.ok(lineOf('crossing').endsWith(`chain of 2 hops: valid. ${map.parts.crossing.standInNote} ${map.parts.crossing.variants.fallback.fetchNote}`), lineOf('crossing'));
     assert.ok(lineOf('crossing').includes(`| ${map.parties.agent} to ${map.parties.bank}; `), 'the two sides by role');
-    assert.ok(lineOf('record').endsWith(`signer: test key generated for this run. ${map.parts.record.standInNote} ${map.timestamp.standInNote}`), lineOf('record'));
+    assert.ok(lineOf('record').endsWith(`signer: test key generated for this run. ${map.timestamp.standInNote}`), lineOf('record'));
     // A step of a part that is not a stand-in ends with no note.
     for (const id of ['credential', 'grant', 'intent', 'pay']) assert.deepEqual(stepNotes(state.steps.find((s) => s.id === id)), [], id);
   }
@@ -144,7 +144,7 @@ test('text mode: a stand-in part is marked after its label, the line of a stand-
   assert.equal(timestampNote('test timestamp authority made for this demo'), map.timestamp.testAuthorityNote);
   const record = clean.state.steps.find((s) => s.id === 'record');
   const stamped = { ...record, detail: { ...record.detail, timestampEntry: 'test timestamp authority made for this demo' } };
-  assert.deepEqual(stepNotes(stamped), [map.parts.record.standInNote, map.timestamp.testAuthorityNote]);
+  assert.deepEqual(stepNotes(stamped), [map.timestamp.testAuthorityNote]);
 });
 
 // A line of text mode with the values of one run set aside: the time, the

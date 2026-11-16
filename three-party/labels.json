@@ -1,13 +1,13 @@
 {
-  "revision": "three-party contract revision 2",
+  "revision": "three-party contract revision 3",
   "parts": {
     "checkpoint": { "label": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "steps": ["credential", "grant", "intent", "grant-again"] },
-    "crossing": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "steps": ["crossing", "received"],
+    "crossing": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "steps": ["crossing", "received"],
       "variants": {
         "supplied": { "label": "WIMSE · AI2II", "standIn": false, "standInNote": null },
-        "fallback": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "fetchNote": "The AI2II capture check runs here in its place once node scripts/three-party/fetch-ai2ii.mjs has fetched the capture published at https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE." }
+        "fallback": { "label": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "fetchNote": "Run node scripts/three-party/fetch-ai2ii.mjs to fetch the capture AI2II published at https://github.com/apelov/IETF127-Hackathon-AI2II-WIMSE; the crossing then checks it." }
       } },
-    "record": { "label": "AEP", "standIn": true, "standInNote": "Our writer, in the AEP format. Stand-in label until the format is confirmed.", "steps": ["record"] },
+    "record": { "label": "AEP", "standIn": false, "standInNote": null, "steps": ["record"] },
     "bank": { "label": "Supplier's bank", "standIn": false, "standInNote": null, "steps": ["pay", "pay-again"] }
   },
   "parties": {
@@ -16,18 +16,18 @@
     "supplier": "Supplier",
     "domainA": "Payments agent's domain",
     "domainB": "Supplier's bank's domain",
-    "rawIdentifiersNote": "Fictional test identifiers."
+    "rawIdentifiersNote": "Test identifiers, used by nothing outside this demo."
   },
   "timestamp": {
-    "standInNote": "Stand-in: no timestamp authority.",
+    "standInNote": "Placeholder: no timestamp authority.",
     "testAuthorityNote": "Test timestamp authority made for this demo; not a key in use anywhere."
   },
   "scenes": [
-    { "id": 1, "kind": "clean", "button": "Run the clean invoice", "priority": "must" },
+    { "id": 1, "kind": "clean", "button": "Run the normal payment", "priority": "must" },
     { "id": 2, "kind": "poisoned", "button": "Run the poisoned invoice", "priority": "must" },
-    { "id": 6, "kind": "offline-check", "button": "Offline check", "priority": "must" },
+    { "id": 6, "kind": "offline-check", "button": "Audit the records", "priority": "must" },
     { "id": 3, "kind": "tampered", "button": "Run the tampered agent", "priority": "should" },
     { "id": 4, "kind": "expired", "button": "Run the expired grant", "priority": "should" },
-    { "id": 5, "kind": "received", "button": "What the bank received", "priority": "stand-in", "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied." }
+    { "id": 5, "kind": "received", "button": "What the bank received", "priority": "stand-in", "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture." }
   ]
 }

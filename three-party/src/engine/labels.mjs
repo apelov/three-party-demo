@@ -82,7 +82,7 @@ export const LABELS = Object.freeze({
 
   // The crossing stand-in.
   crossing: Object.freeze({
-    standIn: 'AI2II interop: stand-in; the real piece replaces the hop file, not code',
+    standIn: 'Stand-in for the AI2II capture check, which runs here once its files are fetched',
     stepsRun: '{steps} of {draft} section 6',
     // The crossing when the AI2II capture is on this computer and pinned.
     stepsRunCapture: '{total} checks of the AI2II capture check: {names}',
@@ -117,7 +117,7 @@ export const LABELS = Object.freeze({
       exchange: 'exchange',
       keys: 'The keys are trusted because jwks.json is pinned by its SHA-256.',
       times: "The token's times are checked against the capture's own times, not today's clock.",
-      txnToken: 'The Txn-Token header is carried, not checked.',
+      txnToken: "The Txn-Token header's value is compared with the bank's answer; it is not validated as a token.",
     }),
     // Why the crossing fell back to the delegation chain check.
     notUsedAbsent: 'AI2II capture not used: {names} not in {dir}',
@@ -143,7 +143,7 @@ export const LABELS = Object.freeze({
     credentialBlocked: 'the credential was not accepted ({refusal})',
     grantAllowed: "the broker's grant policy matched the verified credential; the bank's token service issued a grant that lives {seconds} seconds; the declared payment is inside the consent",
     grantBlocked: 'no grant was issued ({refusal})',
-    crossingObserved: 'the delegation chain check returned {outcome} for the chain of {hops} hops; the check holds no request, so it reports no action as permitted; stand-in for the AI2II interop piece',
+    crossingObserved: 'the delegation chain check returned {outcome} for the chain of {hops} hops; the check holds no request, so it reports no action as permitted; a stand-in for the AI2II capture check',
     crossingBlocked: 'the delegation chain check returned {outcome}, and the chain file names {expected} ({refusal})',
     crossingCaptureObserved: 'the AI2II capture check passed {passed} of {total} checks on a capture of a separate exchange published at commit {commit8}; it permits no action of this run',
     crossingCaptureBlocked: 'the AI2II capture check passed {passed} of {total} checks ({refusal})',

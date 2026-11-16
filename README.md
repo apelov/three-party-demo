@@ -10,10 +10,38 @@ every action leaves an Action Evidence Package (AEP) that anyone can check
 offline. In the second run the invoice is poisoned: the intent rule stops the
 payment before it is sent, and the record of that step says why.
 
+![The poisoned invoice run: the request crosses the credential check, the grant and the crossing, the intent rule stops the changed payment before the bank is called, and the audit then checks every record offline.](docs/poisoned-invoice.gif)
+
 ## How this came together
 
 Built at the IETF 127 Hackathon, San Francisco, 14 to 15 November 2026, by
 three teams working from each other's drafts.
+
+## Use cases
+
+**Finance: an agent that pays invoices.** An invoice can carry text written
+for the agent rather than for people. In the poisoned run that text tells the
+agent to read a secret and pay a different account. The intent rule compares
+each call the agent makes with the intent declared from the invoice's own
+fields, and stops the payment before the bank is called. No money moves, and
+the record of that step says why.
+
+**Platform engineering: agents wired into a pipeline.** The same pattern fits
+an agent that acts through tools in CI/CD: a checkpoint between the agent and
+its tools compares every tool call with a declared intent, field for field,
+and blocks a call that has none. Every action leaves a signed record that a
+later job can verify with one command and no network.
+
+**Security and audit: proving what an agent did, later.** Long after a run,
+an auditor can check each Action Evidence Package with nothing but the run's
+public key: the exact response, the decision and its reason, signed. The
+offline check does this with network access denied, and rejects a copy in
+which one byte was changed.
+
+**Standards work: three drafts in one flow.** ATX and AAP, a WIMSE crossing
+between trust domains, and AEP evidence each check only their own part. The
+demo shows where one hands over to the next, and every step opens to the real
+artifact behind it.
 
 ## The three parts
 
@@ -59,7 +87,11 @@ offline check runs an OpenA2A verifier written from that format.
   timestamp authority.
 - **The signer** is a test key made for each run. Its private half never
   reaches a file and is deleted once the run's last record is signed.
-- **The crossing** CROSSING_FACTS
+- **The crossing**, once AI2II's files are fetched, checks a capture AI2II
+  published of a separate loopback exchange (harbor.example to
+  northbank.example), not a crossing made for this payment. Without the
+  files, an OpenA2A check of a two-hop delegation chain fixture runs in its
+  place, and the screens mark it as a stand-in.
 - **The agent** is scripted. No language model is called.
 - **The bank** is a local mock that runs inside the demo on your computer.
 
@@ -80,7 +112,12 @@ node scripts/three-party/fetch-ai2ii.mjs
 npm run three-party
 ```
 
-FETCH_LINE
+`node scripts/three-party/fetch-ai2ii.mjs` is optional. It downloads the
+three files AI2II published at commit 32f584a (a packet capture, a decision
+journal and a key set) into `three-party/external/ai2ii/`, which git ignores,
+and checks each one against its pinned SHA-256. AI2II's repository has no
+license yet, so the files are fetched, not copied into this one. Without them
+the crossing runs as a stand-in.
 
 ```text
 Three-party demo, build <short sha>
@@ -102,7 +139,14 @@ node three-party/bin/start.mjs --text --offline-check
 The offline check denies the verifier network access with the method of the
 operating system, and says on screen whether it could:
 
-OFFLINE_TABLE
+| Operating system | How the verifier's network access is denied |
+|---|---|
+| macOS | `sandbox-exec` with a profile that denies the network |
+| Linux | a new user and network namespace (`unshare`), or `bwrap` where `unshare` is not allowed |
+| Windows | no method that works without administrator rights; the check says "not measured" and still checks every record |
+
+Inside a container that forbids namespaces (Docker's default profile, for
+example), Linux reports "not measured" in the same way.
 
 ## The screens
 

@@ -131,7 +131,7 @@ test('the record step before the offline check: the manifest rows with their has
 });
 
 test('a package the server holds: its Entries control lists the names of the zip\'s central directory and sets out metadata.json, read through a stored and a deflated entry', async () => {
-  const metadata = { profile: 'opena2a-three-party-demo/1', runId: CLEAN_DONE.runId, seq: 5, step: 'pay', kind: 'clean', at: CLEAN_DONE.steps[4].endedAt, decision: 'allowed', reason: 'the tool call equals the declared intent field for field', actor_did: CLEAN_DONE.agent.did, credential_sha256: CLEAN_DONE.agent.credentialSha256, domain_from: CLEAN_DONE.agent.domain, domain_to: CLEAN_DONE.steps[2].detail.to, writer: 'our writer, AEP format', timestamp_entry: CLEAN_DONE.steps[5].detail.timestampEntry };
+  const metadata = { profile: 'opena2a-three-party-demo/1', runId: CLEAN_DONE.runId, seq: 5, step: 'pay', kind: 'clean', at: CLEAN_DONE.steps[4].endedAt, decision: 'allowed', reason: 'the tool call equals the declared intent field for field', actor_did: CLEAN_DONE.agent.did, credential_sha256: CLEAN_DONE.agent.credentialSha256, domain_from: CLEAN_DONE.agent.domain, domain_to: CLEAN_DONE.steps[2].detail.to, writer: 'OpenA2A writer, AEP format', timestamp_entry: CLEAN_DONE.steps[5].detail.timestampEntry };
   const names = ['response.txt', 'metadata.json', 'canonical.bin', 'hash.sha256'];
   for (const deflate of [true, false]) {
     const zip = makeZip([

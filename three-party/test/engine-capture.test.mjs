@@ -66,7 +66,7 @@ test('a synthetic capture passes all seven checks; the result names the files, t
   assert.deepEqual(result.scope.slice(1), [
     'The keys are trusted because jwks.json is pinned by its SHA-256.',
     "The token's times are checked against the capture's own times, not today's clock.",
-    'The Txn-Token header is carried, not checked.',
+    "The Txn-Token header's value is compared with the bank's answer; it is not validated as a token.",
   ]);
 });
 

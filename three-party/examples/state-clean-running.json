@@ -10,7 +10,7 @@
     "supplier": "Supplier",
     "domainA": "Payments agent's domain",
     "domainB": "Supplier's bank's domain",
-    "rawIdentifiersNote": "Fictional test identifiers."
+    "rawIdentifiersNote": "Test identifiers, used by nothing outside this demo."
   },
   "invoice": {
     "invoiceId": "DEMO-INV-2201",
@@ -30,14 +30,14 @@
   },
   "grant": null,
   "steps": [
-    { "id": "credential", "part": "ours", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Verify the agent's ATX credential locally", "status": "passed", "startedAt": "2026-11-15T12:00:01Z", "endedAt": "2026-11-15T12:00:02Z",
+    { "id": "credential", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Verify the agent's ATX credential locally", "status": "passed", "startedAt": "2026-11-15T12:00:01Z", "endedAt": "2026-11-15T12:00:02Z",
       "detail": { "verifier": "@opena2a/atx-verify 0.3.0", "valid": true, "issuer": "did:web:issuer.example.test", "notBefore": "2026-10-01T00:00:00Z", "notAfter": "2027-10-01T00:00:00Z", "postQuantumSignature": "not verified in this demo" },
       "actionFile": "actions/01-credential.action.json", "recordFile": null },
-    { "id": "grant", "part": "ours", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Issue a scoped AAP grant", "status": "running", "startedAt": "2026-11-15T12:00:10Z", "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
-    { "id": "crossing", "part": "crossing", "partLabel": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: our delegation-chain check runs here until the AI2II part is supplied.", "title": "Cross into the supplier's bank's trust domain", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
-    { "id": "intent", "part": "ours", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Apply the intent rule to each tool call", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "grant", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Issue a scoped AAP grant", "status": "running", "startedAt": "2026-11-15T12:00:10Z", "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "crossing", "part": "crossing", "partLabel": "WIMSE · AI2II", "standIn": true, "standInNote": "Stand-in: an OpenA2A check of a delegation chain fixture runs here in place of the AI2II capture.", "title": "Cross into the supplier's bank's trust domain", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
+    { "id": "intent", "part": "checkpoint", "partLabel": "OpenA2A · ATX · AAP", "standIn": false, "standInNote": null, "title": "Apply the intent rule to each tool call", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
     { "id": "pay", "part": "bank", "partLabel": "Supplier's bank", "standIn": false, "standInNote": null, "title": "Pay the invoice under the grant", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null },
-    { "id": "record", "part": "record", "partLabel": "AEP", "standIn": true, "standInNote": "Our writer, in the AEP format. Stand-in label until the format is confirmed.", "title": "Write one signed Action Evidence Package per action", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null }
+    { "id": "record", "part": "record", "partLabel": "AEP", "standIn": false, "standInNote": null, "title": "Write one signed Action Evidence Package per action", "status": "pending", "startedAt": null, "endedAt": null, "detail": null, "actionFile": null, "recordFile": null }
   ],
   "outcome": null,
   "blockedAt": null,

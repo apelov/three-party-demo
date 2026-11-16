@@ -53,7 +53,7 @@ function expectedMetadata(action) {
     credential_sha256: action.actor.credentialSha256,
     domain_from: action.domainFrom,
     domain_to: action.domainTo,
-    writer: 'our writer, AEP format',
+    writer: 'OpenA2A writer, AEP format',
     timestamp_entry: 'stand-in: no timestamp authority',
   };
   const names = Object.keys(members).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -128,16 +128,16 @@ test('metadata.json is the JCS bytes of the contract\'s metadata: serializing it
   }
   // The pay record's metadata, member by member in sorted order, by hand.
   const a = EXAMPLE_ACTION;
-  const want = `{"actor_did":"${a.actor.did}","at":"${a.at}","credential_sha256":"${a.actor.credentialSha256}","decision":"allowed","domain_from":"payments.acme-demo.test","domain_to":"bank.example.test","kind":"clean","profile":"opena2a-three-party-demo/1","reason":"${a.reason}","runId":"${run.runId}","seq":5,"step":"pay","timestamp_entry":"stand-in: no timestamp authority","writer":"our writer, AEP format"}`;
+  const want = `{"actor_did":"${a.actor.did}","at":"${a.at}","credential_sha256":"${a.actor.credentialSha256}","decision":"allowed","domain_from":"payments.acme-demo.test","domain_to":"bank.example.test","kind":"clean","profile":"opena2a-three-party-demo/1","reason":"${a.reason}","runId":"${run.runId}","seq":5,"step":"pay","timestamp_entry":"stand-in: no timestamp authority","writer":"OpenA2A writer, AEP format"}`;
   assert.equal(readEntry(record('05-pay.aep'), 'metadata.json').toString('utf8'), want);
   assert.equal(PROFILE, 'opena2a-three-party-demo/1');
-  assert.equal(WRITER, 'our writer, AEP format');
+  assert.equal(WRITER, 'OpenA2A writer, AEP format');
   assert.equal(TIMESTAMP_ENTRY, 'stand-in: no timestamp authority');
   // CONTRACT.md section 5 names the same fourteen members and the writer value.
   const contract = fs.readFileSync(path.join(THREE_PARTY, 'CONTRACT.md'), 'utf8');
   for (const name of Object.keys(JSON.parse(want))) assert.ok(contract.includes(`\`${name}\``), name);
   assert.equal(Object.keys(JSON.parse(want)).length, 14);
-  assert.ok(contract.includes('`writer` (`our writer, AEP format`)'));
+  assert.ok(contract.includes('`writer` (`OpenA2A writer, AEP format`)'));
 });
 
 test('signature.sig is base64 with no line feed, and crypto.verify accepts it over canonical.bin with the run\'s public key, which is public_key.pem', () => {
