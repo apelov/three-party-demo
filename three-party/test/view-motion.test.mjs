@@ -24,6 +24,14 @@ const j = (...parts) => parts.join('');
 const M1 = ['color', 'background-color', 'border-color'];
 const M4 = ['width', 'inset-inline-start'];
 
+// Run in the page: what is moving now, each as its property (or animation
+// name) and the element it moves, so that a failure names what moved.
+const MOVING = () => document.getAnimations().map((a) => {
+  const el = a.effect?.target;
+  const where = el ? [el.tagName.toLowerCase(), el.id ? `#${el.id}` : '', (el.getAttribute('class') ?? '').trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join('')].join('') : 'no element';
+  return `${a.transitionProperty ?? a.animationName ?? 'an animation'} on ${where}${a.effect?.pseudoElement ?? ''}`;
+});
+
 function motionRules(css) {
   const plain = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [];
@@ -180,11 +188,13 @@ test('during a run the transitions running are those of the step that changed st
     // the rows once the outcome is decided.
     await page.waitForFunction(() => document.body.dataset.run === 'paid' && document.querySelector('#rows .countdown') === null, null, { timeout: 15000 });
     await page.waitForTimeout(1300);
+    // Then until nothing moves, however slow the computer, so that anything
+    // moving after a key below was started by that key and not by the run.
+    await page.waitForFunction(() => document.getAnimations().length === 0, null, { timeout: 15000 });
     const before = await report(page);
     for (const key of ['1', 'ArrowRight', 'i', '4', '0', 's', 'End', 'Home']) {
       await page.keyboard.press(key);
-      const now = await page.evaluate(() => document.getAnimations().length);
-      assert.equal(now, 0, `after ${key}`);
+      assert.deepEqual(await page.evaluate(MOVING), [], `after ${key}`);
       await page.waitForTimeout(60);
     }
     const afterKeys = await report(page);
