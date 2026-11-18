@@ -1,0 +1,10 @@
+{
+  "name": "enforcement-adapter-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The enforcement adapter of the Maurice invoice slice as a local MCP server (the agent's only bank execution route). Launched by AgentMaurice with npx from this directory.",
+  "type": "module",
+  "bin": {
+    "enforcement-adapter-mcp": "./bin.mjs"
+  }
+}

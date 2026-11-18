@@ -1,0 +1,18 @@
+{
+  "note": "Trusted task setup for the Maurice invoice slice: a purchase order the customer approved out of band. The adapter loads it from this fixture, never from the invoice's text. The invoice DEMO-INV-2201 is untrusted input; its extracted fields must match this record.",
+  "task": {
+    "taskId": "po-DEMO-INV-2201",
+    "kind": "purchase-order",
+    "invoiceId": "DEMO-INV-2201",
+    "payeeName": "Northwind Office Supply",
+    "payeeAccount": "DEMO-0000-2201",
+    "amountExact": "148.20",
+    "amountCap": { "amount": "250.00", "currency": "USD" },
+    "expiresAt": "2027-03-31T23:59:59Z",
+    "provenance": {
+      "source": "purchase-order",
+      "ref": "fixtures/tasks/po-DEMO-INV-2201.task.json",
+      "note": "Approved by the customer before the invoice arrived; the consent at the bank names the same payee account."
+    }
+  }
+}
